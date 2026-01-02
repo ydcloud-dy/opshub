@@ -109,7 +109,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Key, View, Delete } from '@element-plus/icons-vue'
-import { getNamespacesForRoles, getNamespaceRoles } from '@/api/kubernetes'
+import { getNamespacesForRoles, getNamespaceRoles, createDefaultNamespaceRoles } from '@/api/kubernetes'
 
 interface Namespace {
   name: string
@@ -183,8 +183,36 @@ const loadNamespaceRoles = async () => {
 
   try {
     loading.value = true
-    const roles = await getNamespaceRoles(props.clusterId, selectedNamespace.value)
-    roleList.value = roles
+    let roles = await getNamespaceRoles(props.clusterId, selectedNamespace.value)
+
+    // 定义应该有的12个默认命名空间角色
+    const expectedNamespaceRoles = [
+      'namespace-owner',
+      'namespace-viewer',
+      'manage-workload',
+      'manage-config',
+      'manage-rbac',
+      'manage-service-discovery',
+      'manage-storage',
+      'view-workload',
+      'view-config',
+      'view-rbac',
+      'view-service-discovery',
+      'view-storage'
+    ]
+
+    // 如果角色数量不等于12，说明角色缺失，需要创建
+    if (!roles || roles.length !== expectedNamespaceRoles.length) {
+      try {
+        await createDefaultNamespaceRoles(props.clusterId, selectedNamespace.value)
+        // 重新加载角色列表
+        roles = await getNamespaceRoles(props.clusterId, selectedNamespace.value)
+      } catch (createError) {
+        console.error('Failed to create default namespace roles:', createError)
+      }
+    }
+
+    roleList.value = roles || []
   } catch (error: any) {
     ElMessage.error(error.response?.data?.data?.message || '加载命名空间角色失败')
   } finally {
