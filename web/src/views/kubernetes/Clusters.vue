@@ -133,7 +133,7 @@
       </div>
 
       <el-table
-        :data="filteredClusterList"
+        :data="paginatedClusterList"
         v-loading="loading"
         class="modern-table"
         :header-cell-style="{ background: '#fafbfc', color: '#606266', fontWeight: '600' }"
@@ -218,6 +218,19 @@
         </template>
       </el-table-column>
     </el-table>
+
+      <!-- 分页 -->
+      <div class="pagination-wrapper">
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          :page-sizes="[10, 20, 50, 100]"
+          :total="filteredClusterList.length"
+          layout="total, sizes, prev, pager, next, jumper"
+          @current-change="handlePageChange"
+          @size-change="handleSizeChange"
+        />
+      </div>
     </div>
 
     <!-- 注册/编辑集群对话框 -->
@@ -663,6 +676,11 @@ const clusterList = ref<Cluster[]>([])
 const clusterCredentialUsers = ref<CredentialUser[]>([])
 const selectedClusters = ref<Cluster[]>([]) // 选中的集群
 
+// 分页状态
+const currentPage = ref(1)
+const pageSize = ref(10)
+const paginationStorageKey = ref('cluster_list_pagination')
+
 // 搜索表单
 const searchForm = reactive({
   keyword: '',
@@ -758,6 +776,13 @@ const filteredClusterList = computed(() => {
   return result
 })
 
+// 分页后的集群列表
+const paginatedClusterList = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  const end = start + pageSize.value
+  return filteredClusterList.value.slice(start, end)
+})
+
 // 总节点数
 const totalNodeCount = computed(() => {
   return clusterList.value.reduce((sum, cluster) => sum + (cluster.nodeCount || 0), 0)
@@ -770,6 +795,8 @@ const loadClusters = async () => {
     const data = await getClusterList()
     // 强制刷新：使用新数组替换旧数组
     clusterList.value = [...(data || [])]
+    // 恢复分页状态
+    restorePaginationState()
   } catch (error) {
     console.error(error)
     ElMessage.error('获取集群列表失败')
@@ -778,8 +805,56 @@ const loadClusters = async () => {
   }
 }
 
+// 保存分页状态到 localStorage
+const savePaginationState = () => {
+  try {
+    localStorage.setItem(paginationStorageKey.value, JSON.stringify({
+      currentPage: currentPage.value,
+      pageSize: pageSize.value
+    }))
+  } catch (error) {
+    console.error('保存分页状态失败:', error)
+  }
+}
+
+// 从 localStorage 恢复分页状态
+const restorePaginationState = () => {
+  try {
+    const saved = localStorage.getItem(paginationStorageKey.value)
+    if (saved) {
+      const state = JSON.parse(saved)
+      currentPage.value = state.currentPage || 1
+      pageSize.value = state.pageSize || 10
+    }
+  } catch (error) {
+    console.error('恢复分页状态失败:', error)
+    currentPage.value = 1
+    pageSize.value = 10
+  }
+}
+
+// 处理页码变化
+const handlePageChange = (page: number) => {
+  currentPage.value = page
+  savePaginationState()
+}
+
+// 处理每页数量变化
+const handleSizeChange = (size: number) => {
+  pageSize.value = size
+  // 当每页数量变化时，可能需要调整当前页码
+  const maxPage = Math.ceil(filteredClusterList.value.length / size)
+  if (currentPage.value > maxPage) {
+    currentPage.value = maxPage || 1
+  }
+  savePaginationState()
+}
+
 // 搜索
 const handleSearch = () => {
+  // 搜索时重置到第一页
+  currentPage.value = 1
+  savePaginationState()
   // filteredClusterList 会自动更新
 }
 
@@ -1679,6 +1754,15 @@ watch(activeAuthTab, async (newTab) => {
   border-radius: 12px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
   overflow: hidden;
+}
+
+/* 分页 */
+.pagination-wrapper {
+  display: flex;
+  justify-content: flex-end;
+  padding: 16px 20px;
+  background: #fff;
+  border-top: 1px solid #f0f0f0;
 }
 
 .modern-table {

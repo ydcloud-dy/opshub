@@ -126,11 +126,32 @@ export interface NodeInfo {
   kernelVersion: string
   containerRuntime: string
   labels: Record<string, string>
+  annotations: Record<string, string>
   cpuCapacity: string
   memoryCapacity: string
   podCount: number
+  podCapacity: number
   schedulable: boolean
   taintCount: number
+  taints?: TaintInfo[]
+  podCIDR?: string
+  providerID?: string
+  conditions?: NodeCondition[]
+}
+
+export interface NodeCondition {
+  type: string
+  status: string
+  lastHeartbeatTime: string
+  lastTransitionTime: string
+  reason: string
+  message: string
+}
+
+export interface TaintInfo {
+  key: string
+  value: string
+  effect: string
 }
 
 export interface NamespaceInfo {
@@ -252,11 +273,11 @@ export function getNamespaces(clusterId: number) {
 /**
  * 获取 Pod 列表
  */
-export function getPods(clusterId: number, namespace?: string) {
+export function getPods(clusterId: number, namespace?: string, nodeName?: string) {
   return request<PodInfo[]>({
     url: '/api/v1/plugins/kubernetes/resources/pods',
     method: 'get',
-    params: { clusterId, namespace }
+    params: { clusterId, namespace, nodeName }
   })
 }
 

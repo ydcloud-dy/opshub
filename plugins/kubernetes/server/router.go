@@ -39,6 +39,7 @@ func RegisterRoutes(router *gin.RouterGroup, db *gorm.DB) {
 
 		// 资源查询
 		clusters.GET("/resources/nodes", resourceHandler.ListNodes)
+		clusters.GET("/resources/nodes/:nodeName/metrics", resourceHandler.GetNodeMetrics)
 		clusters.GET("/resources/namespaces", resourceHandler.ListNamespaces)
 		clusters.GET("/resources/pods", resourceHandler.ListPods)
 		clusters.GET("/resources/deployments", resourceHandler.ListDeployments)

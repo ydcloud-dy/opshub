@@ -62,24 +62,47 @@ type NodeInfo struct {
 	KernelVersion    string            `json:"kernelVersion"`
 	ContainerRuntime string            `json:"containerRuntime"`
 	Labels           map[string]string `json:"labels"`
+	Annotations      map[string]string `json:"annotations"`
 	// 新增字段
-	CPUCapacity      string `json:"cpuCapacity"`      // CPU容量
-	MemoryCapacity   string `json:"memoryCapacity"`   // 内存容量
-	PodCount         int    `json:"podCount"`         // Pod数量
-	Schedulable      bool   `json:"schedulable"`      // 是否可调度
-	TaintCount       int    `json:"taintCount"`       // 污点数量
+	CPUCapacity    string        `json:"cpuCapacity"`    // CPU容量
+	MemoryCapacity string        `json:"memoryCapacity"` // 内存容量
+	PodCount       int           `json:"podCount"`       // Pod数量
+	PodCapacity    int           `json:"podCapacity"`    // Pod容量
+	Schedulable    bool          `json:"schedulable"`    // 是否可调度
+	TaintCount     int           `json:"taintCount"`     // 污点数量
+	Taints         []TaintInfo   `json:"taints"`         // 污点详情
+	PodCIDR        string        `json:"podCIDR"`        // Pod CIDR
+	ProviderID     string        `json:"providerID"`     // Provider ID
+	Conditions     []NodeCondition `json:"conditions"`   // 节点条件
+}
+
+// TaintInfo 污点信息
+type TaintInfo struct {
+	Key    string `json:"key"`
+	Value  string `json:"value"`
+	Effect string `json:"effect"`
+}
+
+// NodeCondition 节点条件
+type NodeCondition struct {
+	Type               string `json:"type"`
+	Status             string `json:"status"`
+	LastHeartbeatTime  string `json:"lastHeartbeatTime"`
+	LastTransitionTime string `json:"lastTransitionTime"`
+	Reason             string `json:"reason"`
+	Message            string `json:"message"`
 }
 
 // PodInfo Pod信息
 type PodInfo struct {
-	Name      string `json:"name"`
-	Namespace string `json:"namespace"`
-	Ready     string `json:"ready"`
-	Status    string `json:"status"`
-	Restarts  int32  `json:"restarts"`
-	Age       string `json:"age"`
-	IP        string `json:"ip"`
-	Node      string `json:"node"`
+	Name      string            `json:"name"`
+	Namespace string            `json:"namespace"`
+	Ready     string            `json:"ready"`
+	Status    string            `json:"status"`
+	Restarts  int32             `json:"restarts"`
+	Age       string            `json:"age"`
+	IP        string            `json:"ip"`
+	Node      string            `json:"node"`
 	Labels    map[string]string `json:"labels"`
 }
 
@@ -93,74 +116,74 @@ type NamespaceInfo struct {
 
 // DeploymentInfo Deployment信息
 type DeploymentInfo struct {
-	Name             string `json:"name"`
-	Namespace        string `json:"namespace"`
-	Ready            string `json:"ready"`
-	UpToDate         int32  `json:"upToDate"`
-	Available        int32  `json:"available"`
-	Age              string `json:"age"`
-	Replicas         int32  `json:"replicas"`
-	Selector         map[string]string `json:"selector"`
-	Labels           map[string]string `json:"labels"`
+	Name      string            `json:"name"`
+	Namespace string            `json:"namespace"`
+	Ready     string            `json:"ready"`
+	UpToDate  int32             `json:"upToDate"`
+	Available int32             `json:"available"`
+	Age       string            `json:"age"`
+	Replicas  int32             `json:"replicas"`
+	Selector  map[string]string `json:"selector"`
+	Labels    map[string]string `json:"labels"`
 }
 
 // DaemonSetInfo DaemonSet信息
 type DaemonSetInfo struct {
-	Name      string `json:"name"`
-	Namespace string `json:"namespace"`
-	Ready     string `json:"ready"`
-	Age       string `json:"age"`
+	Name      string            `json:"name"`
+	Namespace string            `json:"namespace"`
+	Ready     string            `json:"ready"`
+	Age       string            `json:"age"`
 	Labels    map[string]string `json:"labels"`
 }
 
 // StatefulSetInfo StatefulSet信息
 type StatefulSetInfo struct {
-	Name      string `json:"name"`
-	Namespace string `json:"namespace"`
-	Ready     string `json:"ready"`
-	Age       string `json:"age"`
+	Name      string            `json:"name"`
+	Namespace string            `json:"namespace"`
+	Ready     string            `json:"ready"`
+	Age       string            `json:"age"`
 	Labels    map[string]string `json:"labels"`
 }
 
 // JobInfo Job信息
 type JobInfo struct {
-	Name      string `json:"name"`
-	Namespace string `json:"namespace"`
-	Ready     string `json:"ready"`
-	Age       string `json:"age"`
+	Name      string            `json:"name"`
+	Namespace string            `json:"namespace"`
+	Ready     string            `json:"ready"`
+	Age       string            `json:"age"`
 	Labels    map[string]string `json:"labels"`
 }
 
 // ClusterStats 集群统计信息
 type ClusterStats struct {
-	NodeCount        int     `json:"nodeCount"`
-	WorkloadCount    int     `json:"workloadCount"`    // Deployment + DaemonSet + StatefulSet + Job
-	PodCount         int     `json:"podCount"`
-	CPUUsage         float64 `json:"cpuUsage"`         // CPU使用率百分比
-	MemoryUsage      float64 `json:"memoryUsage"`      // 内存使用率百分比
-	CPUCapacity      float64 `json:"cpuCapacity"`      // CPU总核数
-	MemoryCapacity   float64 `json:"memoryCapacity"`   // 内存总容量(字节)
-	CPUAllocatable   float64 `json:"cpuAllocatable"`   // CPU可分配量
+	NodeCount         int     `json:"nodeCount"`
+	WorkloadCount     int     `json:"workloadCount"` // Deployment + DaemonSet + StatefulSet + Job
+	PodCount          int     `json:"podCount"`
+	CPUUsage          float64 `json:"cpuUsage"`          // CPU使用率百分比
+	MemoryUsage       float64 `json:"memoryUsage"`       // 内存使用率百分比
+	CPUCapacity       float64 `json:"cpuCapacity"`       // CPU总核数
+	MemoryCapacity    float64 `json:"memoryCapacity"`    // 内存总容量(字节)
+	CPUAllocatable    float64 `json:"cpuAllocatable"`    // CPU可分配量
 	MemoryAllocatable float64 `json:"memoryAllocatable"` // 内存可分配量(字节)
-	CPUUsed          float64 `json:"cpuUsed"`          // CPU已使用量
-	MemoryUsed       float64 `json:"memoryUsed"`       // 内存已使用量(字节)
+	CPUUsed           float64 `json:"cpuUsed"`           // CPU已使用量
+	MemoryUsed        float64 `json:"memoryUsed"`        // 内存已使用量(字节)
 }
 
 // ClusterNetworkInfo 集群网络信息
 type ClusterNetworkInfo struct {
-	ServiceCIDR         string            `json:"serviceCIDR"`         // Service CIDR
-	PodCIDR             string            `json:"podCIDR"`             // Pod CIDR
-	APIServerAddress    string            `json:"apiServerAddress"`    // API Server 地址
-	NetworkPlugin       string            `json:"networkPlugin"`       // 网络插件
-	ProxyMode           string            `json:"proxyMode"`           // 服务转发模式
-	DNSService          string            `json:"dnsService"`          // DNS 服务
+	ServiceCIDR      string `json:"serviceCIDR"`      // Service CIDR
+	PodCIDR          string `json:"podCIDR"`          // Pod CIDR
+	APIServerAddress string `json:"apiServerAddress"` // API Server 地址
+	NetworkPlugin    string `json:"networkPlugin"`    // 网络插件
+	ProxyMode        string `json:"proxyMode"`        // 服务转发模式
+	DNSService       string `json:"dnsService"`       // DNS 服务
 }
 
 // ClusterComponentInfo 集群组件信息
 type ClusterComponentInfo struct {
-	Components []ComponentInfo `json:"components"`  // 控制平面组件
-	Runtime    RuntimeInfo     `json:"runtime"`     // 运行时信息
-	Storage    []StorageInfo   `json:"storage"`     // 存储信息
+	Components []ComponentInfo `json:"components"` // 控制平面组件
+	Runtime    RuntimeInfo     `json:"runtime"`    // 运行时信息
+	Storage    []StorageInfo   `json:"storage"`    // 存储信息
 }
 
 // ComponentInfo 组件信息
@@ -178,20 +201,20 @@ type RuntimeInfo struct {
 
 // StorageInfo 存储信息
 type StorageInfo struct {
-	Name       string `json:"name"`       // 存储名称
-	Provisioner string `json:"provisioner"` // Provisioner
+	Name          string `json:"name"`          // 存储名称
+	Provisioner   string `json:"provisioner"`   // Provisioner
 	ReclaimPolicy string `json:"reclaimPolicy"` // 回收策略
 }
 
 // EventInfo 事件信息
 type EventInfo struct {
-	Type           string `json:"type"`           // 事件类型: Normal, Warning
-	Reason         string `json:"reason"`         // 原因
-	Message        string `json:"message"`        // 消息
-	Source         string `json:"source"`         // 来源
-	Count          int32  `json:"count"`          // 次数
-	FirstTimestamp string `json:"firstTimestamp"` // 首次发生时间
-	LastTimestamp  string `json:"lastTimestamp"`  // 最后发生时间
+	Type           string             `json:"type"`           // 事件类型: Normal, Warning
+	Reason         string             `json:"reason"`         // 原因
+	Message        string             `json:"message"`        // 消息
+	Source         string             `json:"source"`         // 来源
+	Count          int32              `json:"count"`          // 次数
+	FirstTimestamp string             `json:"firstTimestamp"` // 首次发生时间
+	LastTimestamp  string             `json:"lastTimestamp"`  // 最后发生时间
 	InvolvedObject InvolvedObjectInfo `json:"involvedObject"` // 关联对象
 }
 
@@ -271,13 +294,36 @@ func (h *ResourceHandler) ListNodes(c *gin.Context) {
 
 	nodeInfos := make([]NodeInfo, 0, len(nodes.Items))
 	for _, node := range nodes.Items {
+		// 确保 labels 不为 nil
+		labels := node.Labels
+		if labels == nil {
+			labels = make(map[string]string)
+		}
+
+		// 确保 annotations 不为 nil
+		annotations := node.Annotations
+		if annotations == nil {
+			annotations = make(map[string]string)
+		}
+
+		// 获取 Pod CIDR
+		podCIDR := ""
+		if len(node.Spec.PodCIDRs) > 0 {
+			podCIDR = node.Spec.PodCIDRs[0]
+		} else if node.Spec.PodCIDR != "" {
+			podCIDR = node.Spec.PodCIDR
+		}
+
 		nodeInfo := NodeInfo{
 			Name:             node.Name,
 			Version:          node.Status.NodeInfo.KubeletVersion,
 			OSImage:          node.Status.NodeInfo.OSImage,
 			KernelVersion:    node.Status.NodeInfo.KernelVersion,
 			ContainerRuntime: node.Status.NodeInfo.ContainerRuntimeVersion,
-			Labels:           node.Labels,
+			Labels:           labels,
+			Annotations:      annotations,
+			PodCIDR:          podCIDR,
+			ProviderID:       node.Spec.ProviderID,
 		}
 
 		// 获取节点状态
@@ -319,14 +365,48 @@ func (h *ResourceHandler) ListNodes(c *gin.Context) {
 		nodeInfo.CPUCapacity = cpuCapacity
 		nodeInfo.MemoryCapacity = memoryCapacity
 
+		// 获取Pod容量（优先使用Allocatable，如果为0则使用Capacity，如果还是0则使用默认值110）
+		podCapacity := node.Status.Allocatable.Pods()
+		podCapacityValue := int(podCapacity.Value())
+		if podCapacityValue == 0 {
+			podCapacity = node.Status.Capacity.Pods()
+			podCapacityValue = int(podCapacity.Value())
+		}
+		// 如果还是0，使用默认值110（Kubernetes默认的Pod数量限制）
+		if podCapacityValue == 0 {
+			podCapacityValue = 110
+		}
+		nodeInfo.PodCapacity = podCapacityValue
+
 		// 获取Pod数量
 		nodeInfo.PodCount = podCountMap[node.Name]
 
 		// 判断是否可调度
 		nodeInfo.Schedulable = !node.Spec.Unschedulable
 
-		// 获取污点数量
+		// 获取污点数量和详情
 		nodeInfo.TaintCount = len(node.Spec.Taints)
+		nodeInfo.Taints = make([]TaintInfo, 0, len(node.Spec.Taints))
+		for _, taint := range node.Spec.Taints {
+			nodeInfo.Taints = append(nodeInfo.Taints, TaintInfo{
+				Key:    taint.Key,
+				Value:  taint.Value,
+				Effect: string(taint.Effect),
+			})
+		}
+
+		// 填充Conditions
+		nodeInfo.Conditions = make([]NodeCondition, 0, len(node.Status.Conditions))
+		for _, cond := range node.Status.Conditions {
+			nodeInfo.Conditions = append(nodeInfo.Conditions, NodeCondition{
+				Type:               string(cond.Type),
+				Status:             string(cond.Status),
+				LastHeartbeatTime:  cond.LastHeartbeatTime.Format("2006-01-02 15:04:05"),
+				LastTransitionTime: cond.LastTransitionTime.Format("2006-01-02 15:04:05"),
+				Reason:             cond.Reason,
+				Message:            cond.Message,
+			})
+		}
 
 		nodeInfos = append(nodeInfos, nodeInfo)
 	}
@@ -335,6 +415,82 @@ func (h *ResourceHandler) ListNodes(c *gin.Context) {
 		"code":    0,
 		"message": "success",
 		"data":    nodeInfos,
+	})
+}
+
+// GetNodeMetrics 获取节点指标
+func (h *ResourceHandler) GetNodeMetrics(c *gin.Context) {
+	clusterIDStr := c.Query("clusterId")
+	nodeName := c.Param("nodeName")
+
+	clusterID, err := strconv.ParseUint(clusterIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的集群ID",
+		})
+		return
+	}
+
+	// 获取当前用户 ID
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	// 获取客户端
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		fmt.Printf("❌ DEBUG [GetNodeMetrics]: GetClientsetForUser failed for userID=%d: %v\n", currentUserID, err)
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		return
+	}
+
+	// 获取 metrics clientset
+	metricsClient, err := h.clusterService.GetCachedMetricsClientset(c.Request.Context(), uint(clusterID))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取 metrics client 失败: " + err.Error(),
+		})
+		return
+	}
+
+	// 获取节点指标
+	nodeMetrics, err := metricsClient.MetricsV1beta1().NodeMetricses().Get(c.Request.Context(), nodeName, metav1.GetOptions{})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": fmt.Sprintf("获取节点指标失败: %v", err),
+		})
+		return
+	}
+
+	// 获取节点信息以获取容量
+	node, err := clientset.CoreV1().Nodes().Get(c.Request.Context(), nodeName, metav1.GetOptions{})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": fmt.Sprintf("获取节点信息失败: %v", err),
+		})
+		return
+	}
+
+	// 计算CPU使用率
+	cpuUsage := float64(nodeMetrics.Usage.Cpu().MilliValue()) / float64(node.Status.Capacity.Cpu().MilliValue())
+	memoryUsage := float64(nodeMetrics.Usage.Memory().Value()) / float64(node.Status.Capacity.Memory().Value())
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "success",
+		"data": gin.H{
+			"cpuUsage":    cpuUsage,
+			"memoryUsage": memoryUsage,
+			"cpuUsed":     nodeMetrics.Usage.Cpu().MilliValue(),
+			"memoryUsed":  nodeMetrics.Usage.Memory().Value(),
+		},
 	})
 }
 
@@ -417,6 +573,8 @@ func (h *ResourceHandler) ListPods(c *gin.Context) {
 		namespace = v1.NamespaceAll
 	}
 
+	nodeName := c.Query("nodeName")
+
 	// 获取当前用户 ID
 	currentUserID, ok := GetCurrentUserID(c)
 	if !ok {
@@ -436,7 +594,12 @@ func (h *ResourceHandler) ListPods(c *gin.Context) {
 		return
 	}
 
-	pods, err := clientset.CoreV1().Pods(namespace).List(c.Request.Context(), metav1.ListOptions{})
+	listOptions := metav1.ListOptions{}
+	if nodeName != "" {
+		listOptions.FieldSelector = "spec.nodeName=" + nodeName
+	}
+
+	pods, err := clientset.CoreV1().Pods(namespace).List(c.Request.Context(), listOptions)
 	if err != nil {
 		HandleK8sError(c, err, "Pod")
 		return
@@ -752,19 +915,19 @@ func (h *ResourceHandler) GetClusterNetworkInfo(c *gin.Context) {
 	if err == nil {
 		// 常见的 CNI 插件标识
 		cniPlugins := map[string]string{
-			"calico":           "Calico",
-			"flannel":          "Flannel",
-			"weave":            "Weave",
-			"canal":            "Canal",
-			"cilium":           "Cilium",
-			"contiv":           "Contiv",
-			"kube-router":      "Kube-Router",
-			"amazon-vpc-cni":   "AWS VPC CNI",
-			"azure-cniplugin":   "Azure CNI",
-			"vsphere-cni":      "vSphere CNI",
-			"tke-cni":          "TKE CNI",
-			"tke-bridge":       "TKE Bridge",
-			"networkpolicy":    "TKE NetworkPolicy",
+			"calico":          "Calico",
+			"flannel":         "Flannel",
+			"weave":           "Weave",
+			"canal":           "Canal",
+			"cilium":          "Cilium",
+			"contiv":          "Contiv",
+			"kube-router":     "Kube-Router",
+			"amazon-vpc-cni":  "AWS VPC CNI",
+			"azure-cniplugin": "Azure CNI",
+			"vsphere-cni":     "vSphere CNI",
+			"tke-cni":         "TKE CNI",
+			"tke-bridge":      "TKE Bridge",
+			"networkpolicy":   "TKE NetworkPolicy",
 		}
 
 		for _, ds := range daemonSets.Items {
@@ -875,7 +1038,6 @@ func (h *ResourceHandler) GetClusterNetworkInfo(c *gin.Context) {
 		}
 	}
 
-
 	// 获取 kube-apiserver 服务
 	apiServerSvc, err := clientset.CoreV1().Services("default").Get(c.Request.Context(), "kubernetes", metav1.GetOptions{})
 	if err == nil && apiServerSvc != nil {
@@ -963,19 +1125,19 @@ func (h *ResourceHandler) GetClusterComponentInfo(c *gin.Context) {
 		controlPlanePatterns := map[string]string{
 			"kube-apiserver":          "API Server",
 			"kube-apiserver-":         "API Server",
-			"apiserver":                "API Server",
-			"kube-controller":          "Controller Manager",
-			"kube-controller-":         "Controller Manager",
-			"kube-controller-manager":  "Controller Manager",
-			"cloud-controller":         "Cloud Controller",
-			"cloud-controller-":        "Cloud Controller",
-			"kube-scheduler":           "Scheduler",
-			"kube-scheduler-":          "Scheduler",
-			"scheduler":                "Scheduler",
-			"etcd":                     "etcd",
-			"etcd-":                    "etcd",
-			"coredns":                  "CoreDNS",
-			"coredns-":                 "CoreDNS",
+			"apiserver":               "API Server",
+			"kube-controller":         "Controller Manager",
+			"kube-controller-":        "Controller Manager",
+			"kube-controller-manager": "Controller Manager",
+			"cloud-controller":        "Cloud Controller",
+			"cloud-controller-":       "Cloud Controller",
+			"kube-scheduler":          "Scheduler",
+			"kube-scheduler-":         "Scheduler",
+			"scheduler":               "Scheduler",
+			"etcd":                    "etcd",
+			"etcd-":                   "etcd",
+			"coredns":                 "CoreDNS",
+			"coredns-":                "CoreDNS",
 		}
 
 		componentMap := make(map[string]ComponentInfo)
@@ -1127,9 +1289,9 @@ func (h *ResourceHandler) GetClusterComponentInfo(c *gin.Context) {
 
 					// 如果节点名称包含 master/control-plane/mgr 等关键词，也认为是控制平面节点
 					if strings.Contains(nodeName, "master") ||
-					   strings.Contains(nodeName, "control-plane") ||
-					   strings.Contains(nodeName, "control") ||
-					   strings.Contains(nodeName, "mgr") {
+						strings.Contains(nodeName, "control-plane") ||
+						strings.Contains(nodeName, "control") ||
+						strings.Contains(nodeName, "mgr") {
 						log.Printf("[GetComponentInfo] Found control-plane node by name pattern: %s", node.Name)
 						hasControlPlaneNode = true
 						break
@@ -1181,9 +1343,9 @@ func (h *ResourceHandler) GetClusterComponentInfo(c *gin.Context) {
 	if err == nil {
 		for _, sc := range storageClasses.Items {
 			componentInfo.Storage = append(componentInfo.Storage, StorageInfo{
-				Name:           sc.Name,
-				Provisioner:    sc.Provisioner,
-				ReclaimPolicy:  string(*sc.ReclaimPolicy),
+				Name:          sc.Name,
+				Provisioner:   sc.Provisioner,
+				ReclaimPolicy: string(*sc.ReclaimPolicy),
 			})
 		}
 	}
@@ -1208,6 +1370,7 @@ func (h *ResourceHandler) ListEvents(c *gin.Context) {
 	}
 
 	namespace := c.Query("namespace")
+	fieldSelector := c.Query("fieldSelector")
 
 	// 获取当前用户 ID
 	currentUserID, ok := GetCurrentUserID(c)
@@ -1231,6 +1394,11 @@ func (h *ResourceHandler) ListEvents(c *gin.Context) {
 	// 构建ListOptions，限制返回50条事件
 	listOptions := metav1.ListOptions{
 		Limit: 50,
+	}
+
+	// 添加 fieldSelector 过滤
+	if fieldSelector != "" {
+		listOptions.FieldSelector = fieldSelector
 	}
 
 	var events *v1.EventList

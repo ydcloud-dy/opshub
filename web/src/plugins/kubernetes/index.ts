@@ -156,6 +156,12 @@ class KubernetesPlugin implements Plugin {
             meta: { title: '节点管理' },
           },
           {
+            path: 'clusters/:clusterId/nodes/:nodeName',
+            name: 'K8sNodeDetail',
+            component: () => import('@/views/kubernetes/NodeDetail.vue'),
+            meta: { title: '节点详情', activeMenu: '/kubernetes/nodes' },
+          },
+          {
             path: 'workloads',
             name: 'K8sWorkloads',
             component: () => import('@/views/kubernetes/Workloads.vue'),
