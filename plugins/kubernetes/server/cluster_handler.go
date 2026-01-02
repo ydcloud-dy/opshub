@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -630,6 +631,63 @@ func (h *ClusterHandler) GetExistingKubeConfig(c *gin.Context) {
 			"kubeconfig": kubeConfig,
 			"username":   saName,
 		},
+	})
+}
+
+// SyncClusterStatus 同步集群状态
+// @Summary 同步集群状态
+// @Description 同步指定集群的状态信息（节点数、Pod数等）
+// @Tags Kubernetes/Cluster
+// @Accept json
+// @Produce json
+// @Param id path int true "集群ID"
+// @Success 200 {object} Response
+// @Router /api/v1/plugins/kubernetes/clusters/{id}/sync [post]
+func (h *ClusterHandler) SyncClusterStatus(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的集群ID",
+		})
+		return
+	}
+
+	// 异步同步状态
+	go func() {
+		ctx := context.Background()
+		if err := h.clusterService.SyncClusterStatus(ctx, uint(id)); err != nil {
+			fmt.Printf("同步集群 %d 状态失败: %v\n", id, err)
+		}
+	}()
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "同步任务已启动",
+	})
+}
+
+// SyncAllClustersStatus 同步所有集群状态
+// @Summary 同步所有集群状态
+// @Description 同步所有集群的状态信息（用于后台定时任务）
+// @Tags Kubernetes/Cluster
+// @Accept json
+// @Produce json
+// @Success 200 {object} Response
+// @Router /api/v1/plugins/kubernetes/clusters/sync-all [post]
+func (h *ClusterHandler) SyncAllClustersStatus(c *gin.Context) {
+	// 异步同步所有集群状态
+	go func() {
+		ctx := context.Background()
+		if err := h.clusterService.SyncAllClustersStatus(ctx); err != nil {
+			fmt.Printf("同步所有集群状态失败: %v\n", err)
+		}
+	}()
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "批量同步任务已启动",
 	})
 }
 

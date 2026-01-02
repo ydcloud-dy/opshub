@@ -59,10 +59,7 @@
       <el-table-column label="节点名称" min-width="200" fixed="left">
         <template #default="{ row }">
           <div class="node-name-cell">
-            <svg class="k8s-icon" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
-              <path d="M12 4L8.5 7.5l1.41 1.41L12 6.83l2.09 2.08 1.41-1.41L12 4zm0 16l3.5-3.5-1.41-1.41L12 17.17l-2.09-2.08-1.41 1.41L12 20zM4 12l3.5-3.5-1.41-1.41L6.83 9 4 12l3.5 3.5 1.41-1.41L6.83 14.17 4 12zm16 0l-3.5 3.5 1.41 1.41L17.17 15 20 12l-3.5-3.5-1.41 1.41L17.17 9 20 12z"/>
-            </svg>
+            <img src="/k8s.png" class="k8s-icon" alt="k8s" />
             <span>{{ row.name }}</span>
           </div>
         </template>
@@ -82,8 +79,8 @@
       <el-table-column prop="version" label="kubelet版本" width="150" />
       <el-table-column label="标签" width="100" align="center">
         <template #default="{ row }">
-          <el-badge :value="Object.keys(row.labels || {}).length" class="label-badge">
-            <el-icon class="label-icon" @click="showLabels(row)" size="20">
+          <el-badge :value="Object.keys(row.labels || {}).length" :max="99" class="label-badge">
+            <el-icon class="label-icon" @click="showLabels(row)" :size="20">
               <PriceTag />
             </el-icon>
           </el-badge>
@@ -95,7 +92,7 @@
           <div class="resource-cell">
             <div class="resource-item">
               <span class="resource-label">CPU:</span>
-              <span class="resource-value">{{ row.cpuCapacity || '-' }}</span>
+              <span class="resource-value">{{ formatCPU(row.cpuCapacity) }}</span>
             </div>
             <div class="resource-item">
               <span class="resource-label">内存:</span>
@@ -186,19 +183,70 @@ const filteredNodeList = computed(() => {
   return result
 })
 
+// 格式化 CPU 显示
+const formatCPU = (cpu: string) => {
+  if (!cpu) return '-'
+  // CPU 格式如 "4" 或 "800m" (millicores)
+  if (cpu.endsWith('m')) {
+    // 毫核，转换为核
+    const millicores = parseInt(cpu)
+    if (isNaN(millicores)) return cpu
+    return (millicores / 1000).toFixed(2) + '核'
+  }
+  return cpu + '核'
+}
+
 // 格式化内存显示
 const formatMemory = (memory: string) => {
   if (!memory) return '-'
-  // 内存格式如 "17179869184" (字节)
-  const bytes = parseInt(memory)
-  if (isNaN(bytes)) return memory
+
+  // 匹配数字和单位，如: 16082156Ki, 16Gi, 1Ti, 512Mi
+  const match = memory.match(/^(\d+(?:\.\d+)?)(Ki|Mi|Gi|Ti)?$/i)
+  if (!match) return memory
+
+  const value = parseFloat(match[1])
+  const unit = match[2]?.toUpperCase()
+
+  if (!unit) {
+    // 纯数字，假设是字节数
+    const bytes = value
+    const tb = bytes / (1024 * 1024 * 1024 * 1024)
+    if (tb >= 1) return Math.ceil(tb) + 'T'
+    const gb = bytes / (1024 * 1024 * 1024)
+    if (gb >= 1) return Math.ceil(gb) + 'G'
+    const mb = bytes / (1024 * 1024)
+    if (mb >= 1) return Math.ceil(mb) + 'M'
+    return memory
+  }
+
+  // 转换为字节数后再转换到合适单位
+  let bytes = 0
+  switch (unit) {
+    case 'KI':
+      bytes = value * 1024
+      break
+    case 'MI':
+      bytes = value * 1024 * 1024
+      break
+    case 'GI':
+      bytes = value * 1024 * 1024 * 1024
+      break
+    case 'TI':
+      bytes = value * 1024 * 1024 * 1024 * 1024
+      break
+  }
+
+  // 转换为更合适的单位（向上取整）
+  const tb = bytes / (1024 * 1024 * 1024 * 1024)
+  if (tb >= 1) return Math.ceil(tb) + 'T'
 
   const gb = bytes / (1024 * 1024 * 1024)
-  if (gb >= 1) {
-    return gb.toFixed(1) + 'Gi'
-  }
+  if (gb >= 1) return Math.ceil(gb) + 'G'
+
   const mb = bytes / (1024 * 1024)
-  return mb.toFixed(0) + 'Mi'
+  if (mb >= 1) return Math.ceil(mb) + 'M'
+
+  return memory
 }
 
 // 显示标签弹窗
@@ -217,7 +265,16 @@ const loadClusters = async () => {
     const data = await getClusterList()
     clusterList.value = data || []
     if (clusterList.value.length > 0) {
-      selectedClusterId.value = clusterList.value[0].id
+      // 从 localStorage 读取上次选择的集群ID
+      const savedClusterId = localStorage.getItem('nodes_selected_cluster_id')
+      if (savedClusterId) {
+        const savedId = parseInt(savedClusterId)
+        // 检查保存的集群ID是否还存在
+        const exists = clusterList.value.some(c => c.id === savedId)
+        selectedClusterId.value = exists ? savedId : clusterList.value[0].id
+      } else {
+        selectedClusterId.value = clusterList.value[0].id
+      }
       await loadNodes()
     }
   } catch (error) {
@@ -228,6 +285,10 @@ const loadClusters = async () => {
 
 // 切换集群
 const handleClusterChange = async () => {
+  // 保存到 localStorage
+  if (selectedClusterId.value) {
+    localStorage.setItem('nodes_selected_cluster_id', selectedClusterId.value.toString())
+  }
   await loadNodes()
 }
 
@@ -239,6 +300,10 @@ const loadNodes = async () => {
   try {
     const data = await getNodes(selectedClusterId.value)
     console.log('节点数据:', data)
+    if (data && data.length > 0) {
+      console.log('第一个节点的 memoryCapacity:', data[0].memoryCapacity, '类型:', typeof data[0].memoryCapacity)
+      console.log('第一个节点的 cpuCapacity:', data[0].cpuCapacity, '类型:', typeof data[0].cpuCapacity)
+    }
     nodeList.value = data || []
   } catch (error) {
     console.error(error)
@@ -337,12 +402,24 @@ onMounted(() => {
 /* 标签图标 */
 .label-badge {
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.label-badge :deep(.el-badge__content) {
+  transform: translateY(-50%) translateX(50%);
+  right: 0;
+  top: 0;
 }
 
 .label-icon {
   color: #409eff;
   cursor: pointer;
   transition: color 0.3s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .label-icon:hover {

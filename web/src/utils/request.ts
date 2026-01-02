@@ -37,9 +37,13 @@ request.interceptors.response.use(
     return res.data
   },
   (error) => {
-    if (error.response?.status === 401) {
+    const status = error.response?.status
+    const url = error.config?.url || ''
+
+    // 401 - 未登录，跳转到登录页
+    if (status === 401) {
       // 只在非登录请求时自动跳转到登录页
-      if (!error.config?.url?.includes('/login')) {
+      if (!url.includes('/login')) {
         ElMessage.error('未登录或登录已过期')
         localStorage.removeItem('token')
         window.location.href = '/login'
@@ -48,9 +52,23 @@ request.interceptors.response.use(
         const errorMsg = error.response?.data?.message || '用户名或密码错误'
         return Promise.reject(new Error(errorMsg))
       }
-    } else {
-      ElMessage.error(error.response?.data?.message || error.message || '网络错误')
+      return Promise.reject(error)
     }
+
+    // 403 - 权限不足，只显示错误消息，不跳转
+    if (status === 403) {
+      const errorMsg = error.response?.data?.message || '权限不足'
+      ElMessage.error({
+        message: errorMsg,
+        duration: 5000,
+        showClose: true
+      })
+      return Promise.reject(error)
+    }
+
+    // 其他错误 - 显示错误消息
+    const errorMsg = error.response?.data?.message || error.message || '网络错误'
+    ElMessage.error(errorMsg)
     return Promise.reject(error)
   }
 )

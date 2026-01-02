@@ -44,6 +44,11 @@ type BindUserToRoleRequest struct {
 // @Success 200 {object} Response
 // @Router /api/v1/plugins/kubernetes/role-bindings/bind [post]
 func (h *RoleBindingHandler) BindUserToRole(c *gin.Context) {
+	// 检查是否为管理员
+	if !RequireAdmin(c, h.db) {
+		return
+	}
+
 	var req BindUserToRoleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -120,6 +125,11 @@ type UnbindUserFromRoleRequest struct {
 // @Success 200 {object} Response
 // @Router /api/v1/plugins/kubernetes/role-bindings/unbind [delete]
 func (h *RoleBindingHandler) UnbindUserFromRole(c *gin.Context) {
+	// 检查是否为管理员
+	if !RequireAdmin(c, h.db) {
+		return
+	}
+
 	var req UnbindUserFromRoleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{

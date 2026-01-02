@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"gorm.io/gorm"
 	"k8s.io/client-go/kubernetes"
@@ -14,8 +15,9 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/api/core/v1"
 	authenticationv1 "k8s.io/api/authentication/v1"
-	rbacv1 "k8s.io/api/rbac/v1"
 
+	rbacBiz "github.com/ydcloud-dy/opshub/internal/biz/rbac"
+	rbacData "github.com/ydcloud-dy/opshub/internal/data/rbac"
 	"github.com/ydcloud-dy/opshub/plugins/kubernetes/biz"
 	"github.com/ydcloud-dy/opshub/plugins/kubernetes/data/models"
 	"github.com/ydcloud-dy/opshub/plugins/kubernetes/model"
@@ -132,10 +134,72 @@ func (s *ClusterService) UpdateCluster(ctx context.Context, id uint, req *Update
 
 // DeleteCluster 删除集群
 func (s *ClusterService) DeleteCluster(ctx context.Context, id uint) error {
-	// 清除缓存
+	// 1. 获取该集群的所有用户凭据记录
+	var kubeConfigs []model.UserKubeConfig
+	err := s.db.Where("cluster_id = ?", id).Find(&kubeConfigs).Error
+	if err != nil {
+		return fmt.Errorf("查询集群凭据失败: %w", err)
+	}
+
+	// 2. 清理每个用户的 K8s 资源和数据库记录
+	for _, kc := range kubeConfigs {
+		// 获取用户名（从 ServiceAccount 提取，格式为 opshub-{username}）
+		username := strings.TrimPrefix(kc.ServiceAccount, "opshub-")
+
+		// 清理 K8s 中的 ServiceAccount 和 RoleBinding
+		if err := s.cleanupClusterK8sResources(ctx, id, kc.ServiceAccount, username); err != nil {
+			// 记录错误但继续清理其他资源
+			fmt.Printf("清理集群 %d 用户 %s 的 K8s 资源失败: %v\n", id, username, err)
+		}
+
+		// 删除数据库记录 - k8s_user_kube_configs
+		s.db.Where("cluster_id = ? AND id = ?", id, kc.ID).Delete(&model.UserKubeConfig{})
+	}
+
+	// 3. 删除所有角色绑定记录
+	s.db.Table("k8s_user_role_bindings").
+		Where("cluster_id = ?", id).
+		Delete(&model.K8sUserRoleBinding{})
+
+	// 4. 清除缓存
 	s.clearClientsetCache(id)
 
+	// 5. 删除集群
 	return s.clusterBiz.DeleteCluster(ctx, id)
+}
+
+// cleanupClusterK8sResources 清理集群的 K8s 资源（SA 和 RoleBinding）
+func (s *ClusterService) cleanupClusterK8sResources(ctx context.Context, clusterID uint, serviceAccount string, username string) error {
+	// 获取 clientset
+	clientset, err := s.GetCachedClientset(ctx, clusterID)
+	if err != nil {
+		return fmt.Errorf("获取集群 clientset 失败: %w", err)
+	}
+
+	// 1. 删除 RoleBinding
+	// 尝试删除命名空间级别的 RoleBinding
+	if err := clientset.RbacV1().RoleBindings(OpsHubAuthNamespace).Delete(ctx, serviceAccount, metav1.DeleteOptions{}); err != nil {
+		if !k8serrors.IsNotFound(err) {
+			fmt.Printf("删除 RoleBinding %s 失败: %v\n", serviceAccount, err)
+		}
+	}
+
+	// 尝试删除集群级别的 ClusterRoleBinding
+	if err := clientset.RbacV1().ClusterRoleBindings().Delete(ctx, serviceAccount, metav1.DeleteOptions{}); err != nil {
+		if !k8serrors.IsNotFound(err) {
+			fmt.Printf("删除 ClusterRoleBinding %s 失败: %v\n", serviceAccount, err)
+		}
+	}
+
+	// 2. 删除 ServiceAccount
+	if err := clientset.CoreV1().ServiceAccounts(OpsHubAuthNamespace).Delete(ctx, serviceAccount, metav1.DeleteOptions{}); err != nil {
+		if !k8serrors.IsNotFound(err) {
+			return fmt.Errorf("删除 ServiceAccount 失败: %w", err)
+		}
+	}
+
+	fmt.Printf("已清理集群 %d 的 K8s 资源: SA=%s, User=%s\n", clusterID, serviceAccount, username)
+	return nil
 }
 
 // GetCluster 获取集群详情
@@ -201,6 +265,7 @@ func (s *ClusterService) GetCachedClientset(ctx context.Context, id uint) (*kube
 // GetClientsetForUser 获取基于用户权限的 clientset
 // 这个方法会使用用户在 K8s 集群中的 ServiceAccount 凭据创建连接
 // 这样可以实现真正的用户级权限隔离
+// 平台管理员（role code == "admin"）会直接使用集群注册的 kubeconfig
 func (s *ClusterService) GetClientsetForUser(ctx context.Context, clusterID uint, userID uint) (*kubernetes.Clientset, error) {
 	cacheKey := fmt.Sprintf("%d-%d", clusterID, userID)
 
@@ -217,9 +282,34 @@ func (s *ClusterService) GetClientsetForUser(ctx context.Context, clusterID uint
 
 	fmt.Printf("🔄 [GetClientsetForUser] Cache miss, creating new clientset for userID=%d\n", userID)
 
+	// 检查用户是否是平台管理员（role code == "admin"）
+	isPlatformAdmin, err := s.isPlatformAdmin(ctx, userID)
+	if err != nil {
+		fmt.Printf("⚠️ [GetClientsetForUser] 检查用户角色失败: %v\n", err)
+		// 如果检查角色失败，继续使用普通用户逻辑
+	} else if isPlatformAdmin {
+		fmt.Printf("👑 [GetClientsetForUser] 用户 %d 是平台管理员，使用集群注册的 kubeconfig\n", userID)
+
+		// 平台管理员直接使用集群注册的 kubeconfig
+		adminClientset, err := s.clusterBiz.GetClusterClientset(ctx, clusterID)
+		if err != nil {
+			return nil, fmt.Errorf("获取集群 clientset 失败: %w", err)
+		}
+
+		// 存入缓存
+		s.cacheMutex.Lock()
+		s.clientsetCache[cacheKey] = adminClientset
+		s.cacheMutex.Unlock()
+
+		return adminClientset, nil
+	}
+
+	// 非平台管理员，使用用户个人的 ServiceAccount 凭据
+	fmt.Printf("🔐 [GetClientsetForUser] 用户 %d 不是平台管理员，使用个人凭据\n", userID)
+
 	// 缓存不存在，查询用户的 ServiceAccount 凭据
 	var config model.UserKubeConfig
-	err := s.db.Where("cluster_id = ? AND user_id = ? AND is_active = 1", clusterID, userID).
+	err = s.db.Where("cluster_id = ? AND user_id = ? AND is_active = 1", clusterID, userID).
 		Order("created_at DESC").
 		First(&config).Error
 
@@ -266,6 +356,26 @@ func (s *ClusterService) GetClientsetForUser(ctx context.Context, clusterID uint
 	return userClientset, nil
 }
 
+// isPlatformAdmin 检查用户是否是平台管理员（是否有 code == "admin" 的角色）
+func (s *ClusterService) isPlatformAdmin(ctx context.Context, userID uint) (bool, error) {
+	roleRepo := rbacData.NewRoleRepo(s.db)
+	roleUseCase := rbacBiz.NewRoleUseCase(roleRepo)
+
+	roles, err := roleUseCase.GetByUserID(ctx, userID)
+	if err != nil {
+		return false, fmt.Errorf("查询用户角色失败: %w", err)
+	}
+
+	// 检查是否有 admin 角色的用户
+	for _, role := range roles {
+		if role.Code == "admin" {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 // GetClusterKubeConfig 获取集群的 KubeConfig（解密后的）
 func (s *ClusterService) GetClusterKubeConfig(ctx context.Context, id uint) (string, error) {
 	cluster, err := s.clusterBiz.GetCluster(ctx, id)
@@ -309,19 +419,7 @@ func (s *ClusterService) toClusterResponse(cluster *models.Cluster) *ClusterDeta
 		return nil
 	}
 
-	// 获取节点数量
-	nodeCount := 0
-	if cluster.Status == models.ClusterStatusNormal {
-		// 只在集群正常时获取节点数
-		clientset, err := s.GetCachedClientset(context.Background(), cluster.ID)
-		if err == nil {
-			nodes, _ := clientset.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
-			if nodes != nil {
-				nodeCount = len(nodes.Items)
-			}
-		}
-	}
-
+	// 使用数据库中缓存的节点数和 Pod 数
 	return &ClusterDetailResponse{
 		ID:          cluster.ID,
 		Name:        cluster.Name,
@@ -329,7 +427,7 @@ func (s *ClusterService) toClusterResponse(cluster *models.Cluster) *ClusterDeta
 		APIEndpoint: cluster.APIEndpoint,
 		Version:     cluster.Version,
 		Status:      cluster.Status,
-		NodeCount:   nodeCount,
+		NodeCount:   cluster.NodeCount,
 		Region:      cluster.Region,
 		Provider:    cluster.Provider,
 		Description: cluster.Description,
@@ -668,35 +766,8 @@ func (s *ClusterService) createKubeConfigForUser(clientset *kubernetes.Clientset
 				return "", "", fmt.Errorf("创建 ServiceAccount 失败: %w", err)
 			}
 
-			// 只有 admin 用户才创建 cluster-admin 权限的 ClusterRoleBinding
-			// 其他用户创建的凭据没有任何权限，需要通过"角色授权"功能来分配
-			if username == "admin" {
-				rbName := saName + "-binding"
-				crb := &rbacv1.ClusterRoleBinding{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: rbName,
-						Labels: map[string]string{
-							"opshub.ydcloud-dy.com/managed-by": "opshub",
-						},
-					},
-					Subjects: []rbacv1.Subject{
-						{
-							Kind:      "ServiceAccount",
-							Name:      saName,
-							Namespace: OpsHubAuthNamespace,
-						},
-					},
-					RoleRef: rbacv1.RoleRef{
-						Kind:     "ClusterRole",
-						Name:     "cluster-admin",
-						APIGroup: "rbac.authorization.k8s.io",
-					},
-				}
-				_, err = clientset.RbacV1().ClusterRoleBindings().Create(ctx, crb, metav1.CreateOptions{})
-				if err != nil {
-					return "", "", fmt.Errorf("创建 ClusterRoleBinding 失败: %w", err)
-				}
-			}
+			// 不再自动创建任何权限绑定
+			// 所有用户（包括 admin）都需要通过"角色授权"功能来分配权限
 		} else {
 			return "", "", fmt.Errorf("查询 ServiceAccount 失败: %w", err)
 		}
@@ -1065,3 +1136,96 @@ func (s *ClusterService) ensureOpsHubAuthNamespace(ctx context.Context, clientse
 	fmt.Printf("DEBUG: Created namespace %s\n", OpsHubAuthNamespace)
 	return nil
 }
+
+// SyncClusterStatus 同步单个集群的状态信息
+func (s *ClusterService) SyncClusterStatus(ctx context.Context, clusterID uint) error {
+	// 获取 clientset
+	clientset, err := s.GetCachedClientset(ctx, clusterID)
+	if err != nil {
+		// 连接失败，更新状态
+		s.db.Model(&models.Cluster{}).Where("id = ?", clusterID).Update("status", models.ClusterStatusFailed)
+		return fmt.Errorf("连接集群失败: %w", err)
+	}
+
+	// 获取节点列表
+	nodes, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("获取节点列表失败: %w", err)
+	}
+	nodeCount := len(nodes.Items)
+
+	// 获取 Pod 列表
+	pods, err := clientset.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("获取 Pod 列表失败: %w", err)
+	}
+	podCount := len(pods.Items)
+
+	// 获取版本信息
+	version, err := s.clusterBiz.TestClusterConnection(ctx, clusterID)
+	if err != nil {
+		// 无法获取版本，但已经连接成功，更新为正常状态
+		s.db.Model(&models.Cluster{}).Where("id = ?", clusterID).Update("status", models.ClusterStatusNormal)
+	} else {
+		// 更新版本和状态
+		s.db.Model(&models.Cluster{}).Where("id = ?", clusterID).Updates(map[string]interface{}{
+			"version": version,
+			"status":  models.ClusterStatusNormal,
+		})
+	}
+
+	// 更新节点数和 Pod 数到数据库
+	now := time.Now()
+	err = s.db.Model(&models.Cluster{}).
+		Where("id = ?", clusterID).
+		Updates(map[string]interface{}{
+			"node_count":       nodeCount,
+			"pod_count":        podCount,
+			"status_synced_at": &now,
+		}).Error
+	if err != nil {
+		return fmt.Errorf("更新集群状态失败: %w", err)
+	}
+
+	return nil
+}
+
+// SyncAllClustersStatus 同步所有集群的状态信息（用于定时任务）
+func (s *ClusterService) SyncAllClustersStatus(ctx context.Context) error {
+	clusters, err := s.clusterBiz.ListClusters(ctx)
+	if err != nil {
+		return fmt.Errorf("获取集群列表失败: %w", err)
+	}
+
+	// 并发同步所有集群状态
+	var wg sync.WaitGroup
+	errChan := make(chan error, len(clusters))
+
+	for _, cluster := range clusters {
+		wg.Add(1)
+		go func(id uint) {
+			defer wg.Done()
+			if err := s.SyncClusterStatus(ctx, id); err != nil {
+				// 记录错误但继续处理其他集群
+				fmt.Printf("同步集群 %d 状态失败: %v\n", id, err)
+				errChan <- err
+			}
+		}(cluster.ID)
+	}
+
+	wg.Wait()
+	close(errChan)
+
+	// 收集错误（如果有）
+	var errors []error
+	for err := range errChan {
+		errors = append(errors, err)
+	}
+
+	if len(errors) > 0 {
+		return fmt.Errorf("部分集群同步失败，共 %d 个错误", len(errors))
+	}
+
+	return nil
+}
+

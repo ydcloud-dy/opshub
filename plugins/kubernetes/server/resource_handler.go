@@ -26,6 +26,29 @@ func NewResourceHandler(clusterService *service.ClusterService) *ResourceHandler
 	}
 }
 
+// handleGetClientsetError 处理 GetClientsetForUser 的错误
+// 返回 true 表示错误已处理（发送了响应），调用者应该 return
+// 返回 false 表示不是凭据错误，需要继续处理
+func (h *ResourceHandler) handleGetClientsetError(c *gin.Context, err error) bool {
+	if err == nil {
+		return false
+	}
+	// 打印错误信息用于调试
+	fmt.Printf("🔍 [handleGetClientsetError] 错误信息: %s\n", err.Error())
+
+	// 检查是否是"用户尚未申请凭据"错误
+	if strings.Contains(err.Error(), "尚未申请") || strings.Contains(err.Error(), "凭据") {
+		fmt.Printf("❌ [handleGetClientsetError] 返回 403\n")
+		c.JSON(http.StatusForbidden, gin.H{
+			"code":    403,
+			"message": "您尚未申请该集群的访问凭据，请在集群管理页面申请 kubeconfig 后再访问",
+		})
+		return true
+	}
+	fmt.Printf("⚠️ [handleGetClientsetError] 不是凭据错误，返回 false\n")
+	return false
+}
+
 // NodeInfo 节点信息
 type NodeInfo struct {
 	Name             string            `json:"name"`
@@ -217,6 +240,9 @@ func (h *ResourceHandler) ListNodes(c *gin.Context) {
 	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
 	if err != nil {
 		fmt.Printf("❌ DEBUG [ListNodes]: GetClientsetForUser failed for userID=%d: %v\n", currentUserID, err)
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    500,
 			"message": "获取集群连接失败: " + err.Error(),
@@ -333,6 +359,9 @@ func (h *ResourceHandler) ListNamespaces(c *gin.Context) {
 	// 使用用户凭据获取 clientset
 	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
 	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    500,
 			"message": "获取集群连接失败: " + err.Error(),
@@ -397,6 +426,9 @@ func (h *ResourceHandler) ListPods(c *gin.Context) {
 	// 使用用户凭据获取 clientset
 	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
 	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    500,
 			"message": "获取集群连接失败: " + err.Error(),
@@ -471,6 +503,9 @@ func (h *ResourceHandler) ListDeployments(c *gin.Context) {
 	// 使用用户凭据获取 clientset
 	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
 	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    500,
 			"message": "获取集群连接失败: " + err.Error(),
@@ -533,6 +568,9 @@ func (h *ResourceHandler) GetClusterStats(c *gin.Context) {
 	// 使用用户凭据获取 clientset
 	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
 	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    500,
 			"message": "获取集群连接失败: " + err.Error(),
@@ -680,6 +718,9 @@ func (h *ResourceHandler) GetClusterNetworkInfo(c *gin.Context) {
 	// 使用用户凭据获取 clientset
 	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
 	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    500,
 			"message": "获取集群连接失败: " + err.Error(),
@@ -891,6 +932,9 @@ func (h *ResourceHandler) GetClusterComponentInfo(c *gin.Context) {
 	// 使用用户凭据获取 clientset
 	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
 	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    500,
 			"message": "获取集群连接失败: " + err.Error(),
@@ -1174,6 +1218,9 @@ func (h *ResourceHandler) ListEvents(c *gin.Context) {
 	// 使用用户凭据获取 clientset
 	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
 	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    500,
 			"message": "获取集群连接失败: " + err.Error(),
@@ -1281,6 +1328,9 @@ func (h *ResourceHandler) GetAPIGroups(c *gin.Context) {
 	// 获取集群的 clientset
 	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterId), currentUserID)
 	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    500,
 			"message": "获取集群连接失败",
@@ -1381,6 +1431,9 @@ func (h *ResourceHandler) GetResourcesByAPIGroup(c *gin.Context) {
 	// 获取集群的 clientset
 	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterId), currentUserID)
 	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    500,
 			"message": "获取集群连接失败",

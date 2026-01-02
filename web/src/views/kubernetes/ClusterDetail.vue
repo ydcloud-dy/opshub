@@ -396,6 +396,7 @@ const router = useRouter()
 
 const clusterId = ref<number>(parseInt(route.params.id as string))
 const clusterInfo = ref<Cluster>()
+let errorMessageShown = false // 跟踪是否已显示错误消息
 const clusterStats = ref<ClusterStats>({
   nodeCount: 0,
   workloadCount: 0,
@@ -474,6 +475,7 @@ const loadClusterDetail = async () => {
   try {
     const data = await getClusterDetail(clusterId.value)
     clusterInfo.value = data
+    // 并行加载所有数据
     await Promise.all([
       loadClusterStats(),
       loadNetworkInfo(),
@@ -482,7 +484,19 @@ const loadClusterDetail = async () => {
       loadEvents()
     ])
   } catch (error: any) {
-    ElMessage.error(error.response?.data?.message || '获取集群信息失败')
+    // 只显示一次错误消息
+    if (!errorMessageShown) {
+      errorMessageShown = true
+      if (error.response?.status === 403 || error.response?.status === 401) {
+        ElMessage.error({
+          message: '您没有权限访问该集群，请联系管理员授权',
+          duration: 5000,
+          showClose: true
+        })
+      } else {
+        ElMessage.error(error.response?.data?.message || '获取集群信息失败')
+      }
+    }
   }
 }
 
@@ -493,7 +507,7 @@ const loadClusterStats = async () => {
     clusterStats.value = data
   } catch (error: any) {
     console.error('加载统计信息失败:', error)
-    ElMessage.error(error.response?.data?.message || '加载统计信息失败')
+    throw error // 抛出错误，让 Promise.all 捕获
   }
 }
 
@@ -504,7 +518,7 @@ const loadNetworkInfo = async () => {
     networkInfo.value = data
   } catch (error: any) {
     console.error('加载网络信息失败:', error)
-    ElMessage.error(error.response?.data?.message || '加载网络信息失败')
+    throw error
   }
 }
 
@@ -531,7 +545,7 @@ const loadComponentInfo = async () => {
     console.log('[ClusterDetail] nextTick 后 components.length:', componentInfo.value.components.length)
   } catch (error: any) {
     console.error('加载组件信息失败:', error)
-    ElMessage.error(error.response?.data?.message || '加载组件信息失败')
+    throw error
   }
 }
 
@@ -543,7 +557,7 @@ const loadNodes = async () => {
     nodeList.value = data || []
   } catch (error: any) {
     console.error('加载节点信息失败:', error)
-    // 不显示错误消息，避免干扰用户体验
+    throw error
   } finally {
     nodesLoading.value = false
   }
@@ -557,7 +571,7 @@ const loadEvents = async () => {
     eventList.value = data || []
   } catch (error: any) {
     console.error('加载事件信息失败:', error)
-    // 不显示错误消息，避免干扰用户体验
+    throw error
   } finally {
     eventsLoading.value = false
   }

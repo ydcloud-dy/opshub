@@ -26,6 +26,10 @@ func RegisterRoutes(router *gin.RouterGroup, db *gorm.DB) {
 		clusters.POST("/clusters/:id/test", clusterHandler.TestClusterConnection)
 		clusters.GET("/clusters/:id/config", clusterHandler.GetClusterConfig)
 
+		// 集群状态同步
+		clusters.POST("/clusters/:id/sync", clusterHandler.SyncClusterStatus)
+		clusters.POST("/clusters/sync-all", clusterHandler.SyncAllClustersStatus)
+
 		// KubeConfig管理 (更具体的路由要放在前面)
 		clusters.POST("/clusters/kubeconfig/sa", clusterHandler.GetServiceAccountKubeConfig)
 		clusters.POST("/clusters/kubeconfig", clusterHandler.GenerateKubeConfig)

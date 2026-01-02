@@ -7,7 +7,9 @@ export interface Cluster {
   apiEndpoint: string
   version: string
   status: number
-  nodeCount: number    // 节点数量
+  nodeCount: number    // 节点数量（缓存）
+  podCount: number     // Pod数量（缓存）
+  statusSyncedAt: string | null  // 状态最后同步时间
   region: string
   provider: string
   description: string
@@ -653,5 +655,25 @@ export function getUserRoleBindings(clusterId: number, userId?: number) {
     url: '/api/v1/plugins/kubernetes/role-bindings/user-bindings',
     method: 'get',
     params: { clusterId, userId }
+  })
+}
+
+/**
+ * 同步单个集群状态
+ */
+export function syncClusterStatus(id: number) {
+  return request({
+    url: `/api/v1/plugins/kubernetes/clusters/${id}/sync`,
+    method: 'post'
+  })
+}
+
+/**
+ * 同步所有集群状态
+ */
+export function syncAllClustersStatus() {
+  return request({
+    url: '/api/v1/plugins/kubernetes/clusters/sync-all',
+    method: 'post'
   })
 }

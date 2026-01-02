@@ -51,10 +51,16 @@
           <p class="page-subtitle">管理您的 Kubernetes 集群，支持多云平台统一管理</p>
         </div>
       </div>
-      <el-button v-if="isAdmin" class="black-button" @click="handleRegister">
-        <el-icon style="margin-right: 6px;"><Plus /></el-icon>
-        注册集群
-      </el-button>
+      <div class="header-actions">
+        <el-button class="sync-button" @click="handleSyncAll" :loading="syncing">
+          <el-icon style="margin-right: 6px;"><Refresh /></el-icon>
+          同步状态
+        </el-button>
+        <el-button v-if="isAdmin" class="black-button" @click="handleRegister">
+          <el-icon style="margin-right: 6px;"><Plus /></el-icon>
+          注册集群
+        </el-button>
+      </div>
     </div>
 
     <!-- 搜索和筛选 -->
@@ -116,12 +122,24 @@
 
     <!-- 集群列表 -->
     <div class="table-wrapper">
+      <!-- 批量操作栏 -->
+      <div v-if="selectedClusters.length > 0" class="batch-actions">
+        <span class="selected-info">已选择 {{ selectedClusters.length }} 项</span>
+        <el-button type="danger" @click="handleBatchDelete">
+          <el-icon style="margin-right: 4px;"><Delete /></el-icon>
+          批量删除
+        </el-button>
+        <el-button @click="selectedClusters = []">取消选择</el-button>
+      </div>
+
       <el-table
         :data="filteredClusterList"
         v-loading="loading"
         class="modern-table"
         :header-cell-style="{ background: '#fafbfc', color: '#606266', fontWeight: '600' }"
+        @selection-change="handleSelectionChange"
       >
+      <el-table-column type="selection" width="55" />
       <el-table-column prop="name" min-width="180">
         <template #header>
           <span class="header-with-icon">
@@ -589,6 +607,8 @@ import {
   revokeKubeConfig,
   getClusterCredentialUsers,
   getExistingKubeConfig,
+  syncClusterStatus,
+  syncAllClustersStatus,
   type Cluster,
   type CredentialUser
 } from '@/api/kubernetes'
@@ -635,9 +655,11 @@ const currentCluster = ref<Cluster>()
 const currentConfig = ref('')
 const configLineCount = ref(1)
 const router = useRouter()
+const syncing = ref(false) // 同步状态
 
 const clusterList = ref<Cluster[]>([])
 const clusterCredentialUsers = ref<CredentialUser[]>([])
+const selectedClusters = ref<Cluster[]>([]) // 选中的集群
 
 // 搜索表单
 const searchForm = reactive({
@@ -715,7 +737,7 @@ const filteredClusterList = computed(() => {
     const keyword = searchForm.keyword.toLowerCase()
     result = result.filter(cluster =>
       cluster.name.toLowerCase().includes(keyword) ||
-      cluster.alias.toLowerCase().includes(keyword)
+      (cluster.alias || '').toLowerCase().includes(keyword)
     )
   }
 
@@ -727,7 +749,7 @@ const filteredClusterList = computed(() => {
   // 按版本筛选
   if (searchForm.version) {
     result = result.filter(cluster =>
-      cluster.version.toLowerCase().includes(searchForm.version.toLowerCase())
+      cluster.version && cluster.version.toLowerCase().includes(searchForm.version.toLowerCase())
     )
   }
 
@@ -829,8 +851,12 @@ const handleSync = async (row: Cluster) => {
   })
 
   try {
-    // 测试连接以更新版本和节点数
-    await testClusterConnection(row.id)
+    // 调用新的同步状态 API
+    await syncClusterStatus(row.id)
+
+    // 等待一小段时间让同步完成
+    await new Promise(resolve => setTimeout(resolve, 2000))
+
     loadingMsg.close()
 
     // 重新加载列表
@@ -839,6 +865,62 @@ const handleSync = async (row: Cluster) => {
   } catch (error: any) {
     loadingMsg.close()
     ElMessage.error(error.response?.data?.message || '同步失败')
+  }
+}
+
+// 同步所有集群状态
+const handleSyncAll = async () => {
+  syncing.value = true
+  try {
+    await syncAllClustersStatus()
+
+    // 等待一小段时间让同步完成
+    await new Promise(resolve => setTimeout(resolve, 3000))
+
+    // 重新加载列表
+    await loadClusters()
+    ElMessage.success('批量同步任务已启动，请稍后刷新查看')
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.message || '同步失败')
+  } finally {
+    syncing.value = false
+  }
+}
+
+// 处理表格选择变化
+const handleSelectionChange = (selection: Cluster[]) => {
+  selectedClusters.value = selection
+}
+
+// 批量删除集群
+const handleBatchDelete = async () => {
+  if (selectedClusters.value.length === 0) {
+    ElMessage.warning('请选择要删除的集群')
+    return
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除选中的 ${selectedClusters.value.length} 个集群吗？此操作不可恢复！`,
+      '批量删除确认',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+
+    // 并发删除所有选中的集群
+    const deletePromises = selectedClusters.value.map(cluster => deleteCluster(cluster.id))
+    await Promise.all(deletePromises)
+
+    selectedClusters.value = []
+    await loadClusters()
+    ElMessage.success('删除成功')
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      ElMessage.error(error.response?.data?.message || '删除失败')
+    }
   }
 }
 
@@ -1327,26 +1409,25 @@ watch(activeAuthTab, async (newTab) => {
 
 <style scoped>
 .clusters-container {
-  padding: 24px;
-  background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
-  min-height: 100%;
+  padding: 0;
+  background-color: transparent;
 }
 
 /* 统计卡片 */
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: 20px;
+  margin-bottom: 12px;
 }
 
 .stat-card {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 20px 24px;
+  padding: 20px;
   background: #fff;
-  border-radius: 12px;
+  border-radius: 8px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
   transition: all 0.3s ease;
 }
@@ -1357,13 +1438,13 @@ watch(activeAuthTab, async (newTab) => {
 }
 
 .stat-icon {
-  width: 56px;
-  height: 56px;
+  width: 64px;
+  height: 64px;
   border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 26px;
+  font-size: 32px;
   flex-shrink: 0;
 }
 
@@ -1396,9 +1477,9 @@ watch(activeAuthTab, async (newTab) => {
 }
 
 .stat-label {
-  font-size: 13px;
+  font-size: 14px;
   color: #909399;
-  margin-bottom: 4px;
+  margin-bottom: 8px;
 }
 
 .stat-value {
@@ -1413,10 +1494,10 @@ watch(activeAuthTab, async (newTab) => {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 20px;
-  padding: 20px 24px;
+  margin-bottom: 12px;
+  padding: 16px 20px;
   background: #fff;
-  border-radius: 12px;
+  border-radius: 8px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
 }
 
@@ -1455,12 +1536,61 @@ watch(activeAuthTab, async (newTab) => {
   line-height: 1.4;
 }
 
+.header-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.sync-button {
+  background: linear-gradient(135deg, #67C23A 0%, #85CE61 100%);
+  color: #fff;
+  border: none;
+  font-weight: 500;
+  padding: 10px 20px;
+  font-size: 14px;
+  border-radius: 8px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(103, 194, 58, 0.2);
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(103, 194, 58, 0.4);
+    background: linear-gradient(135deg, #85CE61 0%, #67C23A 100%);
+  }
+
+  &:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 8px rgba(103, 194, 58, 0.3);
+  }
+}
+
+/* 批量操作栏 */
+.batch-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+  border-left: 4px solid #409EFF;
+}
+
+.selected-info {
+  flex: 1;
+  font-size: 14px;
+  color: #606266;
+  font-weight: 500;
+}
+
 /* 搜索栏 */
 .search-bar {
-  margin-bottom: 20px;
-  padding: 16px 20px;
+  margin-bottom: 12px;
+  padding: 12px 16px;
   background: #fff;
-  border-radius: 12px;
+  border-radius: 8px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
   display: flex;
   justify-content: space-between;
