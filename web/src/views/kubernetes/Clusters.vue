@@ -987,10 +987,18 @@ const handleBatchDelete = async () => {
       }
     )
 
+    // 显示正在删除的提示
+    const loadingMsg = ElMessage.info({
+      message: `正在删除 ${selectedClusters.value.length} 个集群，请稍候...`,
+      duration: 0,
+      type: 'info'
+    })
+
     // 并发删除所有选中的集群
     const deletePromises = selectedClusters.value.map(cluster => deleteCluster(cluster.id))
     await Promise.all(deletePromises)
 
+    loadingMsg.close()
     selectedClusters.value = []
     await loadClusters()
     ElMessage.success('删除成功')
@@ -1116,25 +1124,21 @@ const handleSubmit = async () => {
           })
 
           try {
-            // 并行创建集群角色和常用命名空间角色
-            const commonNamespaces = ['default', 'kube-system']
-
-            // 所有创建操作并行执行
-            const [clusterRolesResult] = await Promise.all([
+            // 并行创建集群角色和命名空间角色（ClusterRole）
+            const [clusterRolesResult, namespaceRolesResult] = await Promise.all([
               createDefaultClusterRoles(newCluster.id),
-              ...commonNamespaces.map(ns =>
-                createDefaultNamespaceRoles(newCluster.id, ns).catch(err => {
-                  console.warn(`创建命名空间 ${ns} 的角色失败:`, err)
-                  // 命名空间角色创建失败不影响整体流程
-                  return { created: [] }
-                })
-              )
+              createDefaultNamespaceRoles(newCluster.id).catch(err => {
+                console.warn('创建命名空间角色失败:', err)
+                // 命名空间角色创建失败不影响整体流程
+                return { created: [] }
+              })
             ])
 
             roleLoadingMsg.close()
 
             const clusterCount = clusterRolesResult?.created?.length || 0
-            ElMessage.success(`默认角色初始化完成（集群角色：${clusterCount}个，命名空间：default、kube-system）`)
+            const namespaceCount = namespaceRolesResult?.created?.length || 0
+            ElMessage.success(`默认角色初始化完成（集群角色：${clusterCount}个，命名空间角色：${namespaceCount}个）`)
           } catch (roleError) {
             roleLoadingMsg.close()
             console.error('创建默认角色失败:', roleError)
@@ -1200,14 +1204,47 @@ const handleTestConnection = async (row: Cluster) => {
 // 删除集群
 const handleDelete = async (row: Cluster) => {
   try {
-    await ElMessageBox.confirm('确定要删除该集群吗？此操作不可恢复！', '提示', {
-      type: 'warning',
-      confirmButtonText: '确定',
-      cancelButtonText: '取消'
+    await ElMessageBox.confirm(
+      `<div style="line-height: 1.8;">
+        <p style="margin-bottom: 12px; font-weight: 600; color: #f56c6c;">
+          <i class="el-icon-warning" style="margin-right: 4px;"></i>
+          确定要删除集群 <strong>"${row.name}"</strong> 吗？
+        </p>
+        <div style="padding: 12px; background: #fef0f0; border-left: 3px solid #f56c6c; margin-bottom: 8px; border-radius: 4px;">
+          <p style="margin: 0 0 8px 0; color: #606266; font-size: 14px;"><strong>删除集群将同时清理以下资源：</strong></p>
+          <ul style="margin: 0; padding-left: 20px; color: #909399; font-size: 13px;">
+            <li>所有用户的集群访问凭据（ServiceAccount）</li>
+            <li>所有用户的角色绑定（ClusterRoleBinding 和 RoleBinding）</li>
+            <li>所有默认集群角色（ClusterRole）</li>
+            <li>所有命名空间中的 OpsHub 管理的 RoleBinding</li>
+            <li>数据库中的所有集群相关数据</li>
+          </ul>
+        </div>
+        <p style="margin: 8px 0 0 0; color: #e6a23c; font-size: 13px;">
+          <i class="el-icon-warning" style="margin-right: 4px;"></i>
+          此操作不可恢复，请谨慎操作！
+        </p>
+      </div>`,
+      '删除集群',
+      {
+        type: 'warning',
+        confirmButtonText: '确定删除',
+        cancelButtonText: '取消',
+        dangerouslyUseHTMLString: true,
+        customClass: 'delete-cluster-confirm'
+      }
+    )
+
+    // 显示正在删除的提示
+    const loadingMsg = ElMessage.info({
+      message: '正在删除集群，请稍候...',
+      duration: 0,
+      type: 'info'
     })
 
     await deleteCluster(row.id)
-    ElMessage.success('删除成功')
+    loadingMsg.close()
+    ElMessage.success('集群已删除，所有相关资源已清理')
     loadClusters()
   } catch (error: any) {
     if (error !== 'cancel') {
@@ -2069,6 +2106,32 @@ watch(activeAuthTab, async (newTab) => {
   &.is-active {
     .tab-icon {
       color: #d4af37;
+    }
+  }
+}
+
+/* 删除集群确认对话框样式 */
+:deep(.delete-cluster-confirm) {
+  .el-message-box__message {
+    p {
+      line-height: 1.8;
+    }
+  }
+
+  .el-message-box__btns {
+    .el-button--primary {
+      background: #f56c6c;
+      border-color: #f56c6c;
+
+      &:hover {
+        background: #f78989;
+        border-color: #f78989;
+      }
+
+      &:active {
+        background: #dd6161;
+        border-color: #dd6161;
+      }
     }
   }
 }

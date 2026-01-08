@@ -37,23 +37,6 @@
         </el-input>
 
         <el-select
-          v-model="selectedType"
-          placeholder="工作负载类型"
-          @change="handleTypeChange"
-          class="filter-select"
-        >
-          <template #prefix>
-            <el-icon class="search-icon"><Grid /></el-icon>
-          </template>
-          <el-option label="所有" value="" />
-          <el-option label="Deployment" value="Deployment" />
-          <el-option label="StatefulSet" value="StatefulSet" />
-          <el-option label="DaemonSet" value="DaemonSet" />
-          <el-option label="Job" value="Job" />
-          <el-option label="CronJob" value="CronJob" />
-        </el-select>
-
-        <el-select
           v-model="selectedClusterId"
           placeholder="选择集群"
           class="cluster-select"
@@ -87,6 +70,23 @@
             :value="ns.name"
           />
         </el-select>
+
+        <el-select
+          v-model="selectedType"
+          placeholder="工作负载类型"
+          @change="handleTypeChange"
+          class="filter-select"
+        >
+          <template #prefix>
+            <el-icon class="search-icon"><Grid /></el-icon>
+          </template>
+          <el-option label="所有" value="" />
+          <el-option label="Deployment" value="Deployment" />
+          <el-option label="StatefulSet" value="StatefulSet" />
+          <el-option label="DaemonSet" value="DaemonSet" />
+          <el-option label="Job" value="Job" />
+          <el-option label="CronJob" value="CronJob" />
+        </el-select>
       </div>
     </div>
 
@@ -101,7 +101,7 @@
         :row-style="{ height: '56px' }"
         :cell-style="{ padding: '8px 0' }"
       >
-        <el-table-column label="名称" min-width="200" fixed="left">
+        <el-table-column label="名称" min-width="220" fixed="left">
           <template #header>
             <span class="header-with-icon">
               <el-icon class="header-icon header-icon-blue"><Tools /></el-icon>
@@ -110,13 +110,8 @@
           </template>
           <template #default="{ row }">
             <div class="workload-name-cell">
-              <div class="workload-icon-wrapper" :class="`type-${row.type.toLowerCase()}`">
-                <el-icon class="workload-icon">
-                  <component :is="getTypeIcon(row.type)" />
-                </el-icon>
-              </div>
               <div class="workload-name-content">
-                <div class="workload-name">{{ row.name }}</div>
+                <div class="workload-name golden-text">{{ row.name }}</div>
                 <div class="workload-namespace">{{ row.namespace }}</div>
               </div>
             </div>
@@ -143,60 +138,53 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="Requests/Limits" min-width="280">
+        <el-table-column label="Requests/Limits" min-width="200">
           <template #default="{ row }">
             <div class="resource-cell">
-              <div v-if="row.requests" class="resource-item">
-                <span class="resource-label">Requests:</span>
-                <span class="resource-value">{{ formatResource(row.requests) }}</span>
+              <div v-if="row.requests?.cpu || row.limits?.cpu" class="resource-item">
+                <span class="resource-label">CPU:</span>
+                <span v-if="row.requests?.cpu" class="resource-value requests-value">{{ row.requests.cpu }}</span>
+                <span v-if="row.requests?.cpu && row.limits?.cpu" class="resource-separator">/</span>
+                <span v-if="row.limits?.cpu" class="resource-value limits-value">{{ row.limits.cpu }}</span>
               </div>
-              <div v-if="row.limits" class="resource-item">
-                <span class="resource-label">Limits:</span>
-                <span class="resource-value">{{ formatResource(row.limits) }}</span>
+              <div v-if="row.requests?.memory || row.limits?.memory" class="resource-item">
+                <span class="resource-label">Mem:</span>
+                <span v-if="row.requests?.memory" class="resource-value requests-value">{{ row.requests.memory }}</span>
+                <span v-if="row.requests?.memory && row.limits?.memory" class="resource-separator">/</span>
+                <span v-if="row.limits?.memory" class="resource-value limits-value">{{ row.limits.memory }}</span>
               </div>
-              <div v-if="!row.requests && !row.limits" class="resource-empty">-</div>
+              <div v-if="!row.requests?.cpu && !row.requests?.memory && !row.limits?.cpu && !row.limits?.memory" class="resource-empty">-</div>
             </div>
           </template>
         </el-table-column>
 
-        <el-table-column label="镜像" min-width="200">
+        <el-table-column label="镜像" min-width="300">
           <template #default="{ row }">
             <div class="image-cell">
-              <el-tag
-                v-for="(image, index) in getDisplayImages(row.images)"
-                :key="index"
-                size="small"
-                class="image-tag"
-              >
-                {{ image }}
-              </el-tag>
               <el-tooltip
-                v-if="row.images && row.images.length > 2"
+                v-if="row.images && row.images.length > 0"
                 :content="row.images.join('\n')"
                 placement="top"
               >
-                <el-tag size="small" class="image-tag-more">
-                  +{{ row.images.length - 2 }}
-                </el-tag>
+                <div class="image-list">
+                  <span v-for="(image, index) in getDisplayImages(row.images)" :key="index" class="image-item">
+                    {{ image }}
+                  </span>
+                  <span v-if="row.images.length > 2" class="image-more">
+                    +{{ row.images.length - 2 }}
+                  </span>
+                </div>
               </el-tooltip>
+              <span v-else class="image-empty">-</span>
             </div>
           </template>
         </el-table-column>
 
-        <el-table-column label="创建时间" width="180">
+        <el-table-column label="存活时间" width="150">
           <template #default="{ row }">
             <div class="age-cell">
               <el-icon class="age-icon"><Clock /></el-icon>
-              <span>{{ row.createdAt || '-' }}</span>
-            </div>
-          </template>
-        </el-table-column>
-
-        <el-table-column label="更新时间" width="180">
-          <template #default="{ row }">
-            <div class="age-cell">
-              <el-icon class="age-icon"><Refresh /></el-icon>
-              <span>{{ row.updatedAt || '-' }}</span>
+              <span>{{ formatAge(row.createdAt) }}</span>
             </div>
           </template>
         </el-table-column>
@@ -209,9 +197,9 @@
               </el-button>
               <template #dropdown>
                 <el-dropdown-menu class="action-dropdown-menu">
-                  <el-dropdown-item command="detail">
-                    <el-icon><View /></el-icon>
-                    <span>详情</span>
+                  <el-dropdown-item command="edit">
+                    <el-icon><Edit /></el-icon>
+                    <span>编辑</span>
                   </el-dropdown-item>
                   <el-dropdown-item command="yaml">
                     <el-icon><Document /></el-icon>
@@ -428,6 +416,42 @@ const formatResource = (resource: { cpu: string; memory: string }) => {
   return parts.join(' | ')
 }
 
+// 格式化存活时间
+const formatAge = (createdAt: string | undefined): string => {
+  if (!createdAt) return '-'
+
+  const created = new Date(createdAt)
+  const now = new Date()
+  const diffMs = now.getTime() - created.getTime()
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+
+  if (diffDays < 1) {
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
+    if (diffHours < 1) {
+      const diffMinutes = Math.floor(diffMs / (1000 * 60))
+      return diffMinutes < 1 ? '刚刚' : `${diffMinutes}分钟前`
+    }
+    return `${diffHours}小时前`
+  }
+
+  if (diffDays < 7) {
+    return `${diffDays}天前`
+  }
+
+  const diffWeeks = Math.floor(diffDays / 7)
+  if (diffWeeks < 4) {
+    return `${diffWeeks}周前`
+  }
+
+  const diffMonths = Math.floor(diffDays / 30)
+  if (diffMonths < 12) {
+    return `${diffMonths}个月前`
+  }
+
+  const diffYears = Math.floor(diffDays / 365)
+  return `${diffYears}年前`
+}
+
 // 获取显示的镜像（最多显示2个）
 const getDisplayImages = (images?: string[]) => {
   if (!images || images.length === 0) return []
@@ -436,8 +460,8 @@ const getDisplayImages = (images?: string[]) => {
     const parts = img.split('/')
     const nameAndTag = parts[parts.length - 1]
     // 如果tag太长，截断显示
-    if (nameAndTag.length > 30) {
-      return nameAndTag.substring(0, 30) + '...'
+    if (nameAndTag.length > 50) {
+      return nameAndTag.substring(0, 50) + '...'
     }
     return nameAndTag
   })
@@ -588,8 +612,8 @@ const handleActionCommand = (command: string, row: Workload) => {
   selectedWorkload.value = row
 
   switch (command) {
-    case 'detail':
-      ElMessage.info('详情功能开发中...')
+    case 'edit':
+      handleShowEditDialog()
       break
     case 'yaml':
       handleShowYAML()
@@ -766,6 +790,40 @@ const handleScale = async () => {
       console.error('扩缩容失败:', error)
       ElMessage.error(`扩缩容失败: ${error.response?.data?.message || error.message}`)
     }
+  }
+}
+
+// 显示编辑对话框
+const handleShowEditDialog = async () => {
+  if (!selectedWorkload.value) return
+
+  try {
+    const token = localStorage.getItem('token')
+    const clusterId = selectedClusterId.value
+    const workloadType = selectedWorkload.value.type
+    const name = selectedWorkload.value.name
+    const namespace = selectedWorkload.value.namespace
+
+    const response = await axios.get(
+      `/api/v1/plugins/kubernetes/resources/workloads/${namespace}/${name}/yaml`,
+      {
+        params: { clusterId, type: workloadType },
+        headers: { Authorization: `Bearer ${token}` }
+      }
+    )
+
+    // 获取返回的 JSON 数据
+    const workloadData = response.data.data?.items
+    if (workloadData) {
+      console.log('获取到工作负载数据:', workloadData)
+      ElMessage.success('工作负载详情获取成功！')
+      // TODO: 打开编辑对话框并填充数据
+    } else {
+      ElMessage.warning('未获取到工作负载数据')
+    }
+  } catch (error: any) {
+    console.error('获取工作负载详情失败:', error)
+    ElMessage.error(`获取工作负载详情失败: ${error.response?.data?.message || error.message}`)
   }
 }
 
@@ -1027,6 +1085,10 @@ onMounted(() => {
   color: #303133;
 }
 
+.golden-text {
+  color: #d4af37 !important;
+}
+
 .workload-namespace {
   font-size: 12px;
   color: #909399;
@@ -1118,11 +1180,26 @@ onMounted(() => {
 .resource-label {
   color: #909399;
   font-weight: 500;
+  min-width: 45px;
 }
 
 .resource-value {
   color: #303133;
   font-family: 'Monaco', 'Menlo', monospace;
+  font-weight: 500;
+}
+
+.requests-value {
+  color: #67c23a;
+}
+
+.limits-value {
+  color: #e6a23c;
+}
+
+.resource-separator {
+  color: #dcdfe6;
+  margin: 0 4px;
 }
 
 .resource-empty {
@@ -1132,21 +1209,41 @@ onMounted(() => {
 /* 镜像单元格 */
 .image-cell {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
+  align-items: center;
 }
 
-.image-tag {
+.image-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.image-item {
   font-family: 'Monaco', 'Menlo', monospace;
   font-size: 11px;
-  max-width: 200px;
+  color: #606266;
+  background: #f5f7fa;
+  padding: 2px 8px;
+  border-radius: 4px;
+  max-width: 280px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.image-tag-more {
+.image-more {
+  font-size: 11px;
+  color: #909399;
+  background: #f5f7fa;
+  padding: 2px 6px;
+  border-radius: 4px;
   cursor: pointer;
+}
+
+.image-empty {
+  color: #909399;
+  font-size: 13px;
 }
 
 /* 时间单元格 */

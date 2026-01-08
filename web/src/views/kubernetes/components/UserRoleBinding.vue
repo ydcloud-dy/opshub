@@ -521,20 +521,18 @@ const loadRoles = async () => {
   if (!props.cluster) return
   loading.value = true
   try {
-    // 加载集群角色
-    let clusterRolesList = await getClusterRoles(props.cluster.id)
-    allClusterRoles.value = clusterRolesList || []
+    // 加载所有集群角色
+    let allClusterRolesList = await getClusterRoles(props.cluster.id)
 
-    // 加载命名空间列表，找一个命名空间来获取角色定义
-    const nsList = await getNamespacesForRoles(props.cluster.id)
-    if (nsList.length > 0) {
-      sampleNamespace.value = nsList[0].name
-      // 从第一个命名空间获取角色定义（这些是标准角色模板）
-      const roles = await getNamespaceRoles(props.cluster.id, sampleNamespace.value)
-      allNamespaceRoles.value = roles || []
-    } else {
-      allNamespaceRoles.value = []
-    }
+    // 分离集群角色和命名空间角色（都是 ClusterRole，通过标签区分）
+    allClusterRoles.value = (allClusterRolesList || []).filter(role =>
+      !role.labels || role.labels['opshub.ydcloud-dy.com/namespace-role'] !== 'true'
+    )
+
+    // 命名空间角色：带有 namespace-role=true 标签的 ClusterRole
+    allNamespaceRoles.value = (allClusterRolesList || []).filter(role =>
+      role.labels && role.labels['opshub.ydcloud-dy.com/namespace-role'] === 'true'
+    )
 
     // 加载可用的API组
     const apiGroups = await getAPIGroups(props.cluster.id)

@@ -352,6 +352,8 @@ func (h *ClusterHandler) GenerateKubeConfig(c *gin.Context) {
 		return
 	}
 
+	fmt.Printf("🔐 [GenerateKubeConfig] 用户 %s (ID: %d) 申请集群 %d 的凭据\n", username.(string), userID.(uint), req.ClusterID)
+
 	// 生成 KubeConfig
 	kubeConfig, uniqueUsername, err := h.clusterService.GenerateUserKubeConfig(
 		c.Request.Context(),
@@ -366,6 +368,8 @@ func (h *ClusterHandler) GenerateKubeConfig(c *gin.Context) {
 		})
 		return
 	}
+
+	fmt.Printf("✅ [GenerateKubeConfig] 成功为用户 %s 生成凭据，SA 名称: %s\n", username.(string), uniqueUsername)
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
@@ -598,6 +602,8 @@ func (h *ClusterHandler) GetExistingKubeConfig(c *gin.Context) {
 		})
 		return
 	}
+
+	fmt.Printf("🔍 [GetExistingKubeConfig] 用户 %s (ID: %d) 查询集群 %d 的现有凭据\n", username.(string), userID.(uint), clusterID)
 
 	// 获取现有的KubeConfig
 	kubeConfig, saName, err := h.clusterService.GetUserExistingKubeConfig(

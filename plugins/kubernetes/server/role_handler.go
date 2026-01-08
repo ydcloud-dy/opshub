@@ -712,24 +712,22 @@ func getDefaultClusterRoles() []rbacv1.ClusterRole {
 	}
 }
 
-// CreateDefaultNamespaceRoles 创建默认的命名空间角色
+// CreateDefaultNamespaceRoles 创建默认的命名空间角色（ClusterRole）
 // @Summary 创建默认命名空间角色
-// @Description 在指定命名空间创建 OpsHub 平台使用的默认角色
+// @Description 创建用于命名空间级别授权的 ClusterRole（通过 RoleBinding 在特定命名空间生效）
 // @Tags Kubernetes/Role
 // @Accept json
 // @Produce json
 // @Param clusterId query int true "集群ID"
-// @Param namespace query string true "命名空间"
 // @Success 200 {object} Response
 // @Router /api/v1/plugins/kubernetes/roles/create-defaults-namespace [post]
 func (h *RoleHandler) CreateDefaultNamespaceRoles(c *gin.Context) {
 	clusterIdStr := c.Query("clusterId")
-	namespace := c.Query("namespace")
 
-	if clusterIdStr == "" || namespace == "" {
+	if clusterIdStr == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"code":    400,
-			"message": "缺少必需参数",
+			"message": "缺少集群ID参数",
 		})
 		return
 	}
@@ -759,8 +757,8 @@ func (h *RoleHandler) CreateDefaultNamespaceRoles(c *gin.Context) {
 		return
 	}
 
-	// 定义默认角色及其权限
-	defaultRoles := getDefaultNamespaceRoles(namespace)
+	// 定义默认的命名空间角色（ClusterRole）
+	defaultRoles := getDefaultNamespaceRoles()
 
 	// 使用 goroutine 并行创建所有角色
 	type result struct {
@@ -770,15 +768,23 @@ func (h *RoleHandler) CreateDefaultNamespaceRoles(c *gin.Context) {
 	resultChan := make(chan result, len(defaultRoles))
 
 	for _, roleDef := range defaultRoles {
-		go func(role rbacv1.Role) {
-			// 直接尝试创建，如果已存在会返回错误，我们忽略错误
-			_, err := clientset.RbacV1().Roles(namespace).Create(c.Request.Context(), &role, metav1.CreateOptions{})
+		go func(role rbacv1.ClusterRole) {
+			// 尝试创建角色
+			_, err := clientset.RbacV1().ClusterRoles().Create(c.Request.Context(), &role, metav1.CreateOptions{})
 			if err != nil {
-				// 如果是"已存在"错误，不算失败
-				if !strings.Contains(err.Error(), "already exists") {
-					resultChan <- result{name: role.Name, err: err}
+				// 如果已存在，则更新角色（确保标签等元数据正确）
+				if strings.Contains(err.Error(), "already exists") {
+					_, updateErr := clientset.RbacV1().ClusterRoles().Update(c.Request.Context(), &role, metav1.UpdateOptions{})
+					if updateErr != nil {
+						resultChan <- result{name: role.Name, err: fmt.Errorf("更新角色失败: %w", updateErr)}
+						return
+					}
+					resultChan <- result{name: role.Name, err: nil}
 					return
 				}
+				// 其他错误
+				resultChan <- result{name: role.Name, err: err}
+				return
 			}
 			resultChan <- result{name: role.Name, err: nil}
 		}(roleDef)
@@ -815,16 +821,18 @@ func (h *RoleHandler) CreateDefaultNamespaceRoles(c *gin.Context) {
 	})
 }
 
-// getDefaultNamespaceRoles 获取默认的命名空间角色定义
-func getDefaultNamespaceRoles(namespace string) []rbacv1.Role {
-	return []rbacv1.Role{
+// getDefaultNamespaceRoles 获取默认的命名空间角色定义（ClusterRole）
+// 这些 ClusterRole 用于命名空间级别的授权，通过 RoleBinding 在特定命名空间生效
+func getDefaultNamespaceRoles() []rbacv1.ClusterRole {
+	return []rbacv1.ClusterRole{
 		// namespace-owner - 命名空间所有者，拥有所有权限
 		{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "namespace-owner",
 				Labels: map[string]string{
-					"opshub.ydcloud-dy.com/managed-by":    "opshub",
-					"opshub.ydcloud-dy.com/default-role": "true",
+					"opshub.ydcloud-dy.com/managed-by":      "opshub",
+					"opshub.ydcloud-dy.com/default-role":   "true",
+					"opshub.ydcloud-dy.com/namespace-role": "true",
 				},
 			},
 			Rules: []rbacv1.PolicyRule{
@@ -840,8 +848,9 @@ func getDefaultNamespaceRoles(namespace string) []rbacv1.Role {
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "namespace-viewer",
 				Labels: map[string]string{
-					"opshub.ydcloud-dy.com/managed-by":    "opshub",
-					"opshub.ydcloud-dy.com/default-role": "true",
+					"opshub.ydcloud-dy.com/managed-by":      "opshub",
+					"opshub.ydcloud-dy.com/default-role":   "true",
+					"opshub.ydcloud-dy.com/namespace-role": "true",
 				},
 			},
 			Rules: []rbacv1.PolicyRule{
@@ -857,8 +866,9 @@ func getDefaultNamespaceRoles(namespace string) []rbacv1.Role {
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "manage-workload",
 				Labels: map[string]string{
-					"opshub.ydcloud-dy.com/managed-by":    "opshub",
-					"opshub.ydcloud-dy.com/default-role": "true",
+					"opshub.ydcloud-dy.com/managed-by":      "opshub",
+					"opshub.ydcloud-dy.com/default-role":   "true",
+					"opshub.ydcloud-dy.com/namespace-role": "true",
 				},
 			},
 			Rules: []rbacv1.PolicyRule{
@@ -886,6 +896,7 @@ func getDefaultNamespaceRoles(namespace string) []rbacv1.Role {
 				Labels: map[string]string{
 					"opshub.ydcloud-dy.com/managed-by":    "opshub",
 					"opshub.ydcloud-dy.com/default-role": "true",
+					"opshub.ydcloud-dy.com/namespace-role": "true",
 				},
 			},
 			Rules: []rbacv1.PolicyRule{
@@ -903,6 +914,7 @@ func getDefaultNamespaceRoles(namespace string) []rbacv1.Role {
 				Labels: map[string]string{
 					"opshub.ydcloud-dy.com/managed-by":    "opshub",
 					"opshub.ydcloud-dy.com/default-role": "true",
+					"opshub.ydcloud-dy.com/namespace-role": "true",
 				},
 			},
 			Rules: []rbacv1.PolicyRule{
@@ -920,6 +932,7 @@ func getDefaultNamespaceRoles(namespace string) []rbacv1.Role {
 				Labels: map[string]string{
 					"opshub.ydcloud-dy.com/managed-by":    "opshub",
 					"opshub.ydcloud-dy.com/default-role": "true",
+					"opshub.ydcloud-dy.com/namespace-role": "true",
 				},
 			},
 			Rules: []rbacv1.PolicyRule{
@@ -942,6 +955,7 @@ func getDefaultNamespaceRoles(namespace string) []rbacv1.Role {
 				Labels: map[string]string{
 					"opshub.ydcloud-dy.com/managed-by":    "opshub",
 					"opshub.ydcloud-dy.com/default-role": "true",
+					"opshub.ydcloud-dy.com/namespace-role": "true",
 				},
 			},
 			Rules: []rbacv1.PolicyRule{
@@ -959,6 +973,7 @@ func getDefaultNamespaceRoles(namespace string) []rbacv1.Role {
 				Labels: map[string]string{
 					"opshub.ydcloud-dy.com/managed-by":    "opshub",
 					"opshub.ydcloud-dy.com/default-role": "true",
+					"opshub.ydcloud-dy.com/namespace-role": "true",
 				},
 			},
 			Rules: []rbacv1.PolicyRule{
@@ -986,6 +1001,7 @@ func getDefaultNamespaceRoles(namespace string) []rbacv1.Role {
 				Labels: map[string]string{
 					"opshub.ydcloud-dy.com/managed-by":    "opshub",
 					"opshub.ydcloud-dy.com/default-role": "true",
+					"opshub.ydcloud-dy.com/namespace-role": "true",
 				},
 			},
 			Rules: []rbacv1.PolicyRule{
@@ -1003,6 +1019,7 @@ func getDefaultNamespaceRoles(namespace string) []rbacv1.Role {
 				Labels: map[string]string{
 					"opshub.ydcloud-dy.com/managed-by":    "opshub",
 					"opshub.ydcloud-dy.com/default-role": "true",
+					"opshub.ydcloud-dy.com/namespace-role": "true",
 				},
 			},
 			Rules: []rbacv1.PolicyRule{
@@ -1020,6 +1037,7 @@ func getDefaultNamespaceRoles(namespace string) []rbacv1.Role {
 				Labels: map[string]string{
 					"opshub.ydcloud-dy.com/managed-by":    "opshub",
 					"opshub.ydcloud-dy.com/default-role": "true",
+					"opshub.ydcloud-dy.com/namespace-role": "true",
 				},
 			},
 			Rules: []rbacv1.PolicyRule{
@@ -1042,6 +1060,7 @@ func getDefaultNamespaceRoles(namespace string) []rbacv1.Role {
 				Labels: map[string]string{
 					"opshub.ydcloud-dy.com/managed-by":    "opshub",
 					"opshub.ydcloud-dy.com/default-role": "true",
+					"opshub.ydcloud-dy.com/namespace-role": "true",
 				},
 			},
 			Rules: []rbacv1.PolicyRule{

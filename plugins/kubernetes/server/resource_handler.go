@@ -1891,30 +1891,50 @@ func (h *ResourceHandler) UpdateNodeYAML(c *gin.Context) {
 		}
 	}
 
-	// 将YAML数据转换为JSON，因为Kubernetes PATCH需要JSON格式
-	patchData, err := json.Marshal(yamlData)
+	// 提取新的 labels
+	var newLabels map[string]string
+	if metadata, ok := yamlData["metadata"].(map[string]interface{}); ok {
+		if labels, ok := metadata["labels"].(map[string]interface{}); ok {
+			newLabels = make(map[string]string)
+			for k, v := range labels {
+				if strVal, ok := v.(string); ok {
+					newLabels[k] = strVal
+				} else {
+					// 处理空值的情况
+					newLabels[k] = ""
+				}
+			}
+		}
+	}
+
+	if newLabels == nil {
+		newLabels = make(map[string]string)
+	}
+
+	fmt.Printf("🔍 DEBUG [UpdateNodeYAML]: New labels: %+v\n", newLabels)
+
+	// 先获取当前节点
+	node, err := clientset.CoreV1().Nodes().Get(c.Request.Context(), nodeName, metav1.GetOptions{})
 	if err != nil {
-		fmt.Printf("❌ DEBUG [UpdateNodeYAML]: JSON marshal failed: %v\n", err)
+		fmt.Printf("❌ DEBUG [UpdateNodeYAML]: Get node failed: %v\n", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    500,
-			"message": "序列化Patch数据失败: " + err.Error(),
+			"message": "获取节点失败: " + err.Error(),
 		})
 		return
 	}
 
-	fmt.Printf("🔍 DEBUG [UpdateNodeYAML]: Patch data (JSON): %s\n", string(patchData))
+	// 完全替换 labels
+	node.Labels = newLabels
 
-	// 使用 Strategic Merge Patch 更新节点
-	// 这样可以避免 resourceVersion 冲突
-	_, err = clientset.CoreV1().Nodes().Patch(
+	// 使用 Update 方法更新节点（这样可以确保 labels 被完全替换）
+	_, err = clientset.CoreV1().Nodes().Update(
 		c.Request.Context(),
-		nodeName,
-		types.StrategicMergePatchType,
-		patchData,
-		metav1.PatchOptions{},
+		node,
+		metav1.UpdateOptions{},
 	)
 	if err != nil {
-		fmt.Printf("❌ DEBUG [UpdateNodeYAML]: Patch failed: %v\n", err)
+		fmt.Printf("❌ DEBUG [UpdateNodeYAML]: Update failed: %v\n", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    500,
 			"message": "更新节点失败: " + err.Error(),
@@ -1922,7 +1942,7 @@ func (h *ResourceHandler) UpdateNodeYAML(c *gin.Context) {
 		return
 	}
 
-	fmt.Printf("✅ DEBUG [UpdateNodeYAML]: Patched node %s successfully\n", nodeName)
+	fmt.Printf("✅ DEBUG [UpdateNodeYAML]: Updated node %s successfully with %d labels\n", nodeName, len(newLabels))
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
@@ -3077,8 +3097,14 @@ func (h *ResourceHandler) GetWorkloads(c *gin.Context) {
 	workloadType := c.Query("type")   // Deployment, StatefulSet, DaemonSet, Job, CronJob
 	namespace := c.Query("namespace") // 命名空间过滤
 
+	// 获取当前用户 ID
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
 	// 获取 clientset
-	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), uint(c.GetInt("userId")))
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
 	if err != nil {
 		if h.handleGetClientsetError(c, err) {
 			return
@@ -3091,14 +3117,13 @@ func (h *ResourceHandler) GetWorkloads(c *gin.Context) {
 	}
 
 	fmt.Printf("📊 [GetWorkloads] 用户 %d 查询集群 %d 的工作负载列表, 类型: %s, 命名空间: %s\n",
-		c.GetInt("userId"), clusterID, workloadType, namespace)
+		currentUserID, clusterID, workloadType, namespace)
 
 	var workloads []WorkloadInfo
 	ctx := c.Request.Context()
 
 	// 根据类型查询不同的工作负载
-	switch workloadType {
-	case "Deployment", "":
+	if workloadType == "" || workloadType == "Deployment" {
 		// 获取 Deployments
 		deployments, err := clientset.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{})
 		if err == nil {
@@ -3107,8 +3132,9 @@ func (h *ResourceHandler) GetWorkloads(c *gin.Context) {
 				workloads = append(workloads, workload)
 			}
 		}
+	}
 
-	case "StatefulSet":
+	if workloadType == "" || workloadType == "StatefulSet" {
 		// 获取 StatefulSets
 		stsList, err := clientset.AppsV1().StatefulSets(namespace).List(ctx, metav1.ListOptions{})
 		if err == nil {
@@ -3117,8 +3143,9 @@ func (h *ResourceHandler) GetWorkloads(c *gin.Context) {
 				workloads = append(workloads, workload)
 			}
 		}
+	}
 
-	case "DaemonSet":
+	if workloadType == "" || workloadType == "DaemonSet" {
 		// 获取 DaemonSets
 		dsList, err := clientset.AppsV1().DaemonSets(namespace).List(ctx, metav1.ListOptions{})
 		if err == nil {
@@ -3127,8 +3154,9 @@ func (h *ResourceHandler) GetWorkloads(c *gin.Context) {
 				workloads = append(workloads, workload)
 			}
 		}
+	}
 
-	case "Job":
+	if workloadType == "" || workloadType == "Job" {
 		// 获取 Jobs
 		jobList, err := clientset.BatchV1().Jobs(namespace).List(ctx, metav1.ListOptions{})
 		if err == nil {
@@ -3137,8 +3165,9 @@ func (h *ResourceHandler) GetWorkloads(c *gin.Context) {
 				workloads = append(workloads, workload)
 			}
 		}
+	}
 
-	case "CronJob":
+	if workloadType == "" || workloadType == "CronJob" {
 		// 获取 CronJobs
 		cronJobList, err := clientset.BatchV1().CronJobs(namespace).List(ctx, metav1.ListOptions{})
 		if err == nil {
@@ -3374,4 +3403,345 @@ func formatMemory(bytes int64) string {
 	default:
 		return fmt.Sprintf("%d", bytes)
 	}
+}
+
+// GetWorkloadYAMLRequest 获取工作负载YAML请求
+type GetWorkloadYAMLRequest struct {
+	ClusterID int    `form:"clusterId" binding:"required"`
+	Type      string `form:"type" binding:"required"` // Deployment, StatefulSet, DaemonSet, Job, CronJob
+}
+
+// GetWorkloadYAML 获取工作负载YAML
+func (h *ResourceHandler) GetWorkloadYAML(c *gin.Context) {
+	namespace := c.Param("namespace")
+	name := c.Param("name")
+
+	// 从 query 参数获取集群ID和类型
+	clusterIDStr := c.Query("clusterId")
+	clusterID, err := strconv.Atoi(clusterIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的集群ID",
+		})
+		return
+	}
+
+	workloadType := c.Query("type")
+	if workloadType == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "缺少工作负载类型参数",
+		})
+		return
+	}
+
+	// 获取当前用户ID
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	fmt.Printf("🔍 DEBUG [GetWorkloadYAML]: namespace=%s, name=%s, clusterID=%d, userID=%d, type=%s\n",
+		namespace, name, clusterID, currentUserID, workloadType)
+
+	// 获取clientset（修复参数顺序：clusterID 在前，userID 在后）
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群客户端失败: " + err.Error(),
+		})
+		return
+	}
+
+	// 根据类型获取资源
+	var obj interface{}
+	switch workloadType {
+	case "Deployment":
+		deployment, err := clientset.AppsV1().Deployments(namespace).Get(c.Request.Context(), name, metav1.GetOptions{})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"code":    500,
+				"message": "获取Deployment失败: " + err.Error(),
+			})
+			return
+		}
+		obj = deployment
+	case "StatefulSet":
+		statefulset, err := clientset.AppsV1().StatefulSets(namespace).Get(c.Request.Context(), name, metav1.GetOptions{})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"code":    500,
+				"message": "获取StatefulSet失败: " + err.Error(),
+			})
+			return
+		}
+		obj = statefulset
+	case "DaemonSet":
+		daemonset, err := clientset.AppsV1().DaemonSets(namespace).Get(c.Request.Context(), name, metav1.GetOptions{})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"code":    500,
+				"message": "获取DaemonSet失败: " + err.Error(),
+			})
+			return
+		}
+		obj = daemonset
+	case "Job":
+		job, err := clientset.BatchV1().Jobs(namespace).Get(c.Request.Context(), name, metav1.GetOptions{})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"code":    500,
+				"message": "获取Job失败: " + err.Error(),
+			})
+			return
+		}
+		obj = job
+	case "CronJob":
+		cronjob, err := clientset.BatchV1().CronJobs(namespace).Get(c.Request.Context(), name, metav1.GetOptions{})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"code":    500,
+				"message": "获取CronJob失败: " + err.Error(),
+			})
+			return
+		}
+		obj = cronjob
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "不支持的工作负载类型: " + workloadType,
+		})
+		return
+	}
+
+	// 清理对象（移除 managedFields 和 status 等不需要的字段）
+	cleanedObj := cleanWorkloadForYAML(obj, workloadType)
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "success",
+		"data": gin.H{
+			"items": cleanedObj,
+		},
+	})
+}
+
+// UpdateWorkloadYAMLRequest 更新工作负载YAML请求
+type UpdateWorkloadYAMLRequest struct {
+	ClusterID int    `json:"clusterId" binding:"required"`
+	Type      string `json:"type" binding:"required"`
+	YAML      string `json:"yaml" binding:"required"`
+}
+
+// UpdateWorkloadYAML 更新工作负载YAML
+func (h *ResourceHandler) UpdateWorkloadYAML(c *gin.Context) {
+	namespace := c.Param("namespace")
+	name := c.Param("name")
+
+	var req UpdateWorkloadYAMLRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "请求参数错误: " + err.Error(),
+		})
+		return
+	}
+
+	// 获取当前用户ID
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	fmt.Printf("🔍 DEBUG [UpdateWorkloadYAML]: namespace=%s, name=%s, clusterID=%d, userID=%d, type=%s\n",
+		namespace, name, req.ClusterID, currentUserID, req.Type)
+
+	// 获取clientset（修复参数顺序：clusterID 在前，userID 在后）
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(req.ClusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群客户端失败: " + err.Error(),
+		})
+		return
+	}
+
+	// 解析YAML
+	var yamlData map[string]interface{}
+	if err := yamlUnmarshal([]byte(req.YAML), &yamlData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "解析YAML失败: " + err.Error(),
+		})
+		return
+	}
+
+	// 验证资源名称
+	if metadata, ok := yamlData["metadata"].(map[string]interface{}); ok {
+		if yamlName, ok := metadata["name"].(string); ok && yamlName != name {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"code":    400,
+				"message": "YAML中的资源名称与URL中的不一致",
+			})
+			return
+		}
+		if yamlNamespace, ok := metadata["namespace"].(string); ok && yamlNamespace != namespace {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"code":    400,
+				"message": "YAML中的命名空间与URL中的不一致",
+			})
+			return
+		}
+	}
+
+	// 转换为JSON用于PATCH
+	patchData, err := json.Marshal(yamlData)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "序列化Patch数据失败: " + err.Error(),
+		})
+		return
+	}
+
+	// 根据类型更新资源
+	switch req.Type {
+	case "Deployment":
+		_, err := clientset.AppsV1().Deployments(namespace).Patch(c.Request.Context(), name, types.StrategicMergePatchType, patchData, metav1.PatchOptions{})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"code":    500,
+				"message": "更新Deployment失败: " + err.Error(),
+			})
+			return
+		}
+	case "StatefulSet":
+		_, err := clientset.AppsV1().StatefulSets(namespace).Patch(c.Request.Context(), name, types.StrategicMergePatchType, patchData, metav1.PatchOptions{})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"code":    500,
+				"message": "更新StatefulSet失败: " + err.Error(),
+			})
+			return
+		}
+	case "DaemonSet":
+		_, err := clientset.AppsV1().DaemonSets(namespace).Patch(c.Request.Context(), name, types.StrategicMergePatchType, patchData, metav1.PatchOptions{})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"code":    500,
+				"message": "更新DaemonSet失败: " + err.Error(),
+			})
+			return
+		}
+	case "Job":
+		_, err := clientset.BatchV1().Jobs(namespace).Patch(c.Request.Context(), name, types.StrategicMergePatchType, patchData, metav1.PatchOptions{})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"code":    500,
+				"message": "更新Job失败: " + err.Error(),
+			})
+			return
+		}
+	case "CronJob":
+		_, err := clientset.BatchV1().CronJobs(namespace).Patch(c.Request.Context(), name, types.StrategicMergePatchType, patchData, metav1.PatchOptions{})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"code":    500,
+				"message": "更新CronJob失败: " + err.Error(),
+			})
+			return
+		}
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "不支持的工作负载类型: " + req.Type,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "更新成功",
+		"data": gin.H{
+			"needRefresh": true, // 告诉前端需要刷新列表
+		},
+	})
+}
+
+// cleanWorkloadForYAML 清理工作负载对象用于YAML输出
+func cleanWorkloadForYAML(obj interface{}, workloadType string) map[string]interface{} {
+	// 转换为 map 以便控制 YAML 序列化
+	result := make(map[string]interface{})
+
+	// 根据不同的工作负载类型设置 apiVersion 和 kind
+	switch workloadType {
+	case "Deployment":
+		result["apiVersion"] = "apps/v1"
+		result["kind"] = "Deployment"
+		if deploy, ok := obj.(*appsv1.Deployment); ok {
+			result["metadata"] = cleanMetadata(deploy.ObjectMeta)
+			result["spec"] = deploy.Spec
+		}
+	case "StatefulSet":
+		result["apiVersion"] = "apps/v1"
+		result["kind"] = "StatefulSet"
+		if sts, ok := obj.(*appsv1.StatefulSet); ok {
+			result["metadata"] = cleanMetadata(sts.ObjectMeta)
+			result["spec"] = sts.Spec
+		}
+	case "DaemonSet":
+		result["apiVersion"] = "apps/v1"
+		result["kind"] = "DaemonSet"
+		if ds, ok := obj.(*appsv1.DaemonSet); ok {
+			result["metadata"] = cleanMetadata(ds.ObjectMeta)
+			result["spec"] = ds.Spec
+		}
+	case "Job":
+		result["apiVersion"] = "batch/v1"
+		result["kind"] = "Job"
+		if job, ok := obj.(*batchv1.Job); ok {
+			result["metadata"] = cleanMetadata(job.ObjectMeta)
+			result["spec"] = job.Spec
+		}
+	case "CronJob":
+		result["apiVersion"] = "batch/v1"
+		result["kind"] = "CronJob"
+		if cronJob, ok := obj.(*batchv1.CronJob); ok {
+			result["metadata"] = cleanMetadata(cronJob.ObjectMeta)
+			result["spec"] = cronJob.Spec
+		}
+	}
+
+	// 不包含 status 字段
+
+	return result
+}
+
+// cleanMetadata 清理 metadata 字段
+func cleanMetadata(meta metav1.ObjectMeta) map[string]interface{} {
+	metadata := make(map[string]interface{})
+
+	if meta.Name != "" {
+		metadata["name"] = meta.Name
+	}
+	if meta.Namespace != "" {
+		metadata["namespace"] = meta.Namespace
+	}
+	if len(meta.Labels) > 0 {
+		metadata["labels"] = meta.Labels
+	}
+	if len(meta.Annotations) > 0 {
+		metadata["annotations"] = meta.Annotations
+	}
+	// 不包含 managedFields、resourceVersion、uid、generation 等字段
+
+	return metadata
 }

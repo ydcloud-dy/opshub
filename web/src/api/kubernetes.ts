@@ -440,16 +440,16 @@ export function createDefaultClusterRoles(clusterId: number) {
 }
 
 /**
- * 创建默认命名空间角色
+ * 创建默认命名空间角色（ClusterRole）
  */
-export function createDefaultNamespaceRoles(clusterId: number, namespace: string) {
+export function createDefaultNamespaceRoles(clusterId: number) {
   return request<{
     created: string[]
     existing: string[]
   }>({
     url: '/api/v1/plugins/kubernetes/roles/create-defaults-namespace',
     method: 'post',
-    params: { clusterId, namespace }
+    params: { clusterId }
   })
 }
 

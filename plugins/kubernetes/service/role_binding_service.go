@@ -89,6 +89,11 @@ func (s *RoleBindingService) BindUserRole(ctx context.Context, clusterID, userID
 		return fmt.Errorf("确保ServiceAccount存在失败: %w", err)
 	}
 
+	// 确保用户在数据库中有凭据记录（这样才能通过 GetClientsetForUser 访问集群）
+	if err := s.ensureUserKubeConfigRecord(clusterID, userID, saName, OpsHubAuthNamespace); err != nil {
+		return fmt.Errorf("确保用户凭据记录存在失败: %w", err)
+	}
+
 	// 在 K8s 中创建 ClusterRoleBinding 或 RoleBinding
 	if roleType == "ClusterRole" {
 		if err := s.createClusterRoleBinding(ctx, clientset, roleName, saName, OpsHubAuthNamespace); err != nil {
@@ -498,6 +503,9 @@ func (s *RoleBindingService) createClusterRoleBinding(ctx context.Context, clien
 	crb := &rbacv1.ClusterRoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: bindingName,
+			Labels: map[string]string{
+				"opshub.ydcloud-dy.com/managed-by": "opshub",
+			},
 			Annotations: map[string]string{
 				"description": "Created by OpsHub",
 			},
@@ -542,6 +550,9 @@ func (s *RoleBindingService) createRoleBinding(ctx context.Context, clientset *k
 	rb := &rbacv1.RoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: bindingName,
+			Labels: map[string]string{
+				"opshub.ydcloud-dy.com/managed-by": "opshub",
+			},
 			Annotations: map[string]string{
 				"description": "Created by OpsHub",
 			},
@@ -621,5 +632,52 @@ func (s *RoleBindingService) ensureOpsHubAuthNamespace(ctx context.Context, clie
 	}
 
 	fmt.Printf("DEBUG: Created namespace %s\n", OpsHubAuthNamespace)
+	return nil
+}
+
+// ensureUserKubeConfigRecord 确保用户在数据库中有凭据记录
+func (s *RoleBindingService) ensureUserKubeConfigRecord(clusterID, userID uint64, serviceAccount, namespace string) error {
+	// 检查是否已存在记录
+	var existing model.UserKubeConfig
+	err := s.db.Where("cluster_id = ? AND user_id = ?", clusterID, userID).First(&existing).Error
+
+	if err == nil {
+		// 记录已存在，检查 service_account 是否匹配
+		if existing.ServiceAccount == serviceAccount {
+			// 完全匹配，无需更新
+			fmt.Printf("DEBUG: UserKubeConfig record already exists for user %d in cluster %d\n", userID, clusterID)
+			return nil
+		}
+
+		// ServiceAccount 名称不同，更新记录
+		existing.ServiceAccount = serviceAccount
+		existing.Namespace = namespace
+		existing.IsActive = true
+		if err := s.db.Save(&existing).Error; err != nil {
+			return fmt.Errorf("更新凭据记录失败: %w", err)
+		}
+		fmt.Printf("DEBUG: Updated UserKubeConfig record for user %d in cluster %d, SA: %s\n", userID, clusterID, serviceAccount)
+		return nil
+	}
+
+	if err != gorm.ErrRecordNotFound {
+		return fmt.Errorf("查询凭据记录失败: %w", err)
+	}
+
+	// 记录不存在，创建新记录
+	kubeConfigRecord := &model.UserKubeConfig{
+		ClusterID:      clusterID,
+		UserID:         userID,
+		ServiceAccount: serviceAccount,
+		Namespace:      namespace,
+		IsActive:       true,
+		CreatedBy:      userID,
+	}
+
+	if err := s.db.Create(kubeConfigRecord).Error; err != nil {
+		return fmt.Errorf("创建凭据记录失败: %w", err)
+	}
+
+	fmt.Printf("DEBUG: Created UserKubeConfig record for user %d in cluster %d, SA: %s\n", userID, clusterID, serviceAccount)
 	return nil
 }

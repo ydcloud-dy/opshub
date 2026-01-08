@@ -10,6 +10,9 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url))
     }
   },
+  optimizeDeps: {
+    include: ['js-yaml']
+  },
   server: {
     port: 5173,
     proxy: {

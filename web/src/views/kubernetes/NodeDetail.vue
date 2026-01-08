@@ -166,12 +166,14 @@
       </div>
     </div>
 
-    <!-- 标签和注解 -->
+    <!-- 标签、注解和污点 -->
     <div class="labels-annotations-grid">
       <div class="info-card">
         <div class="card-header">
-          <el-icon class="header-icon"><PriceTag /></el-icon>
-          <h3>标签 ({{ Object.keys(nodeInfo.labels || {}).length }})</h3>
+          <div class="header-left">
+            <el-icon class="header-icon"><PriceTag /></el-icon>
+            <h3>标签 ({{ Object.keys(nodeInfo.labels || {}).length }})</h3>
+          </div>
         </div>
         <div class="card-body">
           <div class="tags-container">
@@ -181,7 +183,37 @@
               class="tag-item"
             >
               <span class="tag-key">{{ key }}:</span>
-              <span class="tag-value">{{ value }}</span>
+              <span class="tag-value">{{ value !== undefined && value !== null && value !== '' ? value : '(空)' }}</span>
+            </div>
+            <div v-if="!nodeInfo.labels || Object.keys(nodeInfo.labels).length === 0" class="empty-tip">
+              暂无标签
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="info-card">
+        <div class="card-header">
+          <div class="header-left">
+            <el-icon class="header-icon"><WarnTriangleFilled /></el-icon>
+            <h3>污点 ({{ nodeInfo.taintCount || 0 }})</h3>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="tags-container">
+            <div
+              v-for="(taint, index) in nodeInfo.taints"
+              :key="index"
+              class="tag-item"
+            >
+              <span class="taint-key">{{ taint.key }}</span>
+              <span v-if="taint.value" class="taint-separator">=</span>
+              <span v-if="taint.value" class="taint-value">{{ taint.value }}</span>
+              <span class="taint-separator">:</span>
+              <span class="taint-effect" :class="getTaintEffectClass(taint.effect)">{{ taint.effect }}</span>
+            </div>
+            <div v-if="!nodeInfo.taints || nodeInfo.taints.length === 0" class="empty-tip">
+              暂无污点
             </div>
           </div>
         </div>
@@ -318,7 +350,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   ArrowLeft,
   Monitor,
@@ -332,7 +364,9 @@ import {
   Connection,
   Document,
   Bell,
-  Platform
+  Platform,
+  Delete,
+  WarnTriangleFilled
 } from '@element-plus/icons-vue'
 import { getNodes, type NodeInfo } from '@/api/kubernetes'
 import axios from 'axios'
@@ -589,6 +623,16 @@ const getStatusType = (status: string) => {
   return statusMap[status] || 'info'
 }
 
+// 获取污点 effect 的样式类
+const getTaintEffectClass = (effect: string) => {
+  const effectClassMap: Record<string, string> = {
+    'NoSchedule': 'effect-no-schedule',
+    'PreferNoSchedule': 'effect-prefer-no-schedule',
+    'NoExecute': 'effect-no-execute'
+  }
+  return effectClassMap[effect] || ''
+}
+
 onMounted(() => {
   loadPodPaginationState()
   loadNodeDetail()
@@ -825,10 +869,17 @@ onMounted(() => {
 .card-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
   padding: 16px 20px;
   background: linear-gradient(135deg, #000000 0%, #1a1a1a 100%);
   border-bottom: 1px solid #d4af37;
+}
+
+.card-header .header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .card-header .header-icon {
@@ -872,10 +923,10 @@ onMounted(() => {
   font-family: 'Monaco', 'Menlo', monospace;
 }
 
-/* 标签和注解 */
+/* 标签、污点和注解 */
 .labels-annotations-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 20px;
   margin-bottom: 20px;
 }
@@ -906,6 +957,118 @@ onMounted(() => {
 
 .tag-value {
   color: #606266;
+}
+
+.empty-tip {
+  padding: 20px;
+  text-align: center;
+  color: #909399;
+  font-size: 14px;
+}
+
+/* 污点样式 */
+.taint-key {
+  color: #d4af37;
+  font-weight: 600;
+  margin-right: 6px;
+}
+
+.taint-separator {
+  color: #909399;
+  margin: 0 6px;
+}
+
+.taint-value {
+  color: #606266;
+}
+
+.taint-effect {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.taint-effect.effect-no-schedule {
+  background: #fef0f0;
+  color: #f56c6c;
+}
+
+.taint-effect.effect-prefer-no-schedule {
+  background: #fdf6ec;
+  color: #e6a23c;
+}
+
+.taint-effect.effect-no-execute {
+  background: #f0f9ff;
+  color: #409eff;
+}
+
+/* 污点编辑弹窗 */
+.taint-edit-dialog :deep(.el-dialog__header) {
+  background: linear-gradient(135deg, #000000 0%, #1a1a1a 100%);
+  color: #d4af37;
+  border-radius: 8px 8px 0 0;
+  padding: 20px 24px;
+}
+
+.taint-edit-dialog :deep(.el-dialog__title) {
+  color: #d4af37;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.taint-edit-content {
+  padding: 8px 0;
+}
+
+.taint-list {
+  max-height: 400px;
+  overflow-y: auto;
+  margin-bottom: 16px;
+}
+
+.taint-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 8px;
+  background: #f8fafc;
+  border-radius: 6px;
+  transition: all 0.3s;
+}
+
+.taint-edit-row:hover {
+  background: #f1f5f9;
+}
+
+.taint-key-input,
+.taint-value-input {
+  flex: 1;
+  min-width: 120px;
+}
+
+.taint-effect-select {
+  width: 140px;
+  flex-shrink: 0;
+}
+
+.taint-separator {
+  color: #909399;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.empty-taints {
+  padding: 40px;
+  text-align: center;
+  color: #909399;
+  font-size: 14px;
+}
+
+.add-taint-btn {
+  width: 100%;
 }
 
 /* 区块卡片 */
@@ -1136,6 +1299,9 @@ onMounted(() => {
     grid-template-columns: repeat(2, 1fr);
   }
   .info-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .labels-annotations-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 }

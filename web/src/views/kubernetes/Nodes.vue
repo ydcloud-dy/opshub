@@ -423,13 +423,80 @@
     <!-- 标签弹窗 -->
     <el-dialog
       v-model="labelDialogVisible"
-      title="节点标签"
-      width="700px"
+      :title="labelEditMode ? '编辑节点标签' : '节点标签'"
+      width="850px"
       class="label-dialog"
+      :close-on-click-modal="!labelEditMode"
     >
       <div class="label-dialog-content">
-        <el-table :data="labelList" class="label-table" max-height="500">
-          <el-table-column prop="key" label="Key" min-width="280">
+        <!-- 编辑模式 -->
+        <div v-if="labelEditMode" class="label-edit-container">
+          <div class="label-edit-header">
+            <div class="label-edit-info">
+              <el-icon class="info-icon"><InfoFilled /></el-icon>
+              <span>编辑 {{ selectedNode?.name }} 的标签</span>
+            </div>
+            <div class="label-edit-count">
+              共 {{ editLabelList.length }} 个标签
+            </div>
+          </div>
+
+          <div class="label-edit-list">
+            <div v-for="(label, index) in editLabelList" :key="index" class="label-edit-row">
+              <div class="label-row-number">{{ index + 1 }}</div>
+              <div class="label-row-content">
+                <div class="label-input-group">
+                  <div class="label-input-wrapper">
+                    <span class="label-input-label">Key</span>
+                    <el-input
+                      v-model="label.key"
+                      placeholder="如: app"
+                      size="default"
+                      class="label-edit-input"
+                    />
+                  </div>
+                  <span class="label-separator">=</span>
+                  <div class="label-input-wrapper">
+                    <span class="label-input-label">Value</span>
+                    <el-input
+                      v-model="label.value"
+                      placeholder="可为空"
+                      size="default"
+                      class="label-edit-input"
+                    />
+                  </div>
+                </div>
+              </div>
+              <el-button
+                type="danger"
+                :icon="Delete"
+                size="default"
+                @click="removeEditLabel(index)"
+                class="remove-btn"
+                circle
+              />
+            </div>
+            <div v-if="editLabelList.length === 0" class="empty-labels">
+              <el-icon class="empty-icon"><PriceTag /></el-icon>
+              <p>暂无标签</p>
+              <span>点击下方按钮添加新标签</span>
+            </div>
+          </div>
+
+          <el-button
+            type="primary"
+            :icon="Plus"
+            @click="addEditLabel"
+            class="add-label-btn"
+            plain
+          >
+            添加标签
+          </el-button>
+        </div>
+
+        <!-- 查看模式 -->
+        <el-table v-else :data="labelList" class="label-table" max-height="500">
+          <el-table-column prop="key" label="Key" min-width="200">
             <template #default="{ row }">
               <div class="label-key-wrapper" @click="copyToClipboard(row.key, 'Key')">
                 <span class="label-key-text">{{ row.key }}</span>
@@ -437,16 +504,29 @@
               </div>
             </template>
           </el-table-column>
-          <el-table-column prop="value" label="Value" min-width="350">
+          <el-table-column prop="value" label="Value" min-width="200">
             <template #default="{ row }">
-              <span class="label-value">{{ row.value }}</span>
+              <span class="label-value">{{ row.value || '-' }}</span>
             </template>
           </el-table-column>
         </el-table>
       </div>
+
       <template #footer>
         <div class="dialog-footer">
-          <el-button @click="labelDialogVisible = false">关闭</el-button>
+          <template v-if="labelEditMode">
+            <el-button @click="cancelLabelEdit" size="large">取消</el-button>
+            <el-button type="primary" @click="saveLabels" :loading="labelSaving" size="large" class="save-btn">
+              <el-icon v-if="!labelSaving"><Check /></el-icon>
+              {{ labelSaving ? '保存中...' : '保存更改' }}
+            </el-button>
+          </template>
+          <template v-else>
+            <el-button @click="labelDialogVisible = false" size="large">关闭</el-button>
+            <el-button type="primary" @click="startLabelEdit" :icon="Edit" size="large" class="edit-btn">
+              编辑标签
+            </el-button>
+          </template>
         </div>
       </template>
     </el-dialog>
@@ -454,12 +534,108 @@
     <!-- 污点弹窗 -->
     <el-dialog
       v-model="taintDialogVisible"
-      title="节点污点"
-      width="700px"
+      :title="taintEditMode ? '编辑节点污点' : '节点污点'"
+      width="900px"
       class="taint-dialog"
+      :close-on-click-modal="!taintEditMode"
     >
       <div class="taint-dialog-content">
-        <el-table :data="taintList" class="taint-table" max-height="500">
+        <!-- 编辑模式 -->
+        <div v-if="taintEditMode" class="taint-edit-container">
+          <div class="taint-edit-header">
+            <div class="taint-edit-info">
+              <el-icon class="info-icon"><WarnTriangleFilled /></el-icon>
+              <span>编辑 {{ selectedNode?.name }} 的污点</span>
+            </div>
+            <div class="taint-edit-count">
+              共 {{ editTaintList.length }} 个污点
+            </div>
+          </div>
+
+          <div class="taint-edit-list">
+            <div v-for="(taint, index) in editTaintList" :key="index" class="taint-edit-row">
+              <div class="taint-row-number">{{ index + 1 }}</div>
+              <div class="taint-row-content">
+                <div class="taint-input-group">
+                  <div class="taint-input-wrapper">
+                    <span class="taint-input-label">Key</span>
+                    <el-input
+                      v-model="taint.key"
+                      placeholder="如: key1"
+                      size="default"
+                      class="taint-edit-input"
+                    />
+                  </div>
+                  <span class="taint-separator">=</span>
+                  <div class="taint-input-wrapper">
+                    <span class="taint-input-label">Value</span>
+                    <el-input
+                      v-model="taint.value"
+                      placeholder="可选"
+                      size="default"
+                      class="taint-edit-input"
+                    />
+                  </div>
+                  <span class="taint-separator">:</span>
+                  <div class="taint-effect-wrapper">
+                    <span class="taint-input-label">Effect</span>
+                    <el-select
+                      v-model="taint.effect"
+                      placeholder="选择"
+                      size="default"
+                      class="taint-effect-select"
+                    >
+                      <el-option label="NoSchedule" value="NoSchedule">
+                        <div class="effect-option">
+                          <el-tag type="warning" size="small" effect="plain">NoSchedule</el-tag>
+                          <span class="effect-desc">Pod 不会被调度</span>
+                        </div>
+                      </el-option>
+                      <el-option label="PreferNoSchedule" value="PreferNoSchedule">
+                        <div class="effect-option">
+                          <el-tag type="info" size="small" effect="plain">PreferNoSchedule</el-tag>
+                          <span class="effect-desc">尽量不调度</span>
+                        </div>
+                      </el-option>
+                      <el-option label="NoExecute" value="NoExecute">
+                        <div class="effect-option">
+                          <el-tag type="danger" size="small" effect="plain">NoExecute</el-tag>
+                          <span class="effect-desc">驱逐已有 Pod</span>
+                        </div>
+                      </el-option>
+                    </el-select>
+                  </div>
+                </div>
+              </div>
+              <el-button
+                type="danger"
+                :icon="Delete"
+                size="default"
+                @click="removeEditTaint(index)"
+                class="remove-btn"
+                circle
+              />
+            </div>
+            <div v-if="editTaintList.length === 0" class="empty-taints">
+              <el-icon class="empty-icon"><WarnTriangleFilled /></el-icon>
+              <p>暂无污点</p>
+              <span>点击下方按钮添加新污点</span>
+            </div>
+          </div>
+
+          <el-button
+            type="primary"
+            :icon="Plus"
+            @click="addEditTaint"
+            class="add-taint-btn"
+            plain
+          >
+            添加污点
+          </el-button>
+        </div>
+
+        <!-- 查看模式 -->
+        <el-table v-else :data="taintList" class="taint-table" max-height="500">
           <el-table-column prop="key" label="Key" min-width="200">
             <template #default="{ row }">
               <div class="taint-key-wrapper" @click="copyToClipboard(row.key, 'Key')">
@@ -482,9 +658,22 @@
           </el-table-column>
         </el-table>
       </div>
+
       <template #footer>
         <div class="dialog-footer">
-          <el-button @click="taintDialogVisible = false">关闭</el-button>
+          <template v-if="taintEditMode">
+            <el-button @click="cancelTaintEdit" size="large">取消</el-button>
+            <el-button type="primary" @click="saveTaints" :loading="taintSaving" size="large" class="save-btn">
+              <el-icon v-if="!taintSaving"><Check /></el-icon>
+              {{ taintSaving ? '保存中...' : '保存更改' }}
+            </el-button>
+          </template>
+          <template v-else>
+            <el-button @click="taintDialogVisible = false" size="large">关闭</el-button>
+            <el-button type="primary" @click="startTaintEdit" :icon="Edit" size="large" class="edit-btn">
+              编辑污点
+            </el-button>
+          </template>
         </div>
       </template>
     </el-dialog>
@@ -572,7 +761,9 @@ import {
   CircleClose,
   Setting,
   Delete,
-  Warning
+  Warning,
+  Plus,
+  Check
 } from '@element-plus/icons-vue'
 import { getClusterList, type Cluster, getNodes, type NodeInfo } from '@/api/kubernetes'
 
@@ -595,10 +786,18 @@ const paginationStorageKey = ref('nodes_pagination')
 // 标签弹窗
 const labelDialogVisible = ref(false)
 const labelList = ref<{ key: string; value: string }[]>([])
+const labelEditMode = ref(false)
+const labelSaving = ref(false)
+const editLabelList = ref<{ key: string; value: string }[]>([])
+const labelOriginalYaml = ref('')
 
 // 污点弹窗
 const taintDialogVisible = ref(false)
 const taintList = ref<{ key: string; value: string; effect: string }[]>([])
+const taintEditMode = ref(false)
+const taintSaving = ref(false)
+const editTaintList = ref<{ key: string; value: string; effect: string }[]>([])
+const taintOriginalYaml = ref('')
 
 // YAML 编辑弹窗
 const yamlDialogVisible = ref(false)
@@ -887,7 +1086,166 @@ const showLabels = (row: NodeInfo) => {
     key,
     value: labels[key]
   }))
+  labelEditMode.value = false
+  selectedNode.value = row
   labelDialogVisible.value = true
+}
+
+// 开始编辑标签
+const startLabelEdit = async () => {
+  if (!selectedNode.value) return
+
+  try {
+    const token = localStorage.getItem('token')
+    const nodeName = selectedNode.value.name
+
+    // 获取节点当前 YAML
+    const response = await axios.get(
+      `/api/v1/plugins/kubernetes/resources/nodes/${nodeName}/yaml?clusterId=${selectedClusterId.value}`,
+      {
+        headers: { Authorization: `Bearer ${token}` }
+      }
+    )
+    labelOriginalYaml.value = response.data.data?.yaml || ''
+
+    // 复制当前标签到编辑列表
+    editLabelList.value = labelList.value.map(label => ({
+      key: label.key,
+      value: label.value
+    }))
+
+    labelEditMode.value = true
+  } catch (error) {
+    console.error('获取节点YAML失败:', error)
+    ElMessage.error('获取节点信息失败')
+  }
+}
+
+// 取消编辑标签
+const cancelLabelEdit = () => {
+  labelEditMode.value = false
+  editLabelList.value = []
+}
+
+// 添加编辑标签
+const addEditLabel = () => {
+  editLabelList.value.push({ key: '', value: '' })
+}
+
+// 删除编辑标签
+const removeEditLabel = (index: number) => {
+  editLabelList.value.splice(index, 1)
+}
+
+// 保存标签
+const saveLabels = async () => {
+  if (!selectedNode.value) return
+
+  // 验证标签 - 只验证 key，value 可以为空
+  const validLabels = editLabelList.value.filter(label => label.key.trim() !== '')
+  if (validLabels.some(label => !label.key)) {
+    ElMessage.warning('标签键不能为空')
+    return
+  }
+
+  // 检查是否有重复的键
+  const keys = validLabels.map(l => l.key)
+  const uniqueKeys = new Set(keys)
+  if (keys.length !== uniqueKeys.size) {
+    ElMessage.warning('存在重复的标签键，请检查')
+    return
+  }
+
+  labelSaving.value = true
+  try {
+    const token = localStorage.getItem('token')
+    const nodeName = selectedNode.value.name
+
+    console.log('保存标签 - 节点:', nodeName)
+    console.log('有效标签:', validLabels)
+
+    // 判断是否为系统标签
+    const isSystemLabel = (key: string) => {
+      return key.startsWith('kubernetes.io/') ||
+             key.startsWith('node-role.') ||
+             key.startsWith('node.kubernetes.io/') ||
+             key.startsWith('beta.kubernetes.io/')
+    }
+
+    // 从 editLabelList 中分离系统标签和用户标签
+    const systemLabels: { key: string; value: string }[] = []
+    const userLabels: { key: string; value: string }[] = []
+
+    validLabels.forEach(l => {
+      if (isSystemLabel(l.key)) {
+        systemLabels.push(l)
+      } else {
+        userLabels.push(l)
+      }
+    })
+
+    console.log('系统标签:', systemLabels)
+    console.log('用户标签:', userLabels)
+
+    // 合并系统标签和用户标签
+    const allLabels = [...systemLabels, ...userLabels]
+
+    // 构建包含所有标签的 YAML
+    const labelsStr = allLabels
+      .map(l => {
+        if (l.value === '') {
+          return `    ${l.key}: ""`
+        }
+        return `    ${l.key}: ${l.value}`
+      })
+      .join('\n')
+
+    const labelsYaml = `apiVersion: v1
+kind: Node
+metadata:
+  name: ${nodeName}
+  labels:
+${labelsStr}
+`
+
+    console.log('发送的 labels YAML:', labelsYaml)
+
+    // 调用 API 保存
+    const response = await axios.put(
+      `/api/v1/plugins/kubernetes/resources/nodes/${nodeName}/yaml`,
+      {
+        clusterId: selectedClusterId.value,
+        yaml: labelsYaml
+      },
+      {
+        headers: { Authorization: `Bearer ${token}` }
+      }
+    )
+
+    console.log('API 响应:', response.data)
+    ElMessage.success('标签保存成功')
+    labelEditMode.value = false
+    // 刷新节点列表
+    await loadNodes()
+    console.log('刷新节点列表完成')
+    // 从刷新后的节点数据中重新获取标签
+    const updatedNode = nodeList.value.find(n => n.name === nodeName)
+    console.log('查找更新后的节点:', updatedNode)
+    if (updatedNode) {
+      console.log('节点标签:', updatedNode.labels)
+      selectedNode.value = updatedNode
+      labelList.value = Object.keys(updatedNode.labels || {}).map(key => ({
+        key,
+        value: updatedNode.labels![key]
+      }))
+      console.log('最终 labelList:', labelList.value)
+    }
+  } catch (error: any) {
+    console.error('保存标签失败:', error)
+    ElMessage.error(`保存失败: ${error.response?.data?.message || error.message}`)
+  } finally {
+    labelSaving.value = false
+  }
 }
 
 // 跳转到节点详情页
@@ -913,7 +1271,151 @@ const showTaints = (row: NodeInfo) => {
     value: taint.value || '',
     effect: taint.effect
   }))
+  // 重置编辑模式
+  taintEditMode.value = false
+  selectedNode.value = row
   taintDialogVisible.value = true
+}
+
+// 开始编辑污点
+const startTaintEdit = async () => {
+  if (!selectedNode.value) return
+
+  try {
+    const token = localStorage.getItem('token')
+    const nodeName = selectedNode.value.name
+
+    // 获取节点当前 YAML
+    const response = await axios.get(
+      `/api/v1/plugins/kubernetes/resources/nodes/${nodeName}/yaml?clusterId=${selectedClusterId.value}`,
+      {
+        headers: { Authorization: `Bearer ${token}` }
+      }
+    )
+    taintOriginalYaml.value = response.data.data?.yaml || ''
+
+    // 复制当前污点到编辑列表
+    editTaintList.value = taintList.value.map(taint => ({
+      key: taint.key,
+      value: taint.value || '',
+      effect: taint.effect
+    }))
+
+    taintEditMode.value = true
+  } catch (error) {
+    console.error('获取节点YAML失败:', error)
+    ElMessage.error('获取节点信息失败')
+  }
+}
+
+// 取消编辑污点
+const cancelTaintEdit = () => {
+  taintEditMode.value = false
+  editTaintList.value = []
+}
+
+// 添加编辑污点
+const addEditTaint = () => {
+  editTaintList.value.push({ key: '', value: '', effect: 'NoSchedule' })
+}
+
+// 删除编辑污点
+const removeEditTaint = (index: number) => {
+  editTaintList.value.splice(index, 1)
+}
+
+// 保存污点
+const saveTaints = async () => {
+  if (!selectedNode.value) return
+
+  // 验证污点
+  const validTaints = editTaintList.value.filter(taint => taint.key.trim() !== '')
+  if (validTaints.some(taint => !taint.key || !taint.effect)) {
+    ElMessage.warning('请填写完整的污点键和Effect')
+    return
+  }
+
+  // 检查是否有重复的键
+  const keys = validTaints.map(t => t.key)
+  const uniqueKeys = new Set(keys)
+  if (keys.length !== uniqueKeys.size) {
+    ElMessage.warning('存在重复的污点键，请检查')
+    return
+  }
+
+  taintSaving.value = true
+  try {
+    const token = localStorage.getItem('token')
+    const nodeName = selectedNode.value.name
+
+    // 将 YAML 按行分割处理
+    const lines = taintOriginalYaml.value.split('\n')
+    let updatedLines: string[] = []
+    let i = 0
+
+    while (i < lines.length) {
+      const line = lines[i]
+
+      // 检测 taints: 开始（在 spec 下的 2 空格缩进）
+      if (/^  taints:\s*$/.test(line)) {
+        // 如果有污点，保留 taints 并添加新内容
+        if (validTaints.length > 0) {
+          updatedLines.push(line)
+          // 添加污点内容（列表项2空格，属性4空格）
+          for (const taint of validTaints) {
+            if (taint.value) {
+              updatedLines.push(`  - key: ${taint.key}`)
+              updatedLines.push(`    value: ${taint.value}`)
+              updatedLines.push(`    effect: ${taint.effect}`)
+            } else {
+              updatedLines.push(`  - key: ${taint.key}`)
+              updatedLines.push(`    effect: ${taint.effect}`)
+            }
+          }
+        }
+        // 跳过原有的污点内容
+        i++
+        // 跳过所有污点条目（2 空格缩进的 "- " 开头）
+        while (i < lines.length && /^  -\s/.test(lines[i])) {
+          i++
+          // 跳过污点的属性行（4 空格缩进）
+          while (i < lines.length && /^    /.test(lines[i])) {
+            i++
+          }
+        }
+        continue
+      }
+
+      updatedLines.push(line)
+      i++
+    }
+
+    const updatedYaml = updatedLines.join('\n')
+
+    // 调用 API 保存
+    await axios.put(
+      `/api/v1/plugins/kubernetes/resources/nodes/${nodeName}/yaml`,
+      {
+        clusterId: selectedClusterId.value,
+        yaml: updatedYaml
+      },
+      {
+        headers: { Authorization: `Bearer ${token}` }
+      }
+    )
+
+    ElMessage.success('污点保存成功')
+    taintEditMode.value = false
+    // 刷新节点列表
+    await loadNodes()
+    // 更新当前显示的污点列表
+    taintList.value = validTaints
+  } catch (error: any) {
+    console.error('保存污点失败:', error)
+    ElMessage.error(`保存失败: ${error.response?.data?.message || error.message}`)
+  } finally {
+    taintSaving.value = false
+  }
 }
 
 // 复制到剪贴板
@@ -1981,20 +2483,20 @@ onMounted(() => {
 }
 
 .role-master {
-  background: linear-gradient(135deg, #000000 0%, #1a1a1a 100%);
+  background: transparent;
   color: #d4af37;
   border: 1px solid #d4af37;
 }
 
 .role-control-plane {
-  background: linear-gradient(135deg, #000000 0%, #1a1a1a 100%);
+  background: transparent;
   color: #d4af37;
   border: 1px solid #d4af37;
 }
 
 .role-worker {
-  background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
-  color: #ffffff;
+  background: transparent;
+  color: #606266;
   border: 1px solid #dcdfe6;
 }
 
@@ -2254,18 +2756,245 @@ onMounted(() => {
 .label-dialog :deep(.el-dialog__header) {
   background: linear-gradient(135deg, #000000 0%, #1a1a1a 100%);
   color: #d4af37;
-  border-radius: 8px 8px 0 0;
-  padding: 20px 24px;
+  border-radius: 12px 12px 0 0;
+  padding: 20px 28px;
+  border-bottom: 2px solid #d4af37;
 }
 
 .label-dialog :deep(.el-dialog__title) {
   color: #d4af37;
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 600;
+  letter-spacing: 0.5px;
 }
 
-.label-dialog-content {
-  padding: 8px 0;
+.label-dialog :deep(.el-dialog__body) {
+  padding: 24px 28px;
+}
+
+.label-dialog :deep(.el-dialog__footer) {
+  padding: 16px 28px;
+  background: #fafbfc;
+  border-top: 1px solid #e0e0e0;
+}
+
+/* 标签编辑模式 */
+.label-edit-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.label-edit-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #000000 0%, #1a1a1a 100%);
+  border-radius: 8px;
+  border: 1px solid #d4af37;
+}
+
+.label-edit-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  color: #d4af37;
+  font-weight: 500;
+}
+
+.label-edit-info .info-icon {
+  font-size: 18px;
+}
+
+.label-edit-count {
+  font-size: 14px;
+  color: #d4af37;
+  padding: 6px 14px;
+  background: rgba(212, 175, 55, 0.15);
+  border-radius: 20px;
+  font-weight: 500;
+}
+
+.label-edit-list {
+  max-height: 420px;
+  overflow-y: auto;
+  padding: 12px;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+}
+
+.label-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 16px;
+  background: #fff;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+  transition: all 0.3s;
+}
+
+.label-edit-row:hover {
+  border-color: #d4af37;
+  box-shadow: 0 4px 12px rgba(212, 175, 55, 0.15);
+  transform: translateY(-2px);
+}
+
+.label-row-number {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #000000 0%, #1a1a1a 100%);
+  color: #d4af37;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.label-row-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.label-input-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.label-input-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.label-input-label {
+  font-size: 12px;
+  color: #909399;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.label-edit-input {
+  width: 100%;
+}
+
+.label-edit-input :deep(.el-input__wrapper) {
+  background: #fafbfc;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  transition: all 0.3s;
+}
+
+.label-edit-input :deep(.el-input__wrapper:hover) {
+  border-color: #d4af37;
+  background: #fff;
+}
+
+.label-edit-input :deep(.el-input__wrapper.is-focus) {
+  border-color: #d4af37;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.1);
+}
+
+.label-edit-input :deep(.el-input__inner) {
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 13px;
+}
+
+.label-separator {
+  color: #909399;
+  font-weight: 600;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.remove-btn {
+  flex-shrink: 0;
+}
+
+.remove-btn:hover {
+  transform: scale(1.1);
+}
+
+.empty-labels {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+}
+
+.empty-labels .empty-icon {
+  font-size: 48px;
+  color: #d4af37;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.empty-labels p {
+  font-size: 16px;
+  color: #606266;
+  margin: 0 0 8px 0;
+}
+
+.empty-labels span {
+  font-size: 14px;
+  color: #909399;
+}
+
+.add-label-btn {
+  width: 100%;
+  height: 44px;
+  font-size: 15px;
+  border: 2px dashed #d4af37;
+  border-radius: 8px;
+  transition: all 0.3s;
+}
+
+.add-label-btn:hover {
+  border-style: solid;
+  border-color: #bfa13f;
+  background: rgba(212, 175, 55, 0.05);
+  transform: translateY(-2px);
+}
+
+.dialog-footer .edit-btn {
+  background: linear-gradient(135deg, #000000 0%, #1a1a1a 100%);
+  border-color: #d4af37;
+  color: #d4af37;
+}
+
+.dialog-footer .edit-btn:hover {
+  background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+  border-color: #bfa13f;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(212, 175, 55, 0.3);
+}
+
+.dialog-footer .save-btn {
+  background: linear-gradient(135deg, #000000 0%, #1a1a1a 100%);
+  border-color: #d4af37;
+  color: #d4af37;
+  min-width: 120px;
+}
+
+.dialog-footer .save-btn:hover {
+  background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+  border-color: #bfa13f;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(212, 175, 55, 0.3);
 }
 
 .label-table {
@@ -2354,6 +3083,220 @@ onMounted(() => {
   padding: 8px 0;
 }
 
+/* 污点编辑模式 */
+.taint-edit-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.taint-edit-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #000000 0%, #1a1a1a 100%);
+  border-radius: 8px;
+  border: 1px solid #d4af37;
+}
+
+.taint-edit-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  color: #d4af37;
+  font-weight: 500;
+}
+
+.taint-edit-info .info-icon {
+  font-size: 18px;
+}
+
+.taint-edit-count {
+  font-size: 14px;
+  color: #d4af37;
+  padding: 6px 14px;
+  background: rgba(212, 175, 55, 0.15);
+  border-radius: 20px;
+  font-weight: 500;
+}
+
+.taint-edit-list {
+  max-height: 420px;
+  overflow-y: auto;
+  padding: 12px;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+}
+
+.taint-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 16px;
+  background: #fff;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+  transition: all 0.3s;
+}
+
+.taint-edit-row:hover {
+  border-color: #d4af37;
+  box-shadow: 0 4px 12px rgba(212, 175, 55, 0.15);
+  transform: translateY(-2px);
+}
+
+.taint-row-number {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #000000 0%, #1a1a1a 100%);
+  color: #d4af37;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.taint-row-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.taint-input-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.taint-input-wrapper {
+  flex: 1;
+  min-width: 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.taint-input-label {
+  font-size: 12px;
+  color: #909399;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.taint-edit-input {
+  width: 100%;
+}
+
+.taint-edit-input :deep(.el-input__wrapper) {
+  background: #fafbfc;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  transition: all 0.3s;
+}
+
+.taint-edit-input :deep(.el-input__wrapper:hover) {
+  border-color: #d4af37;
+  background: #fff;
+}
+
+.taint-edit-input :deep(.el-input__wrapper.is-focus) {
+  border-color: #d4af37;
+  background: #fff;
+  box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.1);
+}
+
+.taint-separator {
+  color: #909399;
+  font-weight: 600;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.taint-effect-wrapper {
+  min-width: 160px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.taint-effect-select {
+  width: 100%;
+}
+
+.taint-effect-select :deep(.el-input__wrapper) {
+  background: #fafbfc;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+}
+
+.taint-effect-select :deep(.el-input__wrapper:hover) {
+  border-color: #d4af37;
+  background: #fff;
+}
+
+.effect-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.effect-desc {
+  font-size: 12px;
+  color: #909399;
+}
+
+.empty-taints {
+  padding: 40px 20px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.empty-taints .empty-icon {
+  font-size: 48px;
+  color: #d4af37;
+  opacity: 0.5;
+}
+
+.empty-taints p {
+  font-size: 16px;
+  color: #606266;
+  margin: 0 0 4px 0;
+}
+
+.empty-taints span {
+  font-size: 14px;
+  color: #909399;
+}
+
+.add-taint-btn {
+  width: 100%;
+  height: 44px;
+  font-size: 15px;
+  border: 2px dashed #d4af37;
+  border-radius: 8px;
+  transition: all 0.3s;
+}
+
+.add-taint-btn:hover {
+  border-style: solid;
+  border-color: #bfa13f;
+  background: rgba(212, 175, 55, 0.05);
+  transform: translateY(-2px);
+}
+
+/* 表格样式 */
 .taint-table {
   width: 100%;
 }
@@ -2400,7 +3343,7 @@ onMounted(() => {
 .copy-icon {
   font-size: 14px;
   flex-shrink: 0;
-  opacity: 0.7;
+  opacity: 0.6;
   transition: opacity 0.3s;
 }
 
