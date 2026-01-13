@@ -129,7 +129,8 @@
         :row-style="{ height: '56px' }"
         :cell-style="{ padding: '8px 0' }"
       >
-        <el-table-column label="名称" min-width="220" fixed="left">
+        <!-- 名称列（所有类型通用，但显示内容不同） -->
+        <el-table-column label="名称" min-width="200" fixed="left">
           <template #header>
             <span class="header-with-icon">
               <el-icon class="header-icon header-icon-blue"><Tools /></el-icon>
@@ -139,76 +140,210 @@
           <template #default="{ row }">
             <div class="workload-name-cell">
               <div class="workload-name-content">
-                <div class="workload-name golden-text clickable" @click="handleShowDetail(row)">{{ row.name }}</div>
-                <div class="workload-namespace">{{ row.namespace }}</div>
+                <div class="workload-name golden-text clickable" @click="row.type === 'Pod' ? handlePodWorkloadClick(row) : handleShowDetail(row)">{{ row.name }}</div>
+                <!-- Pod类型显示容器，其他类型显示命名空间 -->
+                <div v-if="selectedType === 'Pod'" class="workload-namespace">{{ row.containers || '-' }}</div>
+                <div v-else class="workload-namespace">{{ row.namespace }}</div>
               </div>
             </div>
           </template>
         </el-table-column>
 
-        <el-table-column label="标签" width="120" align="center">
-          <template #default="{ row }">
-            <div class="label-cell" @click="showLabels(row)">
-              <div class="label-badge-wrapper">
-                <span class="label-count">{{ Object.keys(row.labels || {}).length }}</span>
-                <el-icon class="label-icon"><PriceTag /></el-icon>
-              </div>
-            </div>
-          </template>
-        </el-table-column>
-
-        <el-table-column label="容器组" width="150" align="center">
-          <template #default="{ row }">
-            <div class="pod-count-cell">
-              <span class="pod-count">{{ row.readyPods || 0 }}/{{ row.desiredPods || 0 }}</span>
-              <span class="pod-label">Pods</span>
-            </div>
-          </template>
-        </el-table-column>
-
-        <el-table-column label="Requests/Limits" min-width="200">
-          <template #default="{ row }">
-            <div class="resource-cell">
-              <div v-if="row.requests?.cpu || row.limits?.cpu" class="resource-item">
-                <span class="resource-label">CPU:</span>
-                <span v-if="row.requests?.cpu" class="resource-value requests-value">{{ row.requests.cpu }}</span>
-                <span v-if="row.requests?.cpu && row.limits?.cpu" class="resource-separator">/</span>
-                <span v-if="row.limits?.cpu" class="resource-value limits-value">{{ row.limits.cpu }}</span>
-              </div>
-              <div v-if="row.requests?.memory || row.limits?.memory" class="resource-item">
-                <span class="resource-label">Mem:</span>
-                <span v-if="row.requests?.memory" class="resource-value requests-value">{{ row.requests.memory }}</span>
-                <span v-if="row.requests?.memory && row.limits?.memory" class="resource-separator">/</span>
-                <span v-if="row.limits?.memory" class="resource-value limits-value">{{ row.limits.memory }}</span>
-              </div>
-              <div v-if="!row.requests?.cpu && !row.requests?.memory && !row.limits?.cpu && !row.limits?.memory" class="resource-empty">-</div>
-            </div>
-          </template>
-        </el-table-column>
-
-        <el-table-column label="镜像" min-width="300">
-          <template #default="{ row }">
-            <div class="image-cell">
-              <el-tooltip
-                v-if="row.images && row.images.length > 0"
-                :content="row.images.join('\n')"
-                placement="top"
-              >
-                <div class="image-list">
-                  <span v-for="(image, index) in getDisplayImages(row.images)" :key="index" class="image-item">
-                    {{ image }}
-                  </span>
-                  <span v-if="row.images.length > 2" class="image-more">
-                    +{{ row.images.length - 2 }}
-                  </span>
+        <!-- Pod 专用列 -->
+        <template v-if="selectedType === 'Pod'">
+          <!-- CPU/内存 列 -->
+          <el-table-column label="CPU/内存" min-width="150">
+            <template #default="{ row }">
+              <div class="resource-cell">
+                <div v-if="row.cpu || row.memory" class="resource-item">
+                  <span v-if="row.cpu" class="resource-value">{{ row.cpu }}</span>
+                  <span v-if="row.cpu && row.memory" class="resource-separator"> / </span>
+                  <span v-if="row.memory" class="resource-value">{{ row.memory }}</span>
                 </div>
-              </el-tooltip>
-              <span v-else class="image-empty">-</span>
-            </div>
-          </template>
-        </el-table-column>
+                <div v-else class="resource-empty">-</div>
+              </div>
+            </template>
+          </el-table-column>
 
-        <el-table-column label="存活时间" width="150">
+          <!-- 状态列 -->
+          <el-table-column label="状态" width="120" align="center">
+            <template #default="{ row }">
+              <div :class="['status-badge', `status-${row.podStatus?.toLowerCase()}`]">
+                {{ row.podStatus || '-' }}
+              </div>
+            </template>
+          </el-table-column>
+
+          <!-- 重启次数 -->
+          <el-table-column label="重启次数" width="100" align="center">
+            <template #default="{ row }">
+              <span>{{ row.restartCount ?? '-' }}</span>
+            </template>
+          </el-table-column>
+
+          <!-- 命名空间 -->
+          <el-table-column label="命名空间" width="150">
+            <template #default="{ row }">
+              <span>{{ row.namespace }}</span>
+            </template>
+          </el-table-column>
+
+          <!-- Pod IP -->
+          <el-table-column label="PodIP" width="140" align="center">
+            <template #default="{ row }">
+              <span class="pod-ip">{{ row.podIP || '-' }}</span>
+            </template>
+          </el-table-column>
+
+          <!-- 调度节点 -->
+          <el-table-column label="调度节点" min-width="150">
+            <template #default="{ row }">
+              <span>{{ row.node || '-' }}</span>
+            </template>
+          </el-table-column>
+        </template>
+
+        <!-- DaemonSet 专用列 -->
+        <template v-if="selectedType === 'DaemonSet'">
+          <!-- 准备就绪 -->
+          <el-table-column label="准备就绪" width="120" align="center">
+            <template #default="{ row }">
+              <div class="pod-count-cell">
+                <span class="pod-count">{{ row.readyPods || 0 }}/{{ row.desiredPods || 0 }}</span>
+              </div>
+            </template>
+          </el-table-column>
+
+          <!-- 当前调度 -->
+          <el-table-column label="当前调度" width="100" align="center">
+            <template #default="{ row }">
+              <span>{{ row.currentScheduled ?? '-' }}</span>
+            </template>
+          </el-table-column>
+
+          <!-- 期望调度 -->
+          <el-table-column label="期望调度" width="100" align="center">
+            <template #default="{ row }">
+              <span>{{ row.desiredScheduled ?? '-' }}</span>
+            </template>
+          </el-table-column>
+        </template>
+
+        <!-- Deployment 和 StatefulSet 通用列 -->
+        <template v-if="selectedType === 'Deployment' || selectedType === 'StatefulSet'">
+          <!-- 标签 -->
+          <el-table-column label="标签" width="120" align="center">
+            <template #default="{ row }">
+              <div class="label-cell" @click="showLabels(row)">
+                <div class="label-badge-wrapper">
+                  <span class="label-count">{{ Object.keys(row.labels || {}).length }}</span>
+                  <el-icon class="label-icon"><PriceTag /></el-icon>
+                </div>
+              </div>
+            </template>
+          </el-table-column>
+
+          <!-- 容器组 -->
+          <el-table-column label="容器组" width="150" align="center">
+            <template #default="{ row }">
+              <div class="pod-count-cell">
+                <span class="pod-count">{{ row.readyPods || 0 }}/{{ row.desiredPods || 0 }}</span>
+                <span class="pod-label">Pods</span>
+              </div>
+            </template>
+          </el-table-column>
+
+          <!-- Requests/Limits -->
+          <el-table-column label="Requests/Limits" min-width="200">
+            <template #default="{ row }">
+              <div class="resource-cell">
+                <div v-if="row.requests?.cpu || row.limits?.cpu" class="resource-item">
+                  <span class="resource-label">CPU:</span>
+                  <span v-if="row.requests?.cpu" class="resource-value requests-value">{{ row.requests.cpu }}</span>
+                  <span v-if="row.requests?.cpu && row.limits?.cpu" class="resource-separator">/</span>
+                  <span v-if="row.limits?.cpu" class="resource-value limits-value">{{ row.limits.cpu }}</span>
+                </div>
+                <div v-if="row.requests?.memory || row.limits?.memory" class="resource-item">
+                  <span class="resource-label">Mem:</span>
+                  <span v-if="row.requests?.memory" class="resource-value requests-value">{{ row.requests.memory }}</span>
+                  <span v-if="row.requests?.memory && row.limits?.memory" class="resource-separator">/</span>
+                  <span v-if="row.limits?.memory" class="resource-value limits-value">{{ row.limits.memory }}</span>
+                </div>
+                <div v-if="!row.requests?.cpu && !row.requests?.memory && !row.limits?.cpu && !row.limits?.memory" class="resource-empty">-</div>
+              </div>
+            </template>
+          </el-table-column>
+
+          <!-- 镜像 -->
+          <el-table-column label="镜像" min-width="300">
+            <template #default="{ row }">
+              <div class="image-cell">
+                <el-tooltip
+                  v-if="row.images && row.images.length > 0"
+                  :content="row.images.join('\n')"
+                  placement="top"
+                >
+                  <div class="image-list">
+                    <span v-for="(image, index) in getDisplayImages(row.images)" :key="index" class="image-item">
+                      {{ image }}
+                    </span>
+                    <span v-if="row.images.length > 2" class="image-more">
+                      +{{ row.images.length - 2 }}
+                    </span>
+                  </div>
+                </el-tooltip>
+                <span v-else class="image-empty">-</span>
+              </div>
+            </template>
+          </el-table-column>
+        </template>
+
+        <!-- Job 专用列 -->
+        <template v-if="selectedType === 'Job'">
+          <!-- 状态 -->
+          <el-table-column label="状态" width="120" align="center">
+            <template #default="{ row }">
+              <div :class="['status-badge', `status-${row.status?.toLowerCase()}`]">
+                {{ row.status || '-' }}
+              </div>
+            </template>
+          </el-table-column>
+
+          <!-- 耗时 -->
+          <el-table-column label="耗时" width="150">
+            <template #default="{ row }">
+              <span>{{ row.duration || '-' }}</span>
+            </template>
+          </el-table-column>
+        </template>
+
+        <!-- CronJob 专用列 -->
+        <template v-if="selectedType === 'CronJob'">
+          <!-- 调度 -->
+          <el-table-column label="调度" width="150">
+            <template #default="{ row }">
+              <span class="schedule-text">{{ row.schedule || '-' }}</span>
+            </template>
+          </el-table-column>
+
+          <!-- 最后的调度时间 -->
+          <el-table-column label="最后的调度时间" width="180">
+            <template #default="{ row }">
+              <span>{{ row.lastScheduleTime || '-' }}</span>
+            </template>
+          </el-table-column>
+
+          <!-- 暂停 -->
+          <el-table-column label="暂停" width="80" align="center">
+            <template #default="{ row }">
+              <el-tag v-if="row.suspended" type="info" size="small">是</el-tag>
+              <el-tag v-else type="success" size="small">否</el-tag>
+            </template>
+          </el-table-column>
+        </template>
+
+        <!-- 存活时间（除 Pod 外的所有类型） -->
+        <el-table-column v-if="selectedType !== 'Pod'" label="存活时间" width="150">
           <template #default="{ row }">
             <div class="age-cell">
               <el-icon class="age-icon"><Clock /></el-icon>
@@ -217,41 +352,83 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" width="80" fixed="right" align="center">
+        <!-- Pod 的存活时间列 -->
+        <el-table-column v-if="selectedType === 'Pod'" label="存活时间" width="150">
           <template #default="{ row }">
-            <el-dropdown trigger="click" @command="(command: string) => handleActionCommand(command, row)">
-              <el-button link class="action-btn">
-                <el-icon :size="18"><Edit /></el-icon>
-              </el-button>
-              <template #dropdown>
-                <el-dropdown-menu class="action-dropdown-menu">
-                  <el-dropdown-item command="edit">
-                    <el-icon><Edit /></el-icon>
-                    <span>编辑</span>
-                  </el-dropdown-item>
-                  <el-dropdown-item command="yaml">
-                    <el-icon><Document /></el-icon>
-                    <span>YAML</span>
-                  </el-dropdown-item>
-                  <el-dropdown-item command="pods">
-                    <el-icon><Monitor /></el-icon>
-                    <span>Pods</span>
-                  </el-dropdown-item>
-                  <el-dropdown-item command="restart" divided>
-                    <el-icon><RefreshRight /></el-icon>
-                    <span>重启</span>
-                  </el-dropdown-item>
-                  <el-dropdown-item command="scale">
-                    <el-icon><Rank /></el-icon>
-                    <span>扩缩容</span>
-                  </el-dropdown-item>
-                  <el-dropdown-item command="delete" divided class="danger-item">
-                    <el-icon><Delete /></el-icon>
-                    <span>删除</span>
-                  </el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
+            <div class="age-cell">
+              <el-icon class="age-icon"><Clock /></el-icon>
+              <span>{{ formatAge(row.createdAt) }}</span>
+            </div>
+          </template>
+        </el-table-column>
+
+        <!-- 操作列 -->
+        <el-table-column label="操作" width="180" fixed="right" align="center">
+          <template #default="{ row }">
+            <!-- Pod 类型工作负载的特殊菜单 -->
+            <template v-if="selectedType === 'Pod'">
+              <el-popover
+                placement="bottom"
+                :width="220"
+                trigger="click"
+                @before-enter="fetchPodDetailsForMenu(row.name, row.namespace)"
+              >
+                <template #reference>
+                  <el-button link class="action-btn">
+                    <el-icon :size="18"><Edit /></el-icon>
+                  </el-button>
+                </template>
+                <div v-loading="podMenuLoading" class="pod-action-menu">
+                  <template v-if="podMenuData && podMenuData.spec?.containers">
+                    <!-- 容器选项 -->
+                    <div v-for="container in podMenuData.spec.containers" :key="container.name" class="container-actions">
+                      <div class="container-name">{{ container.name }}</div>
+                      <div class="container-menu-items">
+                        <div class="menu-item" @click="handleOpenFileBrowser(row.name, container.name, row.namespace)">
+                          <el-icon><FolderOpened /></el-icon>
+                          <span>文件浏览</span>
+                        </div>
+                        <div class="menu-item" @click="handleOpenTerminal(row.name, container.name, row.namespace)">
+                          <el-icon><Monitor /></el-icon>
+                          <span>终端</span>
+                        </div>
+                        <div class="menu-item" @click="handleOpenLogs(row.name, container.name, row.namespace)">
+                          <el-icon><Document /></el-icon>
+                          <span>日志</span>
+                        </div>
+                      </div>
+                    </div>
+                    <!-- 分割线 -->
+                    <el-divider style="margin: 8px 0" />
+                    <!-- 删除 Pod -->
+                    <div class="menu-item danger" @click="handleDeletePod(row.name, row.namespace)">
+                      <el-icon><Delete /></el-icon>
+                      <span>删除 Pod</span>
+                    </div>
+                  </template>
+                  <div v-else-if="!podMenuLoading" class="menu-error">
+                    加载失败
+                  </div>
+                </div>
+              </el-popover>
+            </template>
+            <!-- 非Pod 类型工作负载的标准操作 -->
+            <template v-else>
+              <div class="action-buttons">
+                <!-- YAML 按钮 -->
+                <el-button link class="action-btn" @click="handleWorkloadYAML(row)" title="YAML">
+                  <el-icon :size="16"><Document /></el-icon>
+                </el-button>
+                <!-- 编辑按钮 -->
+                <el-button link class="action-btn" @click="handleWorkloadEdit(row)" title="编辑">
+                  <el-icon :size="16"><Edit /></el-icon>
+                </el-button>
+                <!-- 删除按钮 -->
+                <el-button link class="action-btn danger" @click="handleWorkloadDelete(row)" title="删除">
+                  <el-icon :size="16"><Delete /></el-icon>
+                </el-button>
+              </div>
+            </template>
           </template>
         </el-table-column>
       </el-table>
@@ -410,7 +587,7 @@
               <el-table :data="detailData.pods" size="default" class="pods-table">
                 <el-table-column prop="metadata.name" label="名称" min-width="220" show-overflow-tooltip>
                   <template #default="{ row }">
-                    <div class="pod-name-cell">
+                    <div class="pod-name-cell" @click="showPodDetail(row)" style="cursor: pointer;">
                       <el-icon class="pod-icon"><Box /></el-icon>
                       <span class="pod-name">{{ row.metadata?.name }}</span>
                     </div>
@@ -991,6 +1168,7 @@
       width="90%"
       :close-on-click-modal="false"
       class="logs-dialog"
+      @opened="handleLogsDialogOpened"
     >
       <div class="logs-toolbar">
         <el-button size="small" @click="handleRefreshLogs" :loading="logsLoading">
@@ -1097,6 +1275,23 @@
         </div>
       </template>
     </el-dialog>
+
+    <!-- Pod 详情对话框 -->
+    <PodDetail
+      v-model:visible="podDetailVisible"
+      :cluster-id="selectedClusterId"
+      :namespace="selectedPodNamespace"
+      :pod-name="selectedPodName"
+    />
+
+    <!-- File Browser 对话框 -->
+    <FileBrowser
+      v-model:visible="fileBrowserVisible"
+      :cluster-id="selectedClusterId"
+      :namespace="selectedFileBrowserNamespace"
+      :pod-name="selectedFileBrowserPod"
+      :container-name="selectedFileBrowserContainer"
+    />
   </div>
 </template>
 
@@ -1155,6 +1350,8 @@ import Tolerations from './workload-components/spec/Tolerations.vue'
 import Network from './workload-components/spec/Network.vue'
 import Others from './workload-components/spec/Others.vue'
 import VolumeConfig from './workload-components/VolumeConfig.vue'
+import PodDetail from './PodDetail.vue'
+import FileBrowser from './FileBrowser.vue'
 
 // 工作负载接口定义
 interface Workload {
@@ -1169,6 +1366,25 @@ interface Workload {
   images?: string[]
   createdAt?: string
   updatedAt?: string
+  // DaemonSet 专用字段
+  currentScheduled?: number
+  desiredScheduled?: number
+  // Job 专用字段
+  status?: string
+  duration?: string
+  completionTime?: string
+  // CronJob 专用字段
+  schedule?: string
+  lastScheduleTime?: string
+  suspended?: boolean
+  // Pod 专用字段
+  containers?: string
+  cpu?: string
+  memory?: string
+  podStatus?: string
+  restartCount?: number
+  podIP?: string
+  node?: string
 }
 
 interface Namespace {
@@ -1221,6 +1437,21 @@ const detailDialogVisible = ref(false)
 const detailData = ref<any>(null)
 const activeDetailTab = ref('pods')
 
+// Pod 详情弹窗
+const podDetailVisible = ref(false)
+const selectedPodName = ref('')
+const selectedPodNamespace = ref('')
+
+// File Browser 对话框
+const fileBrowserVisible = ref(false)
+const selectedFileBrowserPod = ref('')
+const selectedFileBrowserNamespace = ref('')
+const selectedFileBrowserContainer = ref('')
+
+// Pod 操作菜单数据
+const podMenuData = ref<any>(null)
+const podMenuLoading = ref(false)
+
 // 工作负载编辑弹窗
 const editDialogVisible = ref(false)
 const editSaving = ref(false)
@@ -1252,6 +1483,7 @@ const logsData = ref({
 const logsWrapper = ref<HTMLDivElement | null>(null)
 const logsAutoScroll = ref(true)
 const logsTailLines = ref(500)
+let logsRefreshTimer: number | null = null
 
 // 暂停状态
 const isWorkloadPaused = ref(false)
@@ -1779,7 +2011,6 @@ const handleAddWorkloadForm = async () => {
     labels: [{ key: 'app', value: '' }],
     annotations: [],
     replicas: 1,
-    schedule: workloadType === 'CronJob' ? '0 * * * *' : undefined,
     containers: [],
     initContainers: [],
     volumes: [],
@@ -1801,7 +2032,10 @@ const handleAddWorkloadForm = async () => {
       nameservers: [],
       searches: [],
       options: []
-    }
+    },
+    terminationGracePeriodSeconds: 30,
+    serviceAccountName: 'default',
+    restartPolicy: (workloadType === 'Job' || workloadType === 'CronJob') ? 'OnFailure' : 'Always'
   }
 
   console.log('🔍 Loading nodes...')
@@ -1909,12 +2143,33 @@ const updateWorkloadTypeCounts = (allWorkloads: Workload[]) => {
 }
 
 // 处理下拉菜单命令
-const handleActionCommand = (command: string, row: Workload) => {
+const handleActionCommand = async (command: string | any, row: Workload) => {
   selectedWorkload.value = row
 
+  // 处理 Pod 特定的命令（对象格式）
+  if (typeof command === 'object' && command !== null) {
+    const { action, container, pod } = command
+    if (action === 'file-browser') {
+      handleOpenFileBrowser(pod, container, row.namespace)
+    } else if (action === 'terminal') {
+      handleOpenTerminal(pod, container, row.namespace)
+    } else if (action === 'logs') {
+      handleOpenLogs(pod, container, row.namespace)
+    } else if (action === 'delete-pod') {
+      handleDeletePod(pod, row.namespace)
+    }
+    return
+  }
+
+  // 处理字符串命令
   switch (command) {
     case 'edit':
-      handleShowEditDialog()
+      // 如果是 Pod 类型，先获取 Pod 详情
+      if (row.type === 'Pod') {
+        await fetchPodDetailsForMenu(row.name, row.namespace)
+      } else {
+        handleShowEditDialog()
+      }
       break
     case 'yaml':
       handleShowYAML()
@@ -1932,6 +2187,73 @@ const handleActionCommand = (command: string, row: Workload) => {
       handleDelete()
       break
   }
+}
+
+// 获取 Pod 详情用于操作菜单
+const fetchPodDetailsForMenu = async (podName: string, namespace: string) => {
+  podMenuLoading.value = true
+  try {
+    const token = localStorage.getItem('token')
+    const response = await axios.get(`/api/v1/plugins/kubernetes/resources/pods/${namespace}/${podName}`, {
+      params: { clusterId: selectedClusterId.value },
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    // 后端直接返回 Pod 对象，不在 data 字段中
+    podMenuData.value = response.data
+  } catch (error: any) {
+    console.error('获取 Pod 详情失败:', error)
+    ElMessage.error('获取 Pod 详情失败: ' + (error.response?.data?.message || error.message))
+    podMenuData.value = null
+  } finally {
+    podMenuLoading.value = false
+  }
+}
+
+// 删除 Pod
+const handleDeletePod = async (podName: string, namespace: string) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除 Pod "${podName}" 吗？此操作不可撤销！`,
+      '删除确认',
+      {
+        confirmButtonText: '删除',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+
+    const token = localStorage.getItem('token')
+    await axios.delete(`/api/v1/plugins/kubernetes/resources/pods/${namespace}/${podName}`, {
+      params: { clusterId: selectedClusterId.value },
+      headers: { Authorization: `Bearer ${token}` }
+    })
+
+    ElMessage.success('Pod 删除成功')
+    await loadWorkloads()
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      console.error('删除 Pod 失败:', error)
+      ElMessage.error(error.response?.data?.message || '删除 Pod 失败')
+    }
+  }
+}
+
+// 工作负载 YAML 操作（用于非Pod类型）
+const handleWorkloadYAML = (row: Workload) => {
+  selectedWorkload.value = row
+  handleShowYAML()
+}
+
+// 工作负载编辑操作（用于非Pod类型）
+const handleWorkloadEdit = (row: Workload) => {
+  selectedWorkload.value = row
+  handleShowEditDialog()
+}
+
+// 工作负载删除操作（用于非Pod类型）
+const handleWorkloadDelete = (row: Workload) => {
+  selectedWorkload.value = row
+  handleDelete()
 }
 
 // 加载节点列表
@@ -2039,6 +2361,25 @@ const updateCronJobConfig = (data: any) => {
 // 更新 Job 配置
 const updateJobConfig = (data: any) => {
   jobConfig.value = { ...data }
+}
+
+// 显示 Pod 详情
+const showPodDetail = (pod: any) => {
+  selectedPodName.value = pod.metadata?.name || ''
+  selectedPodNamespace.value = pod.metadata?.namespace || detailData.value.namespace || ''
+  podDetailVisible.value = true
+}
+
+// 处理工作负载列表中点击 Pod 类型项目
+const handlePodWorkloadClick = async (workload: Workload) => {
+  // 构造一个类似 Pod 对象的结构
+  const pod = {
+    metadata: {
+      name: workload.name,
+      namespace: workload.namespace
+    }
+  }
+  showPodDetail(pod)
 }
 
 // 显示工作负载详情
@@ -2952,7 +3293,44 @@ const handleOpenLogs = async (podName: string, containerName: string, namespace:
   }
   logsContent.value = ''
   logsDialogVisible.value = true
+  // 不在这里加载日志，等待对话框打开后再加载
+}
+
+// 日志对话框打开后的事件处理
+const handleLogsDialogOpened = async () => {
   await handleLoadLogs()
+
+  // 启动自动刷新定时器（每3秒刷新一次）
+  if (logsRefreshTimer) clearInterval(logsRefreshTimer)
+  logsRefreshTimer = window.setInterval(() => {
+    handleLoadLogs()
+  }, 3000)
+}
+
+// 停止日志自动刷新
+const stopLogsAutoRefresh = () => {
+  if (logsRefreshTimer) {
+    clearInterval(logsRefreshTimer)
+    logsRefreshTimer = null
+  }
+}
+
+// 打开文件浏览器
+const handleOpenFileBrowser = (podName: string, containerName: string, namespace: string) => {
+  if (!selectedClusterId.value) {
+    ElMessage.error('请先选择集群')
+    return
+  }
+  console.log('📂 Opening file browser:', {
+    clusterId: selectedClusterId.value,
+    namespace,
+    podName,
+    containerName
+  })
+  selectedFileBrowserPod.value = podName
+  selectedFileBrowserNamespace.value = namespace
+  selectedFileBrowserContainer.value = containerName
+  fileBrowserVisible.value = true
 }
 
 // 加载日志
@@ -2976,13 +3354,16 @@ const handleLoadLogs = async () => {
 
     logsContent.value = response.data.data?.logs || ''
 
-    // 自动滚动到底部
+    // 自动滚动到底部 - 使用 setTimeout 确保 DOM 完全渲染
     if (logsAutoScroll.value) {
-      nextTick(() => {
+      setTimeout(() => {
         if (logsWrapper.value) {
+          console.log('滚动到底部，scrollHeight:', logsWrapper.value.scrollHeight)
           logsWrapper.value.scrollTop = logsWrapper.value.scrollHeight
+        } else {
+          console.log('logsWrapper.value 为 null')
         }
-      })
+      }, 100)
     }
   } catch (error: any) {
     console.error('获取日志失败:', error)
@@ -3015,11 +3396,19 @@ const handleDownloadLogs = () => {
 // 监听日志内容变化，自动滚动到底部
 watch(logsContent, () => {
   if (logsAutoScroll.value && logsWrapper.value) {
-    nextTick(() => {
+    // 使用 setTimeout 确保 DOM 完全渲染
+    setTimeout(() => {
       if (logsWrapper.value) {
         logsWrapper.value.scrollTop = logsWrapper.value.scrollHeight
       }
-    })
+    }, 100)
+  }
+})
+
+// 监听对话框关闭，停止自动刷新
+watch(logsDialogVisible, (newVal) => {
+  if (!newVal) {
+    stopLogsAutoRefresh()
   }
 })
 
@@ -3236,8 +3625,18 @@ const handleShowEditDialog = async () => {
       console.log('🔍 副本数 replicas:', workloadData.spec?.replicas)
       console.log('🔍 完整的 spec:', workloadData.spec)
 
+      // CronJob 的数据路径不同，需要特殊处理
+      const isCronJob = workloadType === 'CronJob'
+      const templateSpec = isCronJob
+        ? workloadData.spec?.jobTemplate?.spec?.template?.spec
+        : workloadData.spec?.template?.spec
+
+      console.log('🔍 workloadType:', workloadType)
+      console.log('🔍 isCronJob:', isCronJob)
+      console.log('🔍 templateSpec:', templateSpec)
+
       // 转换 nodeSelector 为 matchRules 格式
-      const nodeSelector = workloadData.spec?.template?.spec?.nodeSelector || {}
+      const nodeSelector = templateSpec?.nodeSelector || {}
       console.log('🔍 从 Kubernetes 加载的 nodeSelector:', nodeSelector)
 
       const matchRules = Object.entries(nodeSelector).map(([key, value]) => {
@@ -3261,7 +3660,7 @@ const handleShowEditDialog = async () => {
       console.log('🔍 matchRules 长度:', matchRules.length)
 
       // 解析 DNS 配置
-      const dnsConfig = workloadData.spec?.template?.spec?.dnsConfig || {}
+      const dnsConfig = templateSpec?.dnsConfig || {}
       const parsedDnsConfig = {
         nameservers: dnsConfig.nameservers || [],
         searches: dnsConfig.searches || [],
@@ -3272,13 +3671,10 @@ const handleShowEditDialog = async () => {
       }
 
       // 转换数据格式以适应组件
-      const calculatedSchedulingType = workloadData.spec?.template?.spec?.nodeName ? 'specified' :
+      const calculatedSchedulingType = templateSpec?.nodeName ? 'specified' :
                                         (Object.keys(nodeSelector).length > 0 ? 'match' : 'any')
 
-      console.log('🔍 ====== 加载工作负载调试信息 ======')
-      console.log('🔍 workloadData.spec?.template?.spec:', workloadData.spec?.template?.spec)
-      console.log('🔍 nodeName:', workloadData.spec?.template?.spec?.nodeName)
-      console.log('🔍 nodeSelector:', nodeSelector)
+      console.log('🔍 nodeName:', templateSpec?.nodeName)
       console.log('🔍 nodeSelector keys:', Object.keys(nodeSelector))
       console.log('🔍 计算的 schedulingType:', calculatedSchedulingType)
 
@@ -3287,32 +3683,33 @@ const handleShowEditDialog = async () => {
         namespace: workloadData.metadata?.namespace || namespace,
         type: workloadData.kind || workloadType,
         replicas: workloadData.spec?.replicas || 0,
-        schedule: workloadData.spec?.schedule || undefined,  // CronJob 调度规则
         labels: objectToKeyValueArray(workloadData.metadata?.labels || {}),
         annotations: objectToKeyValueArray(workloadData.metadata?.annotations || {}),
         nodeSelector: nodeSelector,
-        nodeName: workloadData.spec?.template?.spec?.nodeName || '',
-        specifiedNode: workloadData.spec?.template?.spec?.nodeName || '',
+        nodeName: templateSpec?.nodeName || '',
+        specifiedNode: templateSpec?.nodeName || '',
         schedulingType: calculatedSchedulingType,
         matchRules: matchRules,
-        affinity: workloadData.spec?.template?.spec?.affinity || {},
-        tolerations: workloadData.spec?.template?.spec?.tolerations || [],
-        containers: parseContainers(workloadData.spec?.template?.spec?.containers || []),
-        initContainers: parseContainers(workloadData.spec?.template?.spec?.initContainers || []),
-        volumes: parseVolumesFromKubernetes(workloadData.spec?.template?.spec?.volumes || []),
-        hostNetwork: workloadData.spec?.template?.spec?.hostNetwork || false,
-        dnsPolicy: workloadData.spec?.template?.spec?.dnsPolicy || 'ClusterFirst',
-        hostname: workloadData.spec?.template?.spec?.hostname || '',
-        subdomain: workloadData.spec?.template?.spec?.subdomain || '',
+        affinity: templateSpec?.affinity || {},
+        tolerations: templateSpec?.tolerations || [],
+        containers: parseContainers(templateSpec?.containers || []),
+        initContainers: parseContainers(templateSpec?.initContainers || []),
+        volumes: parseVolumesFromKubernetes(templateSpec?.volumes || []),
+        hostNetwork: templateSpec?.hostNetwork || false,
+        dnsPolicy: templateSpec?.dnsPolicy || 'ClusterFirst',
+        hostname: templateSpec?.hostname || '',
+        subdomain: templateSpec?.subdomain || '',
         dnsConfig: parsedDnsConfig,
-        terminationGracePeriodSeconds: workloadData.spec?.template?.spec?.terminationGracePeriodSeconds || 30,
-        activeDeadlineSeconds: workloadData.spec?.template?.spec?.activeDeadlineSeconds,
-        serviceAccountName: workloadData.spec?.template?.spec?.serviceAccountName || 'default',
-        restartPolicy: workloadData.spec?.template?.spec?.restartPolicy || 'Always'
+        terminationGracePeriodSeconds: templateSpec?.terminationGracePeriodSeconds || 30,
+        activeDeadlineSeconds: templateSpec?.activeDeadlineSeconds,
+        serviceAccountName: templateSpec?.serviceAccountName || 'default',
+        // 根据工作负载类型设置正确的重启策略默认值
+        restartPolicy: templateSpec?.restartPolicy ||
+          ((workloadType === 'Job' || workloadType === 'CronJob') ? 'OnFailure' : 'Always')
       }
 
       // 解析亲和性规则
-      affinityRules.value = parseAffinityRules(workloadData.spec?.template?.spec?.affinity || {})
+      affinityRules.value = parseAffinityRules(templateSpec?.affinity || {})
       editingAffinityRule.value = null
 
       // 解析扩缩容策略
@@ -3792,9 +4189,25 @@ const convertToKubernetesYaml = (data: any, cluster: string, namespace: string):
   const initContainers = (data.initContainers || []).map((c: any) => buildContainer(c, volumes))
 
   // 构建 pod template spec
+  // 根据工作负载类型设置正确的 restartPolicy
+  console.log('🔍 [restartPolicy] data.type:', data.type)
+  console.log('🔍 [restartPolicy] data.restartPolicy:', data.restartPolicy)
+  console.log('🔍 [restartPolicy] editWorkloadData.value.restartPolicy:', editWorkloadData.value.restartPolicy)
+
+  let restartPolicy = 'Always'  // 默认值
+  if (data.type === 'Job' || data.type === 'CronJob') {
+    // 如果用户明确设置了值，使用用户的值；否则使用默认值 OnFailure
+    restartPolicy = (data.restartPolicy && data.restartPolicy !== '') ? data.restartPolicy : 'OnFailure'
+  } else if (data.type === 'Pod') {
+    restartPolicy = (data.restartPolicy && data.restartPolicy !== '') ? data.restartPolicy : 'Always'
+  }
+  // Deployment/StatefulSet/DaemonSet 使用 Always
+
+  console.log('🔍 [restartPolicy] 最终设置的 restartPolicy:', restartPolicy)
+
   const podSpec: any = {
     containers,
-    restartPolicy: 'Always',
+    restartPolicy,
     dnsPolicy: 'ClusterFirst'
   }
 
@@ -3981,7 +4394,7 @@ const convertToKubernetesYaml = (data: any, cluster: string, namespace: string):
     }
 
     spec = {
-      schedule: data.schedule || cronJobConfig.value.schedule,
+      schedule: cronJobConfig.value.schedule,
       concurrencyPolicy: cronJobConfig.value.concurrencyPolicy,
       successfulJobsHistoryLimit: cronJobConfig.value.successfulJobsHistoryLimit,
       failedJobsHistoryLimit: cronJobConfig.value.failedJobsHistoryLimit,
@@ -4430,12 +4843,14 @@ const handleSaveEdit = async () => {
 
     if (isCreateMode.value) {
       // 创建模式：调用创建API
+      // 将JSON字符串解析为对象
+      const workloadObj = JSON.parse(yaml)
       const token = localStorage.getItem('token')
       await axios.post(
         `/api/v1/plugins/kubernetes/resources/workloads/create`,
         {
           clusterId: selectedClusterId.value,
-          yaml: yaml
+          ...workloadObj  // 直接展开Kubernetes资源对象的字段
         },
         { headers: { Authorization: `Bearer ${token}` } }
       )
@@ -4697,6 +5112,8 @@ onUnmounted(() => {
     terminal.dispose()
     terminal = null
   }
+  // 停止日志自动刷新
+  stopLogsAutoRefresh()
 })
 
 onMounted(() => {
@@ -4731,15 +5148,15 @@ onMounted(() => {
 .page-title-icon {
   width: 48px;
   height: 48px;
-  background: #d4af37;
+  background: #000;
   border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #1a1a1a;
+  color: #d4af37;
   font-size: 22px;
   flex-shrink: 0;
-  box-shadow: 0 2px 8px rgba(212, 175, 55, 0.3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
 .page-title {
@@ -4764,18 +5181,18 @@ onMounted(() => {
 }
 
 .black-button {
-  background: #d4af37 !important;
-  color: #1a1a1a !important;
+  background: #000 !important;
+  color: #fff !important;
   border: none !important;
   border-radius: 8px;
   padding: 10px 20px;
   font-weight: 600;
-  box-shadow: 0 2px 8px rgba(212, 175, 55, 0.3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
 .black-button:hover {
-  background: #c9a227 !important;
-  box-shadow: 0 4px 12px rgba(212, 175, 55, 0.4);
+  background: #333 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
 }
 
 /* 上下文选择栏 */
@@ -5218,6 +5635,54 @@ onMounted(() => {
   color: #909399;
 }
 
+/* 状态标签 */
+.status-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.status-running {
+  background: #f0f9ff;
+  color: #1890ff;
+}
+
+.status-succeeded {
+  background: #f6ffed;
+  color: #52c41a;
+}
+
+.status-failed {
+  background: #fff1f0;
+  color: #ff4d4f;
+}
+
+.status-pending {
+  background: #fffbe6;
+  color: #faad14;
+}
+
+.status-unknown {
+  background: #f5f5f5;
+  color: #8c8c8c;
+}
+
+/* Pod IP */
+.pod-ip {
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 12px;
+  color: #606266;
+}
+
+/* 调度时间文本 */
+.schedule-text {
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 12px;
+  color: #303133;
+}
+
 /* 镜像单元格 */
 .image-cell {
   display: flex;
@@ -5272,16 +5737,33 @@ onMounted(() => {
 }
 
 /* 操作按钮 */
+.action-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
 .action-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
   font-size: 13px;
   color: #d4af37;
+  padding: 4px;
 }
 
 .action-btn:hover {
   color: #bfa13f;
+}
+
+.action-btn.danger {
+  color: #f56c6c;
+}
+
+.action-btn.danger:hover {
+  color: #f78989;
 }
 
 /* 下拉菜单样式 */
@@ -5634,6 +6116,17 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: all 0.3s ease;
+}
+
+.pod-name-cell:hover {
+  background: #ecf5ff;
+}
+
+.pod-name-cell:hover .pod-name {
+  color: #409eff;
 }
 
 .pod-icon {
@@ -7414,6 +7907,72 @@ onMounted(() => {
 .create-workload-dialog :deep(.el-dialog__footer) {
   padding: 16px 20px;
   border-top: 1px solid #ebeef5;
+}
+
+/* Pod 操作菜单样式 */
+.pod-action-menu {
+  min-width: 200px;
+}
+
+.container-actions {
+  margin-bottom: 12px;
+}
+
+.container-actions:last-of-type {
+  margin-bottom: 0;
+}
+
+.container-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #909399;
+  padding: 4px 8px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  margin-bottom: 6px;
+}
+
+.container-menu-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  font-size: 14px;
+  color: #606266;
+}
+
+.menu-item:hover {
+  background: #f5f7fa;
+  color: #d4af37;
+}
+
+.menu-item.danger {
+  color: #f56c6c;
+}
+
+.menu-item.danger:hover {
+  background: #fef0f0;
+  color: #f56c6c;
+}
+
+.menu-item .el-icon {
+  font-size: 16px;
+}
+
+.menu-error {
+  text-align: center;
+  padding: 20px;
+  color: #909399;
+  font-size: 14px;
 }
 
 </style>

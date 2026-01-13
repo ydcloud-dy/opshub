@@ -1,59 +1,47 @@
 <template>
-  <div class="ingress-list">
+  <div class="storageclass-list">
     <div class="search-bar">
-      <el-input v-model="searchName" placeholder="搜索 Ingress 名称..." clearable class="search-input" @input="handleSearch">
+      <el-input v-model="searchName" placeholder="搜索 StorageClass 名称..." clearable class="search-input" @input="handleSearch">
         <template #prefix>
           <el-icon class="search-icon"><Search /></el-icon>
         </template>
       </el-input>
 
-      <el-select v-model="filterNamespace" placeholder="命名空间" clearable @change="handleSearch" class="filter-select">
-        <el-option label="全部" value="" />
-        <el-option v-for="ns in namespaces" :key="ns.name" :label="ns.name" :value="ns.name" />
-      </el-select>
-
-      <el-button class="black-button" @click="handleCreate">创建 Ingress</el-button>
       <el-button class="black-button" @click="handleCreateYAML">
         <el-icon><Document /></el-icon> YAML创建
+      </el-button>
+
+      <el-button class="black-button" @click="loadStorageClasses">
+        <el-icon><Refresh /></el-icon> 刷新
       </el-button>
     </div>
 
     <div class="table-wrapper">
-      <el-table :data="filteredIngresses" v-loading="loading" class="modern-table" size="default">
-        <el-table-column label="名称" prop="name" min-width="180" fixed>
+      <el-table :data="filteredStorageClasses" v-loading="loading" class="modern-table">
+        <el-table-column label="名称" prop="name" min-width="200" fixed>
           <template #default="{ row }">
             <div class="name-cell">
-              <el-icon class="name-icon"><Link /></el-icon>
+              <el-icon class="name-icon"><Box /></el-icon>
               <div class="name-text">{{ row.name }}</div>
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="命名空间" prop="namespace" width="140" />
-        <el-table-column label="主机名" min-width="200">
+        <el-table-column label="Provisioner" prop="provisioner" min-width="250" />
+        <el-table-column label="回收策略" prop="reclaimPolicy" width="120">
           <template #default="{ row }">
-            <div v-for="host in row.hosts" :key="host" class="host-item">
-              <el-icon class="host-icon"><Monitor /></el-icon>
-              <span class="host-text">{{ host }}</span>
-            </div>
-            <div v-if="!row.hosts.length" class="empty-text">-</div>
+            {{ formatReclaimPolicy(row.reclaimPolicy) }}
           </template>
         </el-table-column>
-        <el-table-column label="路径" min-width="250">
+        <el-table-column label="绑定模式" prop="volumeBindingMode" width="140">
           <template #default="{ row }">
-            <div v-for="(path, index) in row.paths" :key="`${path.path}-${index}`" class="path-item">
-              <div class="path-path">{{ path.path || '/' }}</div>
-              <div class="path-service">
-                <el-icon class="service-icon"><Connection /></el-icon>
-                <span>{{ path.service }}</span>
-                <span class="path-port">:{{ path.port }}</span>
-              </div>
-            </div>
-            <div v-if="!row.paths.length" class="empty-text">-</div>
+            {{ formatVolumeBindingMode(row.volumeBindingMode) }}
           </template>
         </el-table-column>
-        <el-table-column label="Ingress Class" prop="ingressClass" width="150">
+        <el-table-column label="允许卷扩展" width="120" align="center">
           <template #default="{ row }">
-            {{ row.ingressClass || '-' }}
+            <el-tag :type="row.allowVolumeExpansion ? 'success' : 'info'" size="small">
+              {{ row.allowVolumeExpansion ? '是' : '否' }}
+            </el-tag>
           </template>
         </el-table-column>
         <el-table-column label="存活时间" prop="age" width="120" />
@@ -63,11 +51,6 @@
               <el-tooltip content="编辑 YAML" placement="top">
                 <el-button link class="action-btn" @click="handleEditYAML(row)">
                   <el-icon :size="18"><Document /></el-icon>
-                </el-button>
-              </el-tooltip>
-              <el-tooltip content="编辑" placement="top">
-                <el-button link class="action-btn" @click="handleEdit(row)">
-                  <el-icon :size="18"><Edit /></el-icon>
                 </el-button>
               </el-tooltip>
               <el-tooltip content="删除" placement="top">
@@ -81,7 +64,7 @@
       </el-table>
     </div>
 
-    <el-dialog v-model="yamlDialogVisible" :title="`Ingress YAML - ${selectedIngress?.name}`" width="900px" :lock-scroll="false" class="yaml-dialog">
+    <el-dialog v-model="yamlDialogVisible" :title="`StorageClass YAML - ${selectedStorageClass?.name}`" width="900px" :lock-scroll="false" class="yaml-dialog">
       <div class="yaml-editor-wrapper">
         <div class="yaml-line-numbers">
           <div v-for="line in yamlLineCount" :key="line" class="line-number">{{ line }}</div>
@@ -104,7 +87,7 @@
     </el-dialog>
 
     <!-- YAML 创建弹窗 -->
-    <el-dialog v-model="createYamlDialogVisible" title="YAML 创建 Ingress" width="900px" :lock-scroll="false" class="yaml-dialog">
+    <el-dialog v-model="createYamlDialogVisible" title="YAML 创建 StorageClass" width="900px" :lock-scroll="false" class="yaml-dialog">
       <div class="yaml-editor-wrapper">
         <div class="yaml-line-numbers">
           <div v-for="line in createYamlLineCount" :key="line" class="line-number">{{ line }}</div>
@@ -125,43 +108,38 @@
         </div>
       </template>
     </el-dialog>
-
-    <!-- 编辑对话框 -->
-    <IngressEditDialog
-      ref="editDialogRef"
-      :clusterId="clusterId"
-      @success="handleEditSuccess"
-    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, Link, Document, Edit, Delete, Monitor, Connection } from '@element-plus/icons-vue'
+import { Search, Document, Delete, Refresh, Box } from '@element-plus/icons-vue'
 import { load } from 'js-yaml'
-import { getIngresses, getIngressYAML, updateIngressYAML, createIngressYAML, createIngress, deleteIngress, getNamespaces, type IngressInfo } from '@/api/kubernetes'
-import IngressEditDialog from './IngressEditDialog.vue'
+import {
+  getStorageClasses,
+  getStorageClassYAML,
+  updateStorageClassYAML,
+  createStorageClassYAML,
+  deleteStorageClass,
+  type StorageClassInfo
+} from '@/api/kubernetes'
 
 const props = defineProps<{
   clusterId?: number
-  namespace?: string
 }>()
 
-const emit = defineEmits(['edit', 'yaml', 'refresh'])
+const emit = defineEmits(['refresh'])
 
 const loading = ref(false)
 const saving = ref(false)
-const ingressList = ref<IngressInfo[]>([])
-const namespaces = ref<any[]>([])
+const storageClassList = ref<StorageClassInfo[]>([])
 const searchName = ref('')
-const filterNamespace = ref('')
 const yamlDialogVisible = ref(false)
 const yamlContent = ref('')
-const selectedIngress = ref<IngressInfo | null>(null)
+const selectedStorageClass = ref<StorageClassInfo | null>(null)
 const yamlTextarea = ref<HTMLTextAreaElement | null>(null)
-const originalJsonData = ref<any>(null) // 保存原始 JSON 数据
-const editDialogRef = ref<any>(null)
+const originalJsonData = ref<any>(null)
 
 // YAML 创建相关
 const createYamlDialogVisible = ref(false)
@@ -169,7 +147,6 @@ const creating = ref(false)
 const createYamlContent = ref('')
 const createYamlTextarea = ref<HTMLTextAreaElement | null>(null)
 
-// 计算YAML行数
 const yamlLineCount = computed(() => {
   if (!yamlContent.value) return 1
   return yamlContent.value.split('\n').length
@@ -180,41 +157,28 @@ const createYamlLineCount = computed(() => {
   return createYamlContent.value.split('\n').length
 })
 
-const filteredIngresses = computed(() => {
-  let result = ingressList.value
+const filteredStorageClasses = computed(() => {
+  let result = storageClassList.value
   if (searchName.value) {
-    result = result.filter(i => i.name.toLowerCase().includes(searchName.value.toLowerCase()))
-  }
-  if (filterNamespace.value) {
-    result = result.filter(i => i.namespace === filterNamespace.value)
+    result = result.filter(s => s.name.toLowerCase().includes(searchName.value.toLowerCase()))
   }
   return result
 })
 
-const loadIngresses = async (showSuccess = false) => {
+const loadStorageClasses = async (showSuccess = false) => {
   if (!props.clusterId) return
   loading.value = true
   try {
-    const data = await getIngresses(props.clusterId, props.namespace || undefined)
-    ingressList.value = data || []
+    const data = await getStorageClasses(props.clusterId)
+    storageClassList.value = data || []
     if (showSuccess) {
       ElMessage.success('刷新成功')
     }
   } catch (error) {
     console.error(error)
-    ElMessage.error('获取 Ingress 列表失败')
+    ElMessage.error('获取 StorageClass 列表失败')
   } finally {
     loading.value = false
-  }
-}
-
-const loadNamespaces = async () => {
-  if (!props.clusterId) return
-  try {
-    const data = await getNamespaces(props.clusterId)
-    namespaces.value = data || []
-  } catch (error) {
-    console.error(error)
   }
 }
 
@@ -222,54 +186,43 @@ const handleSearch = () => {
   // 本地过滤
 }
 
-const handleCreate = () => {
-  editDialogRef.value?.openCreate(namespaces.value)
+const formatReclaimPolicy = (policy: string) => {
+  const policyMap: Record<string, string> = {
+    'Retain': '保留',
+    'Delete': '删除'
+  }
+  return policyMap[policy] || policy
+}
+
+const formatVolumeBindingMode = (mode: string) => {
+  const modeMap: Record<string, string> = {
+    'Immediate': '立即绑定',
+    'WaitForFirstConsumer': '等待消费者'
+  }
+  return modeMap[mode] || mode
 }
 
 const handleCreateYAML = () => {
-  const defaultNamespace = props.namespace || 'default'
-  // 设置默认 YAML 模板
-  createYamlContent.value = `apiVersion: networking.k8s.io/v1
-kind: Ingress
+  createYamlContent.value = `apiVersion: storage.k8s.io/v1
+kind: StorageClass
 metadata:
-  name: my-ingress
-  namespace: ${defaultNamespace}
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
-spec:
-  ingressClassName: nginx
-  rules:
-    - host: example.com
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: my-service
-                port:
-                  number: 80
+  name: standard
+provisioner: kubernetes.io/aws-ebs
+parameters:
+  type: gp2
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
 `
   createYamlDialogVisible.value = true
 }
 
-const handleEdit = (ingress: IngressInfo) => {
-  editDialogRef.value?.openEdit(ingress, namespaces.value)
-}
-
-const handleEditSuccess = () => {
-  emit('refresh')
-  loadIngresses()
-}
-
-const handleEditYAML = async (ingress: IngressInfo) => {
+const handleEditYAML = async (sc: StorageClassInfo) => {
   if (!props.clusterId) return
-  selectedIngress.value = ingress
+  selectedStorageClass.value = sc
   try {
-    const response = await getIngressYAML(props.clusterId, ingress.namespace, ingress.name)
-    // 保存原始 JSON 数据
-    originalJsonData.value = response.items || response
-    // 转换为 YAML 格式
+    const response = await getStorageClassYAML(props.clusterId, sc.name)
+    originalJsonData.value = response
     const yaml = jsonToYaml(originalJsonData.value)
     yamlContent.value = yaml
     yamlDialogVisible.value = true
@@ -304,7 +257,6 @@ const jsonToYaml = (obj: any, indent = 0): string => {
   return result
 }
 
-// 使用 js-yaml 库解析 YAML
 const yamlToJson = (yaml: string): any => {
   try {
     return load(yaml)
@@ -315,45 +267,39 @@ const yamlToJson = (yaml: string): any => {
 }
 
 const handleSaveYAML = async () => {
-  if (!props.clusterId || !selectedIngress.value) return
+  if (!props.clusterId || !selectedStorageClass.value) return
 
   saving.value = true
   try {
-    // 尝试将 YAML 转回 JSON，如果失败则使用原始 JSON
     let jsonData = originalJsonData.value
     try {
       jsonData = yamlToJson(yamlContent.value)
-      // 确保基本的元数据存在
       if (!jsonData.metadata) {
         jsonData.metadata = {}
       }
-      if (!jsonData.metadata.name && selectedIngress.value) {
-        jsonData.metadata.name = selectedIngress.value.name
-      }
-      if (!jsonData.metadata.namespace && selectedIngress.value) {
-        jsonData.metadata.namespace = selectedIngress.value.namespace
+      if (!jsonData.metadata.name && selectedStorageClass.value) {
+        jsonData.metadata.name = selectedStorageClass.value.name
       }
       if (!jsonData.apiVersion) {
-        jsonData.apiVersion = 'networking.k8s.io/v1'
+        jsonData.apiVersion = 'storage.k8s.io/v1'
       }
       if (!jsonData.kind) {
-        jsonData.kind = 'Ingress'
+        jsonData.kind = 'StorageClass'
       }
     } catch (e) {
       console.warn('YAML 解析失败，使用原始 JSON:', e)
       jsonData = originalJsonData.value
     }
 
-    await updateIngressYAML(
+    await updateStorageClassYAML(
       props.clusterId,
-      selectedIngress.value.namespace,
-      selectedIngress.value.name,
+      selectedStorageClass.value.name,
       jsonData
     )
     ElMessage.success('保存成功')
     yamlDialogVisible.value = false
     emit('refresh')
-    await loadIngresses()
+    await loadStorageClasses()
   } catch (error) {
     console.error(error)
     ElMessage.error('保存失败')
@@ -374,86 +320,33 @@ const handleYamlScroll = (e: Event) => {
   }
 }
 
-const handleDelete = async (ingress: IngressInfo) => {
-  if (!props.clusterId) return
-  try {
-    await ElMessageBox.confirm(`确定要删除 Ingress ${ingress.name} 吗？`, '删除确认', { type: 'error' })
-    await deleteIngress(props.clusterId, ingress.namespace, ingress.name)
-    ElMessage.success('删除成功')
-    emit('refresh')
-    await loadIngresses()
-  } catch (error) {
-    if (error !== 'cancel') {
-      console.error(error)
-      ElMessage.error('删除失败')
-    }
-  }
-}
-
 const handleSaveCreateYAML = async () => {
   if (!props.clusterId) return
 
   creating.value = true
   try {
     const jsonData = yamlToJson(createYamlContent.value)
-    // 确保基本的元数据存在
     if (!jsonData.apiVersion) {
-      jsonData.apiVersion = 'networking.k8s.io/v1'
+      jsonData.apiVersion = 'storage.k8s.io/v1'
     }
     if (!jsonData.kind) {
-      jsonData.kind = 'Ingress'
+      jsonData.kind = 'StorageClass'
     }
     if (!jsonData.metadata) {
       jsonData.metadata = {}
     }
 
-    // 从 YAML 中提取命名空间和名称
-    const namespace = jsonData.metadata.namespace || props.namespace || 'default'
-    const name = jsonData.metadata.name
-
-    if (!name) {
-      ElMessage.error('YAML 中缺少 metadata.name 字段')
-      return
-    }
-
-    // 从 spec 中提取 rules
-    const spec = jsonData.spec || {}
-    const rules = (spec.rules || []).map((rule: any) => ({
-      host: rule.host,
-      paths: (rule.http?.paths || []).map((p: any) => ({
-        path: p.path,
-        pathType: p.pathType || 'Prefix',
-        service: p.backend?.service?.name,
-        port: p.backend?.service?.port?.number
-      }))
-    }))
-
-    // 提取 TLS 配置
-    const tls = (spec.tls || []).map((t: any) => ({
-      hosts: t.hosts || [],
-      secretName: t.secretName
-    }))
-
-    // 提取 ingressClassName
-    const ingressClassName = spec.ingressClassName
-
-    // 构建创建请求数据
-    const createData = {
-      name,
-      namespace,
-      ingressClassName,
-      rules,
-      tls
-    }
-
-    await createIngress(props.clusterId, namespace, createData)
+    await createStorageClassYAML(
+      props.clusterId,
+      jsonData
+    )
     ElMessage.success('创建成功')
     createYamlDialogVisible.value = false
     emit('refresh')
-    await loadIngresses()
+    await loadStorageClasses()
   } catch (error) {
     console.error(error)
-    ElMessage.error('创建失败: ' + (error as any).message)
+    ElMessage.error('创建失败')
   } finally {
     creating.value = false
   }
@@ -471,33 +364,52 @@ const handleCreateYamlScroll = (e: Event) => {
   }
 }
 
-watch(() => props.clusterId, () => {
-  loadIngresses()
-  loadNamespaces()
+const handleDelete = async (sc: StorageClassInfo) => {
+  if (!props.clusterId) return
+  try {
+    await ElMessageBox.confirm(`确定要删除 StorageClass ${sc.name} 吗？`, '删除确认', { type: 'error' })
+    await deleteStorageClass(props.clusterId, sc.name)
+    ElMessage.success('删除成功')
+    emit('refresh')
+    await loadStorageClasses()
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error(error)
+      ElMessage.error('删除失败')
+    }
+  }
+}
+
+// 修复页面偏移
+watch(yamlDialogVisible, (val) => {
+  if (val) {
+    const scrollBarWidth = window.innerWidth - document.documentElement.clientWidth
+    if (scrollBarWidth > 0) {
+      document.body.style.paddingRight = `${scrollBarWidth}px`
+    }
+  } else {
+    document.body.style.paddingRight = ''
+  }
 })
 
-watch(() => props.namespace, () => {
-  filterNamespace.value = props.namespace || ''
-  loadIngresses()
+watch(() => props.clusterId, () => {
+  loadStorageClasses()
 })
 
 onMounted(() => {
-  loadIngresses()
-  loadNamespaces()
+  loadStorageClasses()
 })
 
-// 暴露方法给父组件
 defineExpose({
-  loadData: () => loadIngresses(true)
+  loadData: () => loadStorageClasses(true)
 })
 </script>
 
 <style scoped>
-.ingress-list {
+.storageclass-list {
   width: 100%;
 }
 
-/* 黑色按钮样式 */
 .black-button {
   background-color: #000000 !important;
   color: #ffffff !important;
@@ -519,10 +431,6 @@ defineExpose({
 
 .search-input {
   width: 280px;
-}
-
-.filter-select {
-  width: 180px;
 }
 
 .search-icon {
@@ -551,74 +459,6 @@ defineExpose({
   color: #d4af37;
 }
 
-.host-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.host-item:last-child {
-  margin-bottom: 0;
-}
-
-.host-icon {
-  color: #d4af37;
-  font-size: 16px;
-  flex-shrink: 0;
-}
-
-.host-text {
-  font-size: 14px;
-  font-weight: 600;
-  color: #303133;
-  word-break: break-all;
-}
-
-.path-item {
-  padding: 10px 12px;
-  margin-bottom: 8px;
-  background-color: #fef9e7;
-  border: 1px solid #d4af37;
-  border-radius: 6px;
-}
-
-.path-item:last-child {
-  margin-bottom: 0;
-}
-
-.path-path {
-  font-size: 14px;
-  font-weight: 700;
-  color: #303133;
-  margin-bottom: 6px;
-  font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
-}
-
-.path-service {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: #606266;
-}
-
-.service-icon {
-  color: #d4af37;
-  font-size: 14px;
-}
-
-.path-port {
-  color: #909399;
-  font-size: 12px;
-}
-
-.empty-text {
-  color: #909399;
-  font-size: 14px;
-}
-
-/* 操作按钮 */
 .action-buttons {
   display: flex;
   align-items: center;
@@ -643,7 +483,6 @@ defineExpose({
   color: #f78989;
 }
 
-/* YAML 编辑弹窗 */
 .yaml-editor-wrapper {
   display: flex;
   border: 1px solid #d4af37;

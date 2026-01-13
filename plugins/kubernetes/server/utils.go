@@ -9,9 +9,13 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 	"gorm.io/gorm"
 	rbacBiz "github.com/ydcloud-dy/opshub/internal/biz/rbac"
 	rbacData "github.com/ydcloud-dy/opshub/internal/data/rbac"
+	v1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // GetCurrentUserID 从 gin.Context 获取当前登录用户的 ID
@@ -148,4 +152,222 @@ func calculateAge(creationTime time.Time) string {
 	}
 
 	return "<1m"
+}
+
+// RecordingWebSocketReader 带录制功能的 WebSocket 读取器
+type RecordingWebSocketReader struct {
+	conn      *websocket.Conn
+	data      chan []byte
+	recorder  *AsciinemaRecorder
+	startTime time.Time
+}
+
+// Read 实现 io.Reader 接口
+func (r *RecordingWebSocketReader) Read(p []byte) (int, error) {
+	data, ok := <-r.data
+	if !ok {
+		return 0, fmt.Errorf("channel closed")
+	}
+
+	// 记录用户输入
+	if r.recorder != nil {
+		if err := r.recorder.RecordInput(data); err != nil {
+			fmt.Printf("录制输入失败: %v\n", err)
+		}
+	}
+
+	n := copy(p, data)
+	return n, nil
+}
+
+// RecordingWebSocketWriter 带录制功能的 WebSocket 写入器
+type RecordingWebSocketWriter struct {
+	conn      *websocket.Conn
+	recorder  *AsciinemaRecorder
+	startTime time.Time
+}
+
+// Write 实现 io.Writer 接口
+func (w *RecordingWebSocketWriter) Write(p []byte) (int, error) {
+	// 记录终端输出
+	if w.recorder != nil {
+		if err := w.recorder.RecordOutput(p); err != nil {
+			fmt.Printf("录制输出失败: %v\n", err)
+		}
+	}
+
+	// 写入 WebSocket
+	if err := w.conn.WriteMessage(websocket.TextMessage, p); err != nil {
+		return 0, err
+	}
+	return len(p), nil
+}
+
+// ==================== YAML 清理函数 ====================
+
+// cleanMetadataForYAML 清理 metadata 字段用于 YAML 输出
+func cleanMetadataForYAML(meta metav1.ObjectMeta) map[string]interface{} {
+	metadata := make(map[string]interface{})
+
+	if meta.Name != "" {
+		metadata["name"] = meta.Name
+	}
+	if meta.Namespace != "" {
+		metadata["namespace"] = meta.Namespace
+	}
+	if len(meta.Labels) > 0 {
+		metadata["labels"] = meta.Labels
+	}
+	if len(meta.Annotations) > 0 {
+		metadata["annotations"] = meta.Annotations
+	}
+	// 不包含 managedFields、resourceVersion、uid、generation 等字段
+
+	return metadata
+}
+
+// cleanPersistentVolumeClaimForYAML 清理 PVC 对象用于 YAML 输出
+func cleanPersistentVolumeClaimForYAML(pvc *v1.PersistentVolumeClaim) map[string]interface{} {
+	result := make(map[string]interface{})
+
+	// 设置 apiVersion 和 kind
+	result["apiVersion"] = "v1"
+	result["kind"] = "PersistentVolumeClaim"
+
+	// 添加 metadata
+	result["metadata"] = cleanMetadataForYAML(pvc.ObjectMeta)
+
+	// 添加 spec
+	result["spec"] = pvc.Spec
+
+	// 不包含 status
+
+	return result
+}
+
+// cleanPersistentVolumeForYAML 清理 PV 对象用于 YAML 输出
+func cleanPersistentVolumeForYAML(pv *v1.PersistentVolume) map[string]interface{} {
+	result := make(map[string]interface{})
+
+	// 设置 apiVersion 和 kind
+	result["apiVersion"] = "v1"
+	result["kind"] = "PersistentVolume"
+
+	// 添加 metadata
+	result["metadata"] = cleanMetadataForYAML(pv.ObjectMeta)
+
+	// 添加 spec
+	result["spec"] = pv.Spec
+
+	// 不包含 status
+
+	return result
+}
+
+// cleanStorageClassForYAML 清理 StorageClass 对象用于 YAML 输出
+func cleanStorageClassForYAML(sc *storagev1.StorageClass) map[string]interface{} {
+	result := make(map[string]interface{})
+
+	// 设置 apiVersion 和 kind
+	result["apiVersion"] = "storage.k8s.io/v1"
+	result["kind"] = "StorageClass"
+
+	// 添加 metadata
+	result["metadata"] = cleanMetadataForYAML(sc.ObjectMeta)
+
+	// 添加 spec
+	spec := make(map[string]interface{})
+	if sc.Provisioner != "" {
+		spec["provisioner"] = sc.Provisioner
+	}
+	if sc.Parameters != nil {
+		spec["parameters"] = sc.Parameters
+	}
+	if sc.ReclaimPolicy != nil {
+		spec["reclaimPolicy"] = *sc.ReclaimPolicy
+	}
+	if sc.MountOptions != nil {
+		spec["mountOptions"] = sc.MountOptions
+	}
+	if sc.VolumeBindingMode != nil {
+		spec["volumeBindingMode"] = *sc.VolumeBindingMode
+	}
+	if sc.AllowedTopologies != nil {
+		spec["allowedTopologies"] = sc.AllowedTopologies
+	}
+	result["spec"] = spec
+
+	// 不包含 status
+
+	return result
+}
+
+// cleanEndpointsForYAML 清理 Endpoints 对象用于 YAML 输出
+func cleanEndpointsForYAML(ep *v1.Endpoints) map[string]interface{} {
+	result := make(map[string]interface{})
+
+	// 设置 apiVersion 和 kind
+	result["apiVersion"] = "v1"
+	result["kind"] = "Endpoints"
+
+	// 添加 metadata
+	result["metadata"] = cleanMetadataForYAML(ep.ObjectMeta)
+
+	// 添加 spec (Endpoints 没有 spec，直接返回)
+	// 添加 subsets
+	result["subsets"] = ep.Subsets
+
+	// 不包含 status
+
+	return result
+}
+
+// cleanConfigMapForYAML 清理 ConfigMap 对象用于 YAML 输出
+func cleanConfigMapForYAML(cm *v1.ConfigMap) map[string]interface{} {
+	result := make(map[string]interface{})
+
+	// 设置 apiVersion 和 kind
+	result["apiVersion"] = "v1"
+	result["kind"] = "ConfigMap"
+
+	// 添加 metadata
+	result["metadata"] = cleanMetadataForYAML(cm.ObjectMeta)
+
+	// 添加 data
+	if len(cm.Data) > 0 {
+		result["data"] = cm.Data
+	}
+
+	// 添加 binaryData
+	if len(cm.BinaryData) > 0 {
+		result["binaryData"] = cm.BinaryData
+	}
+
+	// ConfigMap 没有 spec 和 status
+
+	return result
+}
+
+// cleanSecretForYAML 清理 Secret 对象用于 YAML 输出
+func cleanSecretForYAML(secret *v1.Secret) map[string]interface{} {
+	result := make(map[string]interface{})
+
+	// 设置 apiVersion 和 kind
+	result["apiVersion"] = "v1"
+	result["kind"] = "Secret"
+
+	// 添加 metadata
+	result["metadata"] = cleanMetadataForYAML(secret.ObjectMeta)
+
+	// 添加 data
+	if len(secret.Data) > 0 {
+		result["data"] = secret.Data
+	}
+
+	// 添加 type
+	result["type"] = string(secret.Type)
+
+	// Secret 没有 spec，不包含 status
+
+	return result
 }

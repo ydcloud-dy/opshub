@@ -53,6 +53,7 @@ func (p *Plugin) Enable(db *gorm.DB) error {
 		&Cluster{},
 		&model.K8sUserRoleBinding{},
 		&model.UserKubeConfig{},
+		&model.TerminalSession{},
 	}
 
 	for _, m := range models {

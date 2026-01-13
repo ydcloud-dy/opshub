@@ -56,6 +56,38 @@
           @refresh="loadCurrentResources"
         />
       </el-tab-pane>
+
+      <el-tab-pane label="ResourceQuotas" name="resourcequotas">
+        <ResourceQuotaList
+          v-if="activeTab === 'resourcequotas'"
+          :clusterId="selectedClusterId"
+          @refresh="loadCurrentResources"
+        />
+      </el-tab-pane>
+
+      <el-tab-pane label="LimitRanges" name="limitranges">
+        <LimitRangeList
+          v-if="activeTab === 'limitranges'"
+          :clusterId="selectedClusterId"
+          @refresh="loadCurrentResources"
+        />
+      </el-tab-pane>
+
+      <el-tab-pane label="HPA" name="hpa">
+        <HPAList
+          v-if="activeTab === 'hpa'"
+          :clusterId="selectedClusterId"
+          @refresh="loadCurrentResources"
+        />
+      </el-tab-pane>
+
+      <el-tab-pane label="PodDisruptionBudgets" name="pdb">
+        <PodDisruptionBudgetList
+          v-if="activeTab === 'pdb'"
+          :clusterId="selectedClusterId"
+          @refresh="loadCurrentResources"
+        />
+      </el-tab-pane>
     </el-tabs>
   </div>
 </template>
@@ -71,6 +103,10 @@ import {
 import { getClusterList, type Cluster } from '@/api/kubernetes'
 import ConfigMapList from './config-components/ConfigMapList.vue'
 import SecretList from './config-components/SecretList.vue'
+import ResourceQuotaList from './config-components/ResourceQuotaList.vue'
+import LimitRangeList from './config-components/LimitRangeList.vue'
+import HPAList from './config-components/HPAList.vue'
+import PodDisruptionBudgetList from './config-components/PodDisruptionBudgetList.vue'
 
 const clusterList = ref<Cluster[]>([])
 const selectedClusterId = ref<number>()

@@ -284,6 +284,28 @@ export function getPods(clusterId: number, namespace?: string, nodeName?: string
 }
 
 /**
+ * 获取 Pod 详情
+ */
+export function getPodDetail(clusterId: number, namespace: string, podName: string) {
+  return request<any>({
+    url: `/api/v1/plugins/kubernetes/resources/pods/${namespace}/${podName}`,
+    method: 'get',
+    params: { clusterId }
+  })
+}
+
+/**
+ * 获取 Pod 事件
+ */
+export function getPodEvents(clusterId: number, namespace: string, podName: string) {
+  return request<{ events: EventInfo[] }>({
+    url: `/api/v1/plugins/kubernetes/resources/pods/${namespace}/${podName}/events`,
+    method: 'get',
+    params: { clusterId }
+  })
+}
+
+/**
  * 获取 Deployment 列表
  */
 export function getDeployments(clusterId: number, namespace?: string) {
@@ -808,6 +830,17 @@ export function createService(clusterId: number, namespace: string, data: {
 }
 
 /**
+ * 创建服务 (从 YAML)
+ */
+export function createServiceYAML(clusterId: number, namespace: string, data: any) {
+  return request({
+    url: `/api/v1/plugins/kubernetes/resources/services/${namespace}/yaml`,
+    method: 'post',
+    data: { clusterId, ...data }
+  })
+}
+
+/**
  * 删除服务
  */
 export function deleteService(clusterId: number, namespace: string, name: string) {
@@ -906,6 +939,17 @@ export function createIngress(clusterId: number, namespace: string, data: {
 }
 
 /**
+ * 创建 Ingress (从 YAML)
+ */
+export function createIngressYAML(clusterId: number, namespace: string, data: any) {
+  return request({
+    url: `/api/v1/plugins/kubernetes/resources/ingresses/${namespace}/yaml`,
+    method: 'post',
+    data: { clusterId, ...data }
+  })
+}
+
+/**
  * 删除 Ingress
  */
 export function deleteIngress(clusterId: number, namespace: string, name: string) {
@@ -965,6 +1009,50 @@ export function getEndpointsDetail(clusterId: number, namespace: string, name: s
     url: `/api/v1/plugins/kubernetes/resources/endpoints/${namespace}/${name}`,
     method: 'get',
     params: { clusterId }
+  })
+}
+
+/**
+ * 创建端点 (从 YAML)
+ */
+export function createEndpointYAML(clusterId: number, namespace: string, data: any) {
+  return request({
+    url: `/api/v1/plugins/kubernetes/resources/endpoints/${namespace}/yaml`,
+    method: 'post',
+    data: { clusterId, ...data }
+  })
+}
+
+/**
+ * 删除端点
+ */
+export function deleteEndpoint(clusterId: number, namespace: string, name: string) {
+  return request({
+    url: `/api/v1/plugins/kubernetes/resources/endpoints/${namespace}/${name}`,
+    method: 'delete',
+    data: { clusterId }
+  })
+}
+
+/**
+ * 获取端点 YAML
+ */
+export function getEndpointYAML(clusterId: number, namespace: string, name: string) {
+  return request({
+    url: `/api/v1/plugins/kubernetes/resources/endpoints/${namespace}/${name}/yaml`,
+    method: 'get',
+    params: { clusterId }
+  })
+}
+
+/**
+ * 更新端点 YAML
+ */
+export function updateEndpointYAML(clusterId: number, namespace: string, name: string, data: any) {
+  return request({
+    url: `/api/v1/plugins/kubernetes/resources/endpoints/${namespace}/${name}/yaml`,
+    method: 'put',
+    data: { clusterId, ...data }
   })
 }
 
@@ -1029,6 +1117,64 @@ export function updateNetworkPolicyYAML(clusterId: number, namespace: string, na
   return request({
     url: `/api/v1/plugins/kubernetes/resources/networkpolicies/${namespace}/${name}/yaml`,
     method: 'put',
+    data: { clusterId, ...data }
+  })
+}
+
+/**
+ * 创建网络策略
+ */
+export function createNetworkPolicy(clusterId: number, namespace: string, data: {
+  name: string
+  podSelector?: Record<string, string>
+  policyTypes?: string[]
+  ingress?: Array<{
+    ports?: Array<{
+      protocol?: string
+      port?: number
+      endPort?: number
+      namedPort?: string
+    }>
+    from?: Array<{
+      podSelector?: Record<string, string>
+      namespaceSelector?: Record<string, string>
+      ipBlock?: {
+        cidr: string
+        except?: string[]
+      }
+    }>
+  }>
+  egress?: Array<{
+    ports?: Array<{
+      protocol?: string
+      port?: number
+      endPort?: number
+      namedPort?: string
+    }>
+    to?: Array<{
+      podSelector?: Record<string, string>
+      namespaceSelector?: Record<string, string>
+      ipBlock?: {
+        cidr: string
+        except?: string[]
+      }
+    }>
+  }>
+}) {
+  return request({
+    url: `/api/v1/plugins/kubernetes/resources/networkpolicies/${namespace}/${data.name}`,
+    method: 'post',
+    data: { clusterId, namespace, ...data }
+  })
+}
+
+/**
+ * 创建网络策略 (从 YAML)
+ */
+export function createNetworkPolicyYAML(clusterId: number, namespace: string, data: any) {
+  return request({
+    url: `/api/v1/plugins/kubernetes/resources/networkpolicies/${namespace}/yaml`,
+    method: 'post',
     data: { clusterId, ...data }
   })
 }
@@ -1147,6 +1293,558 @@ export function updateSecretYAML(clusterId: number, namespace: string, name: str
 export function deleteSecret(clusterId: number, namespace: string, name: string) {
   return request({
     url: `/api/v1/plugins/kubernetes/resources/secrets/${namespace}/${name}`,
+    method: 'delete',
+    data: { clusterId }
+  })
+}
+
+// ==================== 访问控制相关 ====================
+
+export interface ServiceAccountInfo {
+  name: string
+  namespace: string
+  secrets: string[]
+  age: string
+  labels: Record<string, string>
+}
+
+export interface RoleInfo {
+  name: string
+  namespace: string
+  age: string
+  labels: Record<string, string>
+  rules: any[]
+}
+
+export interface RoleBindingInfo {
+  name: string
+  namespace: string
+  roleKind: string // Role 或 ClusterRole
+  roleName: string
+  subjects: any[]
+  age: string
+  labels: Record<string, string>
+}
+
+export interface ClusterRoleInfo {
+  name: string
+  age: string
+  labels: Record<string, string>
+  rules: any[]
+}
+
+export interface ClusterRoleBindingInfo {
+  name: string
+  roleName: string
+  subjects: any[]
+  age: string
+  labels: Record<string, string>
+}
+
+export interface PodSecurityPolicyInfo {
+  name: string
+  age: string
+  labels: Record<string, string>
+  spec: any
+}
+
+/**
+ * 获取 ServiceAccount 列表
+ */
+export function getServiceAccounts(clusterId: number, namespace?: string) {
+  return request<ServiceAccountInfo[]>({
+    url: '/api/v1/plugins/kubernetes/resources/serviceaccounts',
+    method: 'get',
+    params: { clusterId, namespace }
+  })
+}
+
+/**
+ * 获取命名空间 Roles 列表
+ */
+export function getRoles(clusterId: number, namespace: string) {
+  return request<RoleInfo[]>({
+    url: '/api/v1/plugins/kubernetes/resources/roles',
+    method: 'get',
+    params: { clusterId, namespace }
+  })
+}
+
+/**
+ * 获取 RoleBindings 列表
+ */
+export function getRoleBindings(clusterId: number, namespace: string) {
+  return request<RoleBindingInfo[]>({
+    url: '/api/v1/plugins/kubernetes/resources/rolebindings',
+    method: 'get',
+    params: { clusterId, namespace }
+  })
+}
+
+/**
+ * 获取 ClusterRoleBindings 列表
+ */
+export function getClusterRoleBindings(clusterId: number) {
+  return request<ClusterRoleBindingInfo[]>({
+    url: '/api/v1/plugins/kubernetes/resources/clusterrolebindings',
+    method: 'get',
+    params: { clusterId }
+  })
+}
+
+/**
+ * 获取 PodSecurityPolicies 列表
+ */
+export function getPodSecurityPolicies(clusterId: number) {
+  return request<PodSecurityPolicyInfo[]>({
+    url: '/api/v1/plugins/kubernetes/resources/podsecuritypolicies',
+    method: 'get',
+    params: { clusterId }
+  })
+}
+
+// ==================== Storage Types ====================
+
+export interface PVCInfo {
+  name: string
+  namespace: string
+  status: string
+  capacity: string
+  accessModes: string[]
+  storageClass: string
+  volumeName: string
+  age: string
+  labels: Record<string, string>
+}
+
+export interface PVInfo {
+  name: string
+  capacity: string
+  accessModes: string[]
+  reclaimPolicy: string
+  status: string
+  claim: string
+  storageClass: string
+  reason: string
+  age: string
+  labels: Record<string, string>
+}
+
+export interface StorageClassInfo {
+  name: string
+  provisioner: string
+  reclaimPolicy: string
+  volumeBindingMode: string
+  allowVolumeExpansion: boolean
+  age: string
+  labels: Record<string, string>
+}
+
+// ==================== PVC Functions ====================
+
+/**
+ * 获取 PVC 列表
+ */
+export function getPersistentVolumeClaims(clusterId: number, namespace?: string) {
+  return request<PVCInfo[]>({
+    url: '/api/v1/plugins/kubernetes/resources/persistentvolumeclaims',
+    method: 'get',
+    params: { clusterId, namespace }
+  })
+}
+
+/**
+ * 获取 PVC YAML
+ */
+export function getPersistentVolumeClaimYAML(clusterId: number, namespace: string, name: string) {
+  return request<any>({
+    url: `/api/v1/plugins/kubernetes/resources/persistentvolumeclaims/${namespace}/${name}/yaml`,
+    method: 'get',
+    params: { clusterId }
+  })
+}
+
+/**
+ * 更新 PVC YAML
+ */
+export function updatePersistentVolumeClaimYAML(clusterId: number, namespace: string, name: string, data: any) {
+  return request({
+    url: `/api/v1/plugins/kubernetes/resources/persistentvolumeclaims/${namespace}/${name}/yaml`,
+    method: 'put',
+    params: { clusterId },
+    data: data
+  })
+}
+
+/**
+ * 删除 PVC
+ */
+export function deletePersistentVolumeClaim(clusterId: number, namespace: string, name: string) {
+  return request({
+    url: `/api/v1/plugins/kubernetes/resources/persistentvolumeclaims/${namespace}/${name}`,
+    method: 'delete',
+    params: { clusterId }
+  })
+}
+
+/**
+ * 通过 YAML 创建 PVC
+ */
+export function createPersistentVolumeClaimYAML(clusterId: number, namespace: string, data: any) {
+  return request({
+    url: `/api/v1/plugins/kubernetes/resources/persistentvolumeclaims/${namespace}/yaml`,
+    method: 'post',
+    params: { clusterId },
+    data: data
+  })
+}
+
+// ==================== PV Functions ====================
+
+/**
+ * 获取 PV 列表
+ */
+export function getPersistentVolumes(clusterId: number) {
+  return request<PVInfo[]>({
+    url: '/api/v1/plugins/kubernetes/resources/persistentvolumes',
+    method: 'get',
+    params: { clusterId }
+  })
+}
+
+/**
+ * 获取 PV YAML
+ */
+export function getPersistentVolumeYAML(clusterId: number, name: string) {
+  return request<any>({
+    url: `/api/v1/plugins/kubernetes/resources/persistentvolumes/${name}/yaml`,
+    method: 'get',
+    params: { clusterId }
+  })
+}
+
+/**
+ * 更新 PV YAML
+ */
+export function updatePersistentVolumeYAML(clusterId: number, name: string, data: any) {
+  return request({
+    url: `/api/v1/plugins/kubernetes/resources/persistentvolumes/${name}/yaml`,
+    method: 'put',
+    params: { clusterId },
+    data: data
+  })
+}
+
+/**
+ * 删除 PV
+ */
+export function deletePersistentVolume(clusterId: number, name: string) {
+  return request({
+    url: `/api/v1/plugins/kubernetes/resources/persistentvolumes/${name}`,
+    method: 'delete',
+    params: { clusterId }
+  })
+}
+
+/**
+ * 通过 YAML 创建 PV
+ */
+export function createPersistentVolumeYAML(clusterId: number, data: any) {
+  return request({
+    url: '/api/v1/plugins/kubernetes/resources/persistentvolumes/yaml',
+    method: 'post',
+    params: { clusterId },
+    data: data
+  })
+}
+
+// ==================== StorageClass Functions ====================
+
+/**
+ * 获取 StorageClass 列表
+ */
+export function getStorageClasses(clusterId: number) {
+  return request<StorageClassInfo[]>({
+    url: '/api/v1/plugins/kubernetes/resources/storageclasses',
+    method: 'get',
+    params: { clusterId }
+  })
+}
+
+/**
+ * 获取 StorageClass YAML
+ */
+export function getStorageClassYAML(clusterId: number, name: string) {
+  return request<any>({
+    url: `/api/v1/plugins/kubernetes/resources/storageclasses/${name}/yaml`,
+    method: 'get',
+    params: { clusterId }
+  })
+}
+
+/**
+ * 更新 StorageClass YAML
+ */
+export function updateStorageClassYAML(clusterId: number, name: string, data: any) {
+  return request({
+    url: `/api/v1/plugins/kubernetes/resources/storageclasses/${name}/yaml`,
+    method: 'put',
+    params: { clusterId },
+    data: data
+  })
+}
+
+/**
+ * 删除 StorageClass
+ */
+export function deleteStorageClass(clusterId: number, name: string) {
+  return request({
+    url: `/api/v1/plugins/kubernetes/resources/storageclasses/${name}`,
+    method: 'delete',
+    params: { clusterId }
+  })
+}
+
+/**
+ * 通过 YAML 创建 StorageClass
+ */
+export function createStorageClassYAML(clusterId: number, data: any) {
+  return request({
+    url: '/api/v1/plugins/kubernetes/resources/storageclasses/yaml',
+    method: 'post',
+    params: { clusterId },
+    data: data
+  })
+}
+
+// ==================== ResourceQuota ====================
+
+export interface ResourceQuotaInfo {
+  name: string
+  namespace: string
+  requestsCpu?: string
+  requestsMemory?: string
+  limitsCpu?: string
+  limitsMemory?: string
+  age: string
+  createdAt?: string
+}
+
+/**
+ * 获取 ResourceQuota 列表
+ */
+export function getResourceQuotas(clusterId: number, namespace?: string) {
+  return request<ResourceQuotaInfo[]>({
+    url: '/api/v1/plugins/kubernetes/resources/resourcequotas',
+    method: 'get',
+    params: { clusterId, namespace }
+  })
+}
+
+/**
+ * 获取 ResourceQuota YAML
+ */
+export function getResourceQuotaYAML(clusterId: number, namespace: string, name: string) {
+  return request<{ items: Record<string, any> }>({
+    url: `/api/v1/plugins/kubernetes/resources/resourcequotas/${namespace}/${name}/yaml`,
+    method: 'get',
+    params: { clusterId }
+  })
+}
+
+/**
+ * 更新 ResourceQuota YAML
+ */
+export function updateResourceQuotaYAML(clusterId: number, namespace: string, name: string, yaml: string) {
+  return request({
+    url: `/api/v1/plugins/kubernetes/resources/resourcequotas/${namespace}/${name}/yaml`,
+    method: 'put',
+    data: { clusterId, yaml }
+  })
+}
+
+/**
+ * 删除 ResourceQuota
+ */
+export function deleteResourceQuota(clusterId: number, namespace: string, name: string) {
+  return request({
+    url: `/api/v1/plugins/kubernetes/resources/resourcequotas/${namespace}/${name}`,
+    method: 'delete',
+    data: { clusterId }
+  })
+}
+
+// ==================== LimitRange ====================
+
+export interface LimitRangeInfo {
+  name: string
+  namespace: string
+  type?: string
+  resource?: string
+  min?: string
+  max?: string
+  defaultLimit?: string
+  defaultRequest?: string
+  maxLimitRequestRatio?: string
+  age: string
+}
+
+/**
+ * 获取 LimitRange 列表
+ */
+export function getLimitRanges(clusterId: number, namespace?: string) {
+  return request<LimitRangeInfo[]>({
+    url: '/api/v1/plugins/kubernetes/resources/limitranges',
+    method: 'get',
+    params: { clusterId, namespace }
+  })
+}
+
+/**
+ * 获取 LimitRange YAML
+ */
+export function getLimitRangeYAML(clusterId: number, namespace: string, name: string) {
+  return request<{ items: Record<string, any> }>({
+    url: `/api/v1/plugins/kubernetes/resources/limitranges/${namespace}/${name}/yaml`,
+    method: 'get',
+    params: { clusterId }
+  })
+}
+
+/**
+ * 更新 LimitRange YAML
+ */
+export function updateLimitRangeYAML(clusterId: number, namespace: string, name: string, yaml: string) {
+  return request({
+    url: `/api/v1/plugins/kubernetes/resources/limitranges/${namespace}/${name}/yaml`,
+    method: 'put',
+    data: { clusterId, yaml }
+  })
+}
+
+/**
+ * 删除 LimitRange
+ */
+export function deleteLimitRange(clusterId: number, namespace: string, name: string) {
+  return request({
+    url: `/api/v1/plugins/kubernetes/resources/limitranges/${namespace}/${name}`,
+    method: 'delete',
+    data: { clusterId }
+  })
+}
+
+// ==================== HorizontalPodAutoscaler ====================
+
+export interface HPAInfo {
+  name: string
+  namespace: string
+  referenceTarget?: string
+  minReplicas?: number
+  maxReplicas?: number
+  currentReplicas?: number
+  targetCPU?: string
+  targetMemory?: string
+  age: string
+  createdAt?: string
+}
+
+/**
+ * 获取 HPA 列表
+ */
+export function getHorizontalPodAutoscalers(clusterId: number, namespace?: string) {
+  return request<HPAInfo[]>({
+    url: '/api/v1/plugins/kubernetes/resources/horizontalpodautoscalers',
+    method: 'get',
+    params: { clusterId, namespace }
+  })
+}
+
+/**
+ * 获取 HPA YAML
+ */
+export function getHorizontalPodAutoscalerYAML(clusterId: number, namespace: string, name: string) {
+  return request<{ items: Record<string, any> }>({
+    url: `/api/v1/plugins/kubernetes/resources/horizontalpodautoscalers/${namespace}/${name}/yaml`,
+    method: 'get',
+    params: { clusterId }
+  })
+}
+
+/**
+ * 更新 HPA YAML
+ */
+export function updateHorizontalPodAutoscalerYAML(clusterId: number, namespace: string, name: string, yaml: string) {
+  return request({
+    url: `/api/v1/plugins/kubernetes/resources/horizontalpodautoscalers/${namespace}/${name}/yaml`,
+    method: 'put',
+    data: { clusterId, yaml }
+  })
+}
+
+/**
+ * 删除 HPA
+ */
+export function deleteHorizontalPodAutoscaler(clusterId: number, namespace: string, name: string) {
+  return request({
+    url: `/api/v1/plugins/kubernetes/resources/horizontalpodautoscalers/${namespace}/${name}`,
+    method: 'delete',
+    data: { clusterId }
+  })
+}
+
+// ==================== PodDisruptionBudget ====================
+
+export interface PDBInfo {
+  name: string
+  namespace: string
+  minAvailable?: string
+  maxUnavailable?: string
+  allowedDisruptions?: number
+  currentHealthy?: number
+  desiredHealthy?: number
+  age: string
+  createdAt?: string
+}
+
+/**
+ * 获取 PodDisruptionBudget 列表
+ */
+export function getPodDisruptionBudgets(clusterId: number, namespace?: string) {
+  return request<PDBInfo[]>({
+    url: '/api/v1/plugins/kubernetes/resources/poddisruptionbudgets',
+    method: 'get',
+    params: { clusterId, namespace }
+  })
+}
+
+/**
+ * 获取 PodDisruptionBudget YAML
+ */
+export function getPodDisruptionBudgetYAML(clusterId: number, namespace: string, name: string) {
+  return request<{ items: Record<string, any> }>({
+    url: `/api/v1/plugins/kubernetes/resources/poddisruptionbudgets/${namespace}/${name}/yaml`,
+    method: 'get',
+    params: { clusterId }
+  })
+}
+
+/**
+ * 更新 PodDisruptionBudget YAML
+ */
+export function updatePodDisruptionBudgetYAML(clusterId: number, namespace: string, name: string, yaml: string) {
+  return request({
+    url: `/api/v1/plugins/kubernetes/resources/poddisruptionbudgets/${namespace}/${name}/yaml`,
+    method: 'put',
+    data: { clusterId, yaml }
+  })
+}
+
+/**
+ * 删除 PodDisruptionBudget
+ */
+export function deletePodDisruptionBudget(clusterId: number, namespace: string, name: string) {
+  return request({
+    url: `/api/v1/plugins/kubernetes/resources/poddisruptionbudgets/${namespace}/${name}`,
     method: 'delete',
     data: { clusterId }
   })

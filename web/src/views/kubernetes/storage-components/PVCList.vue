@@ -1,7 +1,7 @@
 <template>
-  <div class="ingress-list">
+  <div class="pvc-list">
     <div class="search-bar">
-      <el-input v-model="searchName" placeholder="搜索 Ingress 名称..." clearable class="search-input" @input="handleSearch">
+      <el-input v-model="searchName" placeholder="搜索 PVC 名称..." clearable class="search-input" @input="handleSearch">
         <template #prefix>
           <el-icon class="search-icon"><Search /></el-icon>
         </template>
@@ -12,48 +12,45 @@
         <el-option v-for="ns in namespaces" :key="ns.name" :label="ns.name" :value="ns.name" />
       </el-select>
 
-      <el-button class="black-button" @click="handleCreate">创建 Ingress</el-button>
       <el-button class="black-button" @click="handleCreateYAML">
         <el-icon><Document /></el-icon> YAML创建
       </el-button>
     </div>
 
     <div class="table-wrapper">
-      <el-table :data="filteredIngresses" v-loading="loading" class="modern-table" size="default">
+      <el-table :data="filteredPVCs" v-loading="loading" class="modern-table">
         <el-table-column label="名称" prop="name" min-width="180" fixed>
           <template #default="{ row }">
             <div class="name-cell">
-              <el-icon class="name-icon"><Link /></el-icon>
-              <div class="name-text">{{ row.name }}</div>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="命名空间" prop="namespace" width="140" />
-        <el-table-column label="主机名" min-width="200">
-          <template #default="{ row }">
-            <div v-for="host in row.hosts" :key="host" class="host-item">
-              <el-icon class="host-icon"><Monitor /></el-icon>
-              <span class="host-text">{{ host }}</span>
-            </div>
-            <div v-if="!row.hosts.length" class="empty-text">-</div>
-          </template>
-        </el-table-column>
-        <el-table-column label="路径" min-width="250">
-          <template #default="{ row }">
-            <div v-for="(path, index) in row.paths" :key="`${path.path}-${index}`" class="path-item">
-              <div class="path-path">{{ path.path || '/' }}</div>
-              <div class="path-service">
-                <el-icon class="service-icon"><Connection /></el-icon>
-                <span>{{ path.service }}</span>
-                <span class="path-port">:{{ path.port }}</span>
+              <el-icon class="name-icon"><Coin /></el-icon>
+              <div>
+                <div class="name-text">{{ row.name }}</div>
+                <div class="namespace-text">{{ row.namespace }}</div>
               </div>
             </div>
-            <div v-if="!row.paths.length" class="empty-text">-</div>
           </template>
         </el-table-column>
-        <el-table-column label="Ingress Class" prop="ingressClass" width="150">
+        <el-table-column label="状态" prop="status" width="120">
           <template #default="{ row }">
-            {{ row.ingressClass || '-' }}
+            <el-tag :type="getStatusTagType(row.status)" size="small">{{ row.status }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="容量" prop="capacity" width="120" />
+        <el-table-column label="访问模式" min-width="180">
+          <template #default="{ row }">
+            <div v-for="mode in row.accessModes" :key="mode" class="access-mode-item">
+              {{ formatAccessMode(mode) }}
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="存储类" prop="storageClass" width="150">
+          <template #default="{ row }">
+            {{ row.storageClass || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="卷名称" prop="volumeName" min-width="180">
+          <template #default="{ row }">
+            {{ row.volumeName || '-' }}
           </template>
         </el-table-column>
         <el-table-column label="存活时间" prop="age" width="120" />
@@ -63,11 +60,6 @@
               <el-tooltip content="编辑 YAML" placement="top">
                 <el-button link class="action-btn" @click="handleEditYAML(row)">
                   <el-icon :size="18"><Document /></el-icon>
-                </el-button>
-              </el-tooltip>
-              <el-tooltip content="编辑" placement="top">
-                <el-button link class="action-btn" @click="handleEdit(row)">
-                  <el-icon :size="18"><Edit /></el-icon>
                 </el-button>
               </el-tooltip>
               <el-tooltip content="删除" placement="top">
@@ -81,7 +73,7 @@
       </el-table>
     </div>
 
-    <el-dialog v-model="yamlDialogVisible" :title="`Ingress YAML - ${selectedIngress?.name}`" width="900px" :lock-scroll="false" class="yaml-dialog">
+    <el-dialog v-model="yamlDialogVisible" :title="`PVC YAML - ${selectedPVC?.name}`" width="900px" :lock-scroll="false" class="yaml-dialog">
       <div class="yaml-editor-wrapper">
         <div class="yaml-line-numbers">
           <div v-for="line in yamlLineCount" :key="line" class="line-number">{{ line }}</div>
@@ -104,7 +96,7 @@
     </el-dialog>
 
     <!-- YAML 创建弹窗 -->
-    <el-dialog v-model="createYamlDialogVisible" title="YAML 创建 Ingress" width="900px" :lock-scroll="false" class="yaml-dialog">
+    <el-dialog v-model="createYamlDialogVisible" title="YAML 创建 PVC" width="900px" :lock-scroll="false" class="yaml-dialog">
       <div class="yaml-editor-wrapper">
         <div class="yaml-line-numbers">
           <div v-for="line in createYamlLineCount" :key="line" class="line-number">{{ line }}</div>
@@ -125,43 +117,42 @@
         </div>
       </template>
     </el-dialog>
-
-    <!-- 编辑对话框 -->
-    <IngressEditDialog
-      ref="editDialogRef"
-      :clusterId="clusterId"
-      @success="handleEditSuccess"
-    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, Link, Document, Edit, Delete, Monitor, Connection } from '@element-plus/icons-vue'
+import { Search, Document, Delete, Coin } from '@element-plus/icons-vue'
 import { load } from 'js-yaml'
-import { getIngresses, getIngressYAML, updateIngressYAML, createIngressYAML, createIngress, deleteIngress, getNamespaces, type IngressInfo } from '@/api/kubernetes'
-import IngressEditDialog from './IngressEditDialog.vue'
+import {
+  getPersistentVolumeClaims,
+  getPersistentVolumeClaimYAML,
+  updatePersistentVolumeClaimYAML,
+  createPersistentVolumeClaimYAML,
+  deletePersistentVolumeClaim,
+  getNamespaces,
+  type PVCInfo
+} from '@/api/kubernetes'
 
 const props = defineProps<{
   clusterId?: number
   namespace?: string
 }>()
 
-const emit = defineEmits(['edit', 'yaml', 'refresh'])
+const emit = defineEmits(['refresh'])
 
 const loading = ref(false)
 const saving = ref(false)
-const ingressList = ref<IngressInfo[]>([])
+const pvcList = ref<PVCInfo[]>([])
 const namespaces = ref<any[]>([])
 const searchName = ref('')
 const filterNamespace = ref('')
 const yamlDialogVisible = ref(false)
 const yamlContent = ref('')
-const selectedIngress = ref<IngressInfo | null>(null)
+const selectedPVC = ref<PVCInfo | null>(null)
 const yamlTextarea = ref<HTMLTextAreaElement | null>(null)
-const originalJsonData = ref<any>(null) // 保存原始 JSON 数据
-const editDialogRef = ref<any>(null)
+const originalJsonData = ref<any>(null)
 
 // YAML 创建相关
 const createYamlDialogVisible = ref(false)
@@ -180,29 +171,29 @@ const createYamlLineCount = computed(() => {
   return createYamlContent.value.split('\n').length
 })
 
-const filteredIngresses = computed(() => {
-  let result = ingressList.value
+const filteredPVCs = computed(() => {
+  let result = pvcList.value
   if (searchName.value) {
-    result = result.filter(i => i.name.toLowerCase().includes(searchName.value.toLowerCase()))
+    result = result.filter(p => p.name.toLowerCase().includes(searchName.value.toLowerCase()))
   }
   if (filterNamespace.value) {
-    result = result.filter(i => i.namespace === filterNamespace.value)
+    result = result.filter(p => p.namespace === filterNamespace.value)
   }
   return result
 })
 
-const loadIngresses = async (showSuccess = false) => {
+const loadPVCs = async (showSuccess = false) => {
   if (!props.clusterId) return
   loading.value = true
   try {
-    const data = await getIngresses(props.clusterId, props.namespace || undefined)
-    ingressList.value = data || []
+    const data = await getPersistentVolumeClaims(props.clusterId, props.namespace || undefined)
+    pvcList.value = data || []
     if (showSuccess) {
       ElMessage.success('刷新成功')
     }
   } catch (error) {
     console.error(error)
-    ElMessage.error('获取 Ingress 列表失败')
+    ElMessage.error('获取 PVC 列表失败')
   } finally {
     loading.value = false
   }
@@ -222,54 +213,50 @@ const handleSearch = () => {
   // 本地过滤
 }
 
-const handleCreate = () => {
-  editDialogRef.value?.openCreate(namespaces.value)
+const formatAccessMode = (mode: string) => {
+  const modeMap: Record<string, string> = {
+    'ReadWriteOnce': 'RWO',
+    'ReadOnlyMany': 'ROX',
+    'ReadWriteMany': 'RWX',
+    'ReadWriteOncePod': 'RWOP'
+  }
+  return modeMap[mode] || mode
+}
+
+const getStatusTagType = (status: string) => {
+  const map: Record<string, string> = {
+    'Bound': 'success',
+    'Pending': 'warning',
+    'Lost': 'danger',
+    'Released': 'info'
+  }
+  return map[status] || 'info'
 }
 
 const handleCreateYAML = () => {
   const defaultNamespace = props.namespace || 'default'
-  // 设置默认 YAML 模板
-  createYamlContent.value = `apiVersion: networking.k8s.io/v1
-kind: Ingress
+  createYamlContent.value = `apiVersion: v1
+kind: PersistentVolumeClaim
 metadata:
-  name: my-ingress
+  name: my-pvc
   namespace: ${defaultNamespace}
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
-  ingressClassName: nginx
-  rules:
-    - host: example.com
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: my-service
-                port:
-                  number: 80
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: standard
 `
   createYamlDialogVisible.value = true
 }
 
-const handleEdit = (ingress: IngressInfo) => {
-  editDialogRef.value?.openEdit(ingress, namespaces.value)
-}
-
-const handleEditSuccess = () => {
-  emit('refresh')
-  loadIngresses()
-}
-
-const handleEditYAML = async (ingress: IngressInfo) => {
+const handleEditYAML = async (pvc: PVCInfo) => {
   if (!props.clusterId) return
-  selectedIngress.value = ingress
+  selectedPVC.value = pvc
   try {
-    const response = await getIngressYAML(props.clusterId, ingress.namespace, ingress.name)
-    // 保存原始 JSON 数据
-    originalJsonData.value = response.items || response
-    // 转换为 YAML 格式
+    const response = await getPersistentVolumeClaimYAML(props.clusterId, pvc.namespace, pvc.name)
+    originalJsonData.value = response
     const yaml = jsonToYaml(originalJsonData.value)
     yamlContent.value = yaml
     yamlDialogVisible.value = true
@@ -304,7 +291,6 @@ const jsonToYaml = (obj: any, indent = 0): string => {
   return result
 }
 
-// 使用 js-yaml 库解析 YAML
 const yamlToJson = (yaml: string): any => {
   try {
     return load(yaml)
@@ -315,45 +301,43 @@ const yamlToJson = (yaml: string): any => {
 }
 
 const handleSaveYAML = async () => {
-  if (!props.clusterId || !selectedIngress.value) return
+  if (!props.clusterId || !selectedPVC.value) return
 
   saving.value = true
   try {
-    // 尝试将 YAML 转回 JSON，如果失败则使用原始 JSON
     let jsonData = originalJsonData.value
     try {
       jsonData = yamlToJson(yamlContent.value)
-      // 确保基本的元数据存在
       if (!jsonData.metadata) {
         jsonData.metadata = {}
       }
-      if (!jsonData.metadata.name && selectedIngress.value) {
-        jsonData.metadata.name = selectedIngress.value.name
+      if (!jsonData.metadata.name && selectedPVC.value) {
+        jsonData.metadata.name = selectedPVC.value.name
       }
-      if (!jsonData.metadata.namespace && selectedIngress.value) {
-        jsonData.metadata.namespace = selectedIngress.value.namespace
+      if (!jsonData.metadata.namespace && selectedPVC.value) {
+        jsonData.metadata.namespace = selectedPVC.value.namespace
       }
       if (!jsonData.apiVersion) {
-        jsonData.apiVersion = 'networking.k8s.io/v1'
+        jsonData.apiVersion = 'v1'
       }
       if (!jsonData.kind) {
-        jsonData.kind = 'Ingress'
+        jsonData.kind = 'PersistentVolumeClaim'
       }
     } catch (e) {
       console.warn('YAML 解析失败，使用原始 JSON:', e)
       jsonData = originalJsonData.value
     }
 
-    await updateIngressYAML(
+    await updatePersistentVolumeClaimYAML(
       props.clusterId,
-      selectedIngress.value.namespace,
-      selectedIngress.value.name,
+      selectedPVC.value.namespace,
+      selectedPVC.value.name,
       jsonData
     )
     ElMessage.success('保存成功')
     yamlDialogVisible.value = false
     emit('refresh')
-    await loadIngresses()
+    await loadPVCs()
   } catch (error) {
     console.error(error)
     ElMessage.error('保存失败')
@@ -374,14 +358,14 @@ const handleYamlScroll = (e: Event) => {
   }
 }
 
-const handleDelete = async (ingress: IngressInfo) => {
+const handleDelete = async (pvc: PVCInfo) => {
   if (!props.clusterId) return
   try {
-    await ElMessageBox.confirm(`确定要删除 Ingress ${ingress.name} 吗？`, '删除确认', { type: 'error' })
-    await deleteIngress(props.clusterId, ingress.namespace, ingress.name)
+    await ElMessageBox.confirm(`确定要删除 PVC ${pvc.name} 吗？`, '删除确认', { type: 'error' })
+    await deletePersistentVolumeClaim(props.clusterId, pvc.namespace, pvc.name)
     ElMessage.success('删除成功')
     emit('refresh')
-    await loadIngresses()
+    await loadPVCs()
   } catch (error) {
     if (error !== 'cancel') {
       console.error(error)
@@ -396,64 +380,31 @@ const handleSaveCreateYAML = async () => {
   creating.value = true
   try {
     const jsonData = yamlToJson(createYamlContent.value)
-    // 确保基本的元数据存在
     if (!jsonData.apiVersion) {
-      jsonData.apiVersion = 'networking.k8s.io/v1'
+      jsonData.apiVersion = 'v1'
     }
     if (!jsonData.kind) {
-      jsonData.kind = 'Ingress'
+      jsonData.kind = 'PersistentVolumeClaim'
     }
     if (!jsonData.metadata) {
       jsonData.metadata = {}
     }
 
-    // 从 YAML 中提取命名空间和名称
     const namespace = jsonData.metadata.namespace || props.namespace || 'default'
-    const name = jsonData.metadata.name
+    jsonData.metadata.namespace = namespace
 
-    if (!name) {
-      ElMessage.error('YAML 中缺少 metadata.name 字段')
-      return
-    }
-
-    // 从 spec 中提取 rules
-    const spec = jsonData.spec || {}
-    const rules = (spec.rules || []).map((rule: any) => ({
-      host: rule.host,
-      paths: (rule.http?.paths || []).map((p: any) => ({
-        path: p.path,
-        pathType: p.pathType || 'Prefix',
-        service: p.backend?.service?.name,
-        port: p.backend?.service?.port?.number
-      }))
-    }))
-
-    // 提取 TLS 配置
-    const tls = (spec.tls || []).map((t: any) => ({
-      hosts: t.hosts || [],
-      secretName: t.secretName
-    }))
-
-    // 提取 ingressClassName
-    const ingressClassName = spec.ingressClassName
-
-    // 构建创建请求数据
-    const createData = {
-      name,
+    await createPersistentVolumeClaimYAML(
+      props.clusterId,
       namespace,
-      ingressClassName,
-      rules,
-      tls
-    }
-
-    await createIngress(props.clusterId, namespace, createData)
+      jsonData
+    )
     ElMessage.success('创建成功')
     createYamlDialogVisible.value = false
     emit('refresh')
-    await loadIngresses()
+    await loadPVCs()
   } catch (error) {
     console.error(error)
-    ElMessage.error('创建失败: ' + (error as any).message)
+    ElMessage.error('创建失败')
   } finally {
     creating.value = false
   }
@@ -471,33 +422,43 @@ const handleCreateYamlScroll = (e: Event) => {
   }
 }
 
+// 修复页面偏移
+watch(yamlDialogVisible, (val) => {
+  if (val) {
+    const scrollBarWidth = window.innerWidth - document.documentElement.clientWidth
+    if (scrollBarWidth > 0) {
+      document.body.style.paddingRight = `${scrollBarWidth}px`
+    }
+  } else {
+    document.body.style.paddingRight = ''
+  }
+})
+
 watch(() => props.clusterId, () => {
-  loadIngresses()
+  loadPVCs()
   loadNamespaces()
 })
 
 watch(() => props.namespace, () => {
   filterNamespace.value = props.namespace || ''
-  loadIngresses()
+  loadPVCs()
 })
 
 onMounted(() => {
-  loadIngresses()
+  loadPVCs()
   loadNamespaces()
 })
 
-// 暴露方法给父组件
 defineExpose({
-  loadData: () => loadIngresses(true)
+  loadData: () => loadPVCs(true)
 })
 </script>
 
 <style scoped>
-.ingress-list {
+.pvc-list {
   width: 100%;
 }
 
-/* 黑色按钮样式 */
 .black-button {
   background-color: #000000 !important;
   color: #ffffff !important;
@@ -551,74 +512,21 @@ defineExpose({
   color: #d4af37;
 }
 
-.host-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.host-item:last-child {
-  margin-bottom: 0;
-}
-
-.host-icon {
-  color: #d4af37;
-  font-size: 16px;
-  flex-shrink: 0;
-}
-
-.host-text {
-  font-size: 14px;
-  font-weight: 600;
-  color: #303133;
-  word-break: break-all;
-}
-
-.path-item {
-  padding: 10px 12px;
-  margin-bottom: 8px;
-  background-color: #fef9e7;
-  border: 1px solid #d4af37;
-  border-radius: 6px;
-}
-
-.path-item:last-child {
-  margin-bottom: 0;
-}
-
-.path-path {
-  font-size: 14px;
-  font-weight: 700;
-  color: #303133;
-  margin-bottom: 6px;
-  font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
-}
-
-.path-service {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: #606266;
-}
-
-.service-icon {
-  color: #d4af37;
-  font-size: 14px;
-}
-
-.path-port {
-  color: #909399;
+.namespace-text {
   font-size: 12px;
-}
-
-.empty-text {
   color: #909399;
-  font-size: 14px;
 }
 
-/* 操作按钮 */
+.access-mode-item {
+  font-size: 12px;
+  padding: 2px 6px;
+  background: #f0f0f0;
+  border-radius: 3px;
+  color: #606266;
+  margin-bottom: 4px;
+  display: inline-block;
+}
+
 .action-buttons {
   display: flex;
   align-items: center;
@@ -643,7 +551,6 @@ defineExpose({
   color: #f78989;
 }
 
-/* YAML 编辑弹窗 */
 .yaml-editor-wrapper {
   display: flex;
   border: 1px solid #d4af37;

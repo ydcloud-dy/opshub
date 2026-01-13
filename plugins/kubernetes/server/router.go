@@ -62,9 +62,23 @@ func RegisterRoutes(router *gin.RouterGroup, db *gorm.DB) {
 		clusters.GET("/resources/namespaces/:namespaceName/yaml", resourceHandler.GetNamespaceYAML)
 		clusters.PUT("/resources/namespaces/:namespaceName/yaml", resourceHandler.UpdateNamespaceYAML)
 		clusters.DELETE("/resources/namespaces/:namespaceName", resourceHandler.DeleteNamespace)
+
+		// 访问控制资源
+		clusters.GET("/resources/serviceaccounts", resourceHandler.ListServiceAccounts)
+		clusters.GET("/resources/roles", resourceHandler.ListRoles)
+		clusters.GET("/resources/rolebindings", resourceHandler.ListRoleBindings)
+		clusters.GET("/resources/clusterroles", resourceHandler.ListClusterRoles)
+		clusters.GET("/resources/clusterrolebindings", resourceHandler.ListClusterRoleBindings)
+		clusters.GET("/resources/podsecuritypolicies", resourceHandler.ListPodSecurityPolicies)
+
 		clusters.GET("/resources/pods", resourceHandler.ListPods)
+		clusters.GET("/resources/pods/:namespace/:name", resourceHandler.GetPodDetail)
+		clusters.GET("/resources/pods/:namespace/:name/events", resourceHandler.GetPodEvents)
 		clusters.GET("/resources/pods/metrics", resourceHandler.GetPodsMetrics)
 		clusters.GET("/resources/pods/logs", resourceHandler.GetPodLogs)
+		clusters.GET("/pods/files", resourceHandler.ListContainerFiles)
+		clusters.GET("/pods/files/download", resourceHandler.DownloadContainerFile)
+		clusters.POST("/pods/files/upload", resourceHandler.UploadContainerFile)
 		clusters.GET("/resources/deployments", resourceHandler.ListDeployments)
 		clusters.GET("/resources/workloads", resourceHandler.GetWorkloads)
 		clusters.GET("/resources/workloads/:namespace/:name", resourceHandler.GetWorkloadDetail)
@@ -98,10 +112,15 @@ func RegisterRoutes(router *gin.RouterGroup, db *gorm.DB) {
 
 		// 网络资源管理 - Endpoints
 		clusters.GET("/resources/endpoints", resourceHandler.ListEndpoints)
+		clusters.POST("/resources/endpoints/:namespace/yaml", resourceHandler.CreateEndpointYAML)
+		clusters.GET("/resources/endpoints/:namespace/:name/yaml", resourceHandler.GetEndpointYAML)
+		clusters.PUT("/resources/endpoints/:namespace/:name/yaml", resourceHandler.UpdateEndpointYAML)
+		clusters.DELETE("/resources/endpoints/:namespace/:name", resourceHandler.DeleteEndpoint)
 		clusters.GET("/resources/endpoints/:namespace/:name", resourceHandler.GetEndpointsDetail)
 
 		// 网络资源管理 - NetworkPolicy
 		clusters.GET("/resources/networkpolicies", resourceHandler.ListNetworkPolicies)
+		clusters.POST("/resources/networkpolicies/:namespace/:name", resourceHandler.CreateNetworkPolicy)
 		clusters.GET("/resources/networkpolicies/:namespace/:name/yaml", resourceHandler.GetNetworkPolicyYAML)
 		clusters.PUT("/resources/networkpolicies/:namespace/:name/yaml", resourceHandler.UpdateNetworkPolicyYAML)
 		clusters.DELETE("/resources/networkpolicies/:namespace/:name", resourceHandler.DeleteNetworkPolicy)
@@ -117,6 +136,60 @@ func RegisterRoutes(router *gin.RouterGroup, db *gorm.DB) {
 		clusters.GET("/resources/secrets/:namespace/:name/yaml", resourceHandler.GetSecretYAML)
 		clusters.PUT("/resources/secrets/:namespace/:name/yaml", resourceHandler.UpdateSecretYAML)
 		clusters.DELETE("/resources/secrets/:namespace/:name", resourceHandler.DeleteSecret)
+
+		// 存储管理 - PersistentVolumeClaim
+		clusters.GET("/resources/persistentvolumeclaims", resourceHandler.ListPersistentVolumeClaims)
+		clusters.GET("/resources/persistentvolumeclaims/:namespace/:name/yaml", resourceHandler.GetPersistentVolumeClaimYAML)
+		clusters.PUT("/resources/persistentvolumeclaims/:namespace/:name/yaml", resourceHandler.UpdatePersistentVolumeClaimYAML)
+		clusters.DELETE("/resources/persistentvolumeclaims/:namespace/:name", resourceHandler.DeletePersistentVolumeClaim)
+		clusters.POST("/resources/persistentvolumeclaims/:namespace/yaml", resourceHandler.CreatePersistentVolumeClaimYAML)
+
+		// 存储管理 - PersistentVolume
+		clusters.GET("/resources/persistentvolumes", resourceHandler.ListPersistentVolumes)
+		clusters.POST("/resources/persistentvolumes/yaml", resourceHandler.CreatePersistentVolumeYAML)
+		clusters.GET("/resources/persistentvolumes/:name/yaml", resourceHandler.GetPersistentVolumeYAML)
+		clusters.PUT("/resources/persistentvolumes/:name/yaml", resourceHandler.UpdatePersistentVolumeYAML)
+		clusters.DELETE("/resources/persistentvolumes/:name", resourceHandler.DeletePersistentVolume)
+
+		// 存储管理 - StorageClass
+		clusters.GET("/resources/storageclasses", resourceHandler.ListStorageClasses)
+		clusters.POST("/resources/storageclasses/yaml", resourceHandler.CreateStorageClassYAML)
+		clusters.GET("/resources/storageclasses/:name/yaml", resourceHandler.GetStorageClassYAML)
+		clusters.PUT("/resources/storageclasses/:name/yaml", resourceHandler.UpdateStorageClassYAML)
+		clusters.DELETE("/resources/storageclasses/:name", resourceHandler.DeleteStorageClass)
+
+		// 配置管理 - ResourceQuota
+		clusters.GET("/resources/resourcequotas", resourceHandler.ListResourceQuotas)
+		clusters.POST("/resources/resourcequotas/:namespace/yaml", resourceHandler.CreateResourceQuotaFromYAML)
+		clusters.GET("/resources/resourcequotas/:namespace/:name/yaml", resourceHandler.GetResourceQuotaYAML)
+		clusters.PUT("/resources/resourcequotas/:namespace/:name/yaml", resourceHandler.UpdateResourceQuotaYAML)
+		clusters.DELETE("/resources/resourcequotas/:namespace/:name", resourceHandler.DeleteResourceQuota)
+
+		// 配置管理 - LimitRange
+		clusters.GET("/resources/limitranges", resourceHandler.ListLimitRanges)
+		clusters.POST("/resources/limitranges/:namespace/yaml", resourceHandler.CreateLimitRangeFromYAML)
+		clusters.GET("/resources/limitranges/:namespace/:name/yaml", resourceHandler.GetLimitRangeYAML)
+		clusters.PUT("/resources/limitranges/:namespace/:name/yaml", resourceHandler.UpdateLimitRangeYAML)
+		clusters.DELETE("/resources/limitranges/:namespace/:name", resourceHandler.DeleteLimitRange)
+
+		// 配置管理 - HorizontalPodAutoscaler
+		clusters.GET("/resources/horizontalpodautoscalers", resourceHandler.ListHorizontalPodAutoscalers)
+		clusters.POST("/resources/horizontalpodautoscalers/:namespace/yaml", resourceHandler.CreateHPAFromYAML)
+		clusters.GET("/resources/horizontalpodautoscalers/:namespace/:name/yaml", resourceHandler.GetHorizontalPodAutoscalerYAML)
+		clusters.PUT("/resources/horizontalpodautoscalers/:namespace/:name/yaml", resourceHandler.UpdateHorizontalPodAutoscalerYAML)
+		clusters.DELETE("/resources/horizontalpodautoscalers/:namespace/:name", resourceHandler.DeleteHorizontalPodAutoscaler)
+
+		// 配置管理 - PodDisruptionBudget
+		clusters.GET("/resources/poddisruptionbudgets", resourceHandler.ListPodDisruptionBudgets)
+		clusters.POST("/resources/poddisruptionbudgets/:namespace/yaml", resourceHandler.CreatePDBFromYAML)
+		clusters.GET("/resources/poddisruptionbudgets/:namespace/:name/yaml", resourceHandler.GetPodDisruptionBudgetYAML)
+		clusters.PUT("/resources/poddisruptionbudgets/:namespace/:name/yaml", resourceHandler.UpdatePodDisruptionBudgetYAML)
+		clusters.DELETE("/resources/poddisruptionbudgets/:namespace/:name", resourceHandler.DeletePodDisruptionBudget)
+
+		// 终端审计
+		clusters.GET("/terminal/sessions", resourceHandler.ListTerminalSessions)
+		clusters.GET("/terminal/sessions/:id/play", resourceHandler.PlayTerminalSession)
+		clusters.DELETE("/terminal/sessions/:id", resourceHandler.DeleteTerminalSession)
 
 		// 统计信息
 		clusters.GET("/resources/stats", resourceHandler.GetClusterStats)

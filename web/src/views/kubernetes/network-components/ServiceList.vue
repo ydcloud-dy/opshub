@@ -27,6 +27,9 @@
       </el-select>
 
       <el-button class="black-button" @click="handleCreate">创建服务</el-button>
+      <el-button class="black-button" @click="handleCreateYAML">
+        <el-icon><Document /></el-icon> YAML创建
+      </el-button>
     </div>
 
     <!-- 服务列表 -->
@@ -140,6 +143,29 @@
       </template>
     </el-dialog>
 
+    <!-- YAML 创建弹窗 -->
+    <el-dialog v-model="createYamlDialogVisible" title="YAML 创建 Service" width="900px" :lock-scroll="false" class="yaml-dialog">
+      <div class="yaml-editor-wrapper">
+        <div class="yaml-line-numbers">
+          <div v-for="line in createYamlLineCount" :key="line" class="line-number">{{ line }}</div>
+        </div>
+        <textarea
+          v-model="createYamlContent"
+          class="yaml-textarea"
+          spellcheck="false"
+          @input="handleCreateYamlInput"
+          @scroll="handleCreateYamlScroll"
+          ref="createYamlTextarea"
+        ></textarea>
+      </div>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="createYamlDialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="handleSaveCreateYAML" :loading="creating">创建</el-button>
+        </div>
+      </template>
+    </el-dialog>
+
     <!-- 编辑对话框 -->
     <ServiceEditDialog
       ref="editDialogRef"
@@ -153,7 +179,8 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Connection, Document, Edit, Delete } from '@element-plus/icons-vue'
-import { getServices, getServiceYAML, updateServiceYAML, deleteService, getNamespaces, type ServiceInfo } from '@/api/kubernetes'
+import { load } from 'js-yaml'
+import { getServices, getServiceYAML, updateServiceYAML, createServiceYAML, deleteService, getNamespaces, type ServiceInfo } from '@/api/kubernetes'
 import ServiceEditDialog from './ServiceEditDialog.vue'
 
 const props = defineProps<{
@@ -179,10 +206,21 @@ const yamlTextarea = ref<HTMLTextAreaElement | null>(null)
 const originalJsonData = ref<any>(null) // 保存原始 JSON 数据
 const editDialogRef = ref<any>(null)
 
+// YAML 创建相关
+const createYamlDialogVisible = ref(false)
+const creating = ref(false)
+const createYamlContent = ref('')
+const createYamlTextarea = ref<HTMLTextAreaElement | null>(null)
+
 // 计算YAML行数
 const yamlLineCount = computed(() => {
   if (!yamlContent.value) return 1
   return yamlContent.value.split('\n').length
+})
+
+const createYamlLineCount = computed(() => {
+  if (!createYamlContent.value) return 1
+  return createYamlContent.value.split('\n').length
 })
 
 const filteredServices = computed(() => {
@@ -249,6 +287,26 @@ const handleCreate = () => {
   editDialogRef.value?.openCreate(namespaces.value)
 }
 
+const handleCreateYAML = () => {
+  const defaultNamespace = props.namespace || 'default'
+  // 设置默认 YAML 模板
+  createYamlContent.value = `apiVersion: v1
+kind: Service
+metadata:
+  name: my-service
+  namespace: ${defaultNamespace}
+spec:
+  type: ClusterIP
+  selector:
+    app: my-app
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+`
+  createYamlDialogVisible.value = true
+}
+
 const handleEdit = (service: ServiceInfo) => {
   editDialogRef.value?.openEdit(service, namespaces.value)
 }
@@ -300,72 +358,14 @@ const jsonToYaml = (obj: any, indent = 0): string => {
   return result
 }
 
-// 简单的 YAML 到 JSON 解析器
+// 使用 js-yaml 库解析 YAML
 const yamlToJson = (yaml: string): any => {
-  const lines = yaml.split('\n')
-  const result: any = {}
-  const stack: Array<{ obj: any; indent: number }> = [{ obj: result, indent: -1 }]
-
-  for (const line of lines) {
-    const trimmed = line.trim()
-    if (!trimmed || trimmed.startsWith('#')) continue
-
-    const indent = line.search(/\S/)
-    const current = stack[stack.length - 1]
-
-    // 弹出缩进级别更高的项
-    while (stack.length > 1 && stack[stack.length - 1].indent >= indent) {
-      stack.pop()
-    }
-
-    // 数组项
-    if (trimmed.startsWith('- ')) {
-      const content = trimmed.substring(2)
-      const parent = stack[stack.length - 1]
-
-      if (parent && !Array.isArray(parent.obj)) {
-        // 将父对象转换为数组
-        const key = Object.keys(parent.obj).pop() || ''
-        if (key) {
-          const arr = [parent.obj[key]]
-          parent.obj[key] = arr
-          stack.push({ obj: arr[0], indent })
-        }
-      }
-    }
-
-    // 键值对
-    const colonIndex = trimmed.indexOf(':')
-    if (colonIndex > 0) {
-      const key = trimmed.substring(0, colonIndex).trim()
-      let value: any = trimmed.substring(colonIndex + 1).trim()
-
-      if (value === 'null' || value === '') {
-        value = null
-      } else if (value === 'true') {
-        value = true
-      } else if (value === 'false') {
-        value = false
-      } else if (!isNaN(Number(value))) {
-        value = Number(value)
-      } else if (value.startsWith('"') || value.startsWith("'")) {
-        value = value.slice(1, -1)
-      }
-
-      const parent = stack[stack.length - 1]
-      if (parent && Array.isArray(parent.obj)) {
-        parent.obj.push({ [key]: value })
-        stack.push({ obj: parent.obj[parent.obj.length - 1], indent })
-      } else if (parent) {
-        parent.obj[key] = value
-        if (typeof value === 'object' && value !== null) {
-          stack.push({ obj: value, indent })
-        }
-      }
-    }
+  try {
+    return load(yaml)
+  } catch (error) {
+    console.error('YAML 解析错误:', error)
+    throw error
   }
-
-  return result
 }
 
 const handleSaveYAML = async () => {
@@ -441,6 +441,56 @@ const handleDelete = async (service: ServiceInfo) => {
       console.error(error)
       ElMessage.error('删除失败')
     }
+  }
+}
+
+const handleSaveCreateYAML = async () => {
+  if (!props.clusterId) return
+
+  creating.value = true
+  try {
+    const jsonData = yamlToJson(createYamlContent.value)
+    // 确保基本的元数据存在
+    if (!jsonData.apiVersion) {
+      jsonData.apiVersion = 'v1'
+    }
+    if (!jsonData.kind) {
+      jsonData.kind = 'Service'
+    }
+    if (!jsonData.metadata) {
+      jsonData.metadata = {}
+    }
+
+    // 从 YAML 中提取命名空间
+    const namespace = jsonData.metadata.namespace || props.namespace || 'default'
+    jsonData.metadata.namespace = namespace
+
+    await createServiceYAML(
+      props.clusterId,
+      namespace,
+      jsonData
+    )
+    ElMessage.success('创建成功')
+    createYamlDialogVisible.value = false
+    emit('refresh')
+    await loadServices()
+  } catch (error) {
+    console.error(error)
+    ElMessage.error('创建失败')
+  } finally {
+    creating.value = false
+  }
+}
+
+const handleCreateYamlInput = () => {
+  // 处理输入
+}
+
+const handleCreateYamlScroll = (e: Event) => {
+  const target = e.target as HTMLTextAreaElement
+  const lineNumbers = document.querySelector('.create-yaml .yaml-line-numbers') as HTMLElement
+  if (lineNumbers) {
+    lineNumbers.scrollTop = target.scrollTop
   }
 }
 

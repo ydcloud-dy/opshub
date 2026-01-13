@@ -1,7 +1,9 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -20,10 +23,12 @@ import (
 	"github.com/gorilla/websocket"
 	"gorm.io/gorm"
 	appsv1 "k8s.io/api/apps/v1"
+	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	policyv1 "k8s.io/api/policy/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -33,6 +38,8 @@ import (
 	"k8s.io/metrics/pkg/apis/metrics/v1beta1"
 	"sigs.k8s.io/yaml"
 
+	"github.com/ydcloud-dy/opshub/plugins/kubernetes/data/models"
+	"github.com/ydcloud-dy/opshub/plugins/kubernetes/model"
 	"github.com/ydcloud-dy/opshub/plugins/kubernetes/service"
 )
 
@@ -3149,6 +3156,24 @@ type WorkloadInfo struct {
 	Images      []string          `json:"images,omitempty"`
 	CreatedAt   string            `json:"createdAt"`
 	UpdatedAt   string            `json:"updatedAt"`
+	// DaemonSet 专用字段
+	CurrentScheduled *int32 `json:"currentScheduled,omitempty"`
+	DesiredScheduled *int32 `json:"desiredScheduled,omitempty"`
+	// Job 专用字段
+	Status   *string `json:"status,omitempty"`
+	Duration *string `json:"duration,omitempty"`
+	// CronJob 专用字段
+	Schedule         *string `json:"schedule,omitempty"`
+	LastScheduleTime *string `json:"lastScheduleTime,omitempty"`
+	Suspended        *bool   `json:"suspended,omitempty"`
+	// Pod 专用字段
+	Containers   *string `json:"containers,omitempty"`
+	CPU          *string `json:"cpu,omitempty"`
+	Memory       *string `json:"memory,omitempty"`
+	PodStatus    *string `json:"podStatus,omitempty"`
+	RestartCount *int32  `json:"restartCount,omitempty"`
+	PodIP        *string `json:"podIP,omitempty"`
+	Node         *string `json:"node,omitempty"`
 }
 
 // ResourceInfo 资源信息
@@ -3344,6 +3369,8 @@ func (h *ResourceHandler) convertStatefulSetToWorkload(sts *appsv1.StatefulSet) 
 func (h *ResourceHandler) convertDaemonSetToWorkload(ds *appsv1.DaemonSet) WorkloadInfo {
 	readyPods := ds.Status.NumberReady
 	desiredPods := ds.Status.DesiredNumberScheduled
+	currentScheduled := ds.Status.CurrentNumberScheduled
+	desiredScheduled := ds.Status.DesiredNumberScheduled
 
 	var images []string
 	var requests, limits *ResourceInfo
@@ -3356,17 +3383,19 @@ func (h *ResourceHandler) convertDaemonSetToWorkload(ds *appsv1.DaemonSet) Workl
 	}
 
 	return WorkloadInfo{
-		Name:        ds.Name,
-		Namespace:   ds.Namespace,
-		Type:        "DaemonSet",
-		Labels:      ds.Labels,
-		ReadyPods:   readyPods,
-		DesiredPods: desiredPods,
-		Requests:    requests,
-		Limits:      limits,
-		Images:      images,
-		CreatedAt:   ds.CreationTimestamp.Format("2006-01-02 15:04:05"),
-		UpdatedAt:   ds.CreationTimestamp.Format("2006-01-02 15:04:05"),
+		Name:             ds.Name,
+		Namespace:        ds.Namespace,
+		Type:             "DaemonSet",
+		Labels:           ds.Labels,
+		ReadyPods:        readyPods,
+		DesiredPods:      desiredPods,
+		Requests:         requests,
+		Limits:           limits,
+		Images:           images,
+		CreatedAt:        ds.CreationTimestamp.Format("2006-01-02 15:04:05"),
+		UpdatedAt:        ds.CreationTimestamp.Format("2006-01-02 15:04:05"),
+		CurrentScheduled: &currentScheduled,
+		DesiredScheduled: &desiredScheduled,
 	}
 }
 
@@ -3374,6 +3403,32 @@ func (h *ResourceHandler) convertDaemonSetToWorkload(ds *appsv1.DaemonSet) Workl
 func (h *ResourceHandler) convertJobToWorkload(job *batchv1.Job) WorkloadInfo {
 	readyPods := job.Status.Succeeded
 	desiredPods := *job.Spec.Parallelism
+
+	// 计算Job状态
+	status := "Running"
+	if job.Status.Succeeded > 0 && job.Status.Succeeded >= *job.Spec.Completions {
+		status = "Succeeded"
+	} else if job.Status.Failed > 0 {
+		status = "Failed"
+	} else if job.Status.Active > 0 {
+		status = "Running"
+	}
+
+	// 计算耗时
+	var duration *string
+	if job.Status.StartTime != nil {
+		if job.Status.CompletionTime != nil {
+			// 已完成
+			dur := job.Status.CompletionTime.Sub(job.Status.StartTime.Time)
+			durStr := formatDuration(dur)
+			duration = &durStr
+		} else {
+			// 进行中
+			dur := time.Since(job.Status.StartTime.Time)
+			durStr := formatDuration(dur)
+			duration = &durStr
+		}
+	}
 
 	var images []string
 	var requests, limits *ResourceInfo
@@ -3397,6 +3452,8 @@ func (h *ResourceHandler) convertJobToWorkload(job *batchv1.Job) WorkloadInfo {
 		Images:      images,
 		CreatedAt:   job.CreationTimestamp.Format("2006-01-02 15:04:05"),
 		UpdatedAt:   job.CreationTimestamp.Format("2006-01-02 15:04:05"),
+		Status:      &status,
+		Duration:    duration,
 	}
 }
 
@@ -3412,18 +3469,34 @@ func (h *ResourceHandler) convertCronJobToWorkload(cronJob *batchv1.CronJob) Wor
 		requests, limits = h.getResourceInfo(cronJob.Spec.JobTemplate.Spec.Template.Spec.Containers)
 	}
 
+	// 调度表达式
+	schedule := cronJob.Spec.Schedule
+
+	// 最后调度时间
+	var lastScheduleTime *string
+	if cronJob.Status.LastScheduleTime != nil {
+		t := cronJob.Status.LastScheduleTime.Format("2006-01-02 15:04:05")
+		lastScheduleTime = &t
+	}
+
+	// 暂停状态
+	suspended := cronJob.Spec.Suspend != nil && *cronJob.Spec.Suspend
+
 	return WorkloadInfo{
-		Name:        cronJob.Name,
-		Namespace:   cronJob.Namespace,
-		Type:        "CronJob",
-		Labels:      cronJob.Labels,
-		ReadyPods:   0,
-		DesiredPods: 0,
-		Requests:    requests,
-		Limits:      limits,
-		Images:      images,
-		CreatedAt:   cronJob.CreationTimestamp.Format("2006-01-02 15:04:05"),
-		UpdatedAt:   cronJob.CreationTimestamp.Format("2006-01-02 15:04:05"),
+		Name:             cronJob.Name,
+		Namespace:        cronJob.Namespace,
+		Type:             "CronJob",
+		Labels:           cronJob.Labels,
+		ReadyPods:        0,
+		DesiredPods:      0,
+		Requests:         requests,
+		Limits:           limits,
+		Images:           images,
+		CreatedAt:        cronJob.CreationTimestamp.Format("2006-01-02 15:04:05"),
+		UpdatedAt:        cronJob.CreationTimestamp.Format("2006-01-02 15:04:05"),
+		Schedule:         &schedule,
+		LastScheduleTime: lastScheduleTime,
+		Suspended:        &suspended,
 	}
 }
 
@@ -3442,25 +3515,66 @@ func (h *ResourceHandler) convertPodToWorkload(pod *v1.Pod) WorkloadInfo {
 	var images []string
 	var requests, limits *ResourceInfo
 
+	// 获取容器名称
+	containerNames := make([]string, 0, len(pod.Spec.Containers))
 	if len(pod.Spec.Containers) > 0 {
 		for _, container := range pod.Spec.Containers {
 			images = append(images, container.Image)
+			containerNames = append(containerNames, container.Name)
 		}
 		requests, limits = h.getResourceInfo(pod.Spec.Containers)
 	}
 
+	// 容器信息
+	containers := ""
+	if len(containerNames) > 0 {
+		containers = fmt.Sprintf("%d/%d", len(containerNames), len(pod.Spec.Containers))
+	}
+
+	// CPU/内存
+	var cpu, memory *string
+	if requests != nil {
+		cpu = &requests.CPU
+		memory = &requests.Memory
+	} else if limits != nil {
+		cpu = &limits.CPU
+		memory = &limits.Memory
+	}
+
+	// Pod 状态
+	podStatus := string(pod.Status.Phase)
+
+	// 重启次数
+	var restartCount int32
+	for _, cs := range pod.Status.ContainerStatuses {
+		restartCount += cs.RestartCount
+	}
+
+	// Pod IP
+	podIP := pod.Status.PodIP
+
+	// 调度节点
+	node := pod.Spec.NodeName
+
 	return WorkloadInfo{
-		Name:        pod.Name,
-		Namespace:   pod.Namespace,
-		Type:        "Pod",
-		Labels:      pod.Labels,
-		ReadyPods:   readyPods,
-		DesiredPods: 1, // Pod 始终期望 1 个副本（自身）
-		Requests:    requests,
-		Limits:      limits,
-		Images:      images,
-		CreatedAt:   pod.CreationTimestamp.Format("2006-01-02 15:04:05"),
-		UpdatedAt:   pod.CreationTimestamp.Format("2006-01-02 15:04:05"),
+		Name:         pod.Name,
+		Namespace:    pod.Namespace,
+		Type:         "Pod",
+		Labels:       pod.Labels,
+		ReadyPods:    readyPods,
+		DesiredPods:  1, // Pod 始终期望 1 个副本（自身）
+		Requests:     requests,
+		Limits:       limits,
+		Images:       images,
+		CreatedAt:    pod.CreationTimestamp.Format("2006-01-02 15:04:05"),
+		UpdatedAt:    pod.CreationTimestamp.Format("2006-01-02 15:04:05"),
+		Containers:   &containers,
+		CPU:          cpu,
+		Memory:       memory,
+		PodStatus:    &podStatus,
+		RestartCount: &restartCount,
+		PodIP:        &podIP,
+		Node:         &node,
 	}
 }
 
@@ -3532,6 +3646,19 @@ func formatMemory(bytes int64) string {
 		return fmt.Sprintf("%.2fKi", float64(bytes)/float64(KB))
 	default:
 		return fmt.Sprintf("%d", bytes)
+	}
+}
+
+// formatDuration 格式化时间间隔
+func formatDuration(d time.Duration) string {
+	if d < time.Minute {
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	} else if d < time.Hour {
+		return fmt.Sprintf("%dm%ds", int(d.Minutes()), int(d.Seconds())%60)
+	} else if d < 24*time.Hour {
+		return fmt.Sprintf("%dh%dm", int(d.Hours()), int(d.Minutes())%60)
+	} else {
+		return fmt.Sprintf("%dd%dh", int(d.Hours())/24, int(d.Hours())%24)
 	}
 }
 
@@ -4173,10 +4300,10 @@ func (h *ResourceHandler) UpdateWorkloadYAML(c *gin.Context) {
 // 从 URL 参数获取 cluster、namespace、type、name，请求体直接是 Kubernetes 对象
 type UpdateWorkloadRequest struct {
 	// 这些字段从 URL 参数获取，不在请求体中
-	Cluster  string
+	Cluster   string
 	Namespace string
-	Type     string
-	Name     string
+	Type      string
+	Name      string
 	// WorkloadData 是请求体，直接是 Kubernetes 对象
 	WorkloadData map[string]interface{}
 }
@@ -4980,14 +5107,14 @@ func (h *ResourceHandler) UpdateServiceYAML(c *gin.Context) {
 
 // CreateServiceRequest 创建服务请求
 type CreateServiceRequest struct {
-	ClusterID int                      `json:"clusterId" binding:"required"`
-	Namespace string                   `json:"namespace" binding:"required"`
-	Name      string                   `json:"name" binding:"required"`
-	Type      string                   `json:"type" binding:"required"`
-	ClusterIP string                   `json:"clusterIP"`
-	Ports     []ServicePortCreateInfo  `json:"ports" binding:"required"`
-	Selector  map[string]string        `json:"selector"`
-	SessionAffinity string             `json:"sessionAffinity"`
+	ClusterID       int                     `json:"clusterId" binding:"required"`
+	Namespace       string                  `json:"namespace" binding:"required"`
+	Name            string                  `json:"name" binding:"required"`
+	Type            string                  `json:"type" binding:"required"`
+	ClusterIP       string                  `json:"clusterIP"`
+	Ports           []ServicePortCreateInfo `json:"ports" binding:"required"`
+	Selector        map[string]string       `json:"selector"`
+	SessionAffinity string                  `json:"sessionAffinity"`
 }
 
 // ServicePortCreateInfo 端口创建信息
@@ -5071,7 +5198,7 @@ func (h *ResourceHandler) CreateService(c *gin.Context) {
 		}
 
 		// NodePort 只有 NodePort 类型才需要设置
-	 if req.Type == "NodePort" && port.NodePort > 0 {
+		if req.Type == "NodePort" && port.NodePort > 0 {
 			servicePort.NodePort = port.NodePort
 		}
 
@@ -5097,6 +5224,18 @@ func (h *ResourceHandler) CreateService(c *gin.Context) {
 // DeleteServiceRequest 删除服务请求
 type DeleteServiceRequest struct {
 	ClusterID int `json:"clusterId" binding:"required"`
+}
+
+// CreateEndpointRequest 创建端点请求
+type CreateEndpointRequest struct {
+	ClusterID int                    `json:"clusterId" binding:"required"`
+	Data      map[string]interface{} `json:"-" binding:"required"`
+}
+
+// UpdateEndpointRequest 更新端点请求
+type UpdateEndpointRequest struct {
+	ClusterID int                    `json:"clusterId" binding:"required"`
+	Data      map[string]interface{} `json:"-" binding:"required"`
 }
 
 // DeleteService 删除服务
@@ -5173,11 +5312,11 @@ type IngressInfo struct {
 
 // IngressPathInfo Ingress 路径信息
 type IngressPathInfo struct {
-	Host    string `json:"host"`    // 主机名
-	Path    string `json:"path"`    // 路径
+	Host     string `json:"host"`     // 主机名
+	Path     string `json:"path"`     // 路径
 	PathType string `json:"pathType"` // 路径类型
-	Service string `json:"service"` // 服务名称
-	Port    int32  `json:"port"`    // 服务端口
+	Service  string `json:"service"`  // 服务名称
+	Port     int32  `json:"port"`     // 服务端口
 }
 
 // IngressTLSInfo TLS 配置
@@ -5462,18 +5601,18 @@ func (h *ResourceHandler) UpdateIngressYAML(c *gin.Context) {
 
 // CreateIngressRequest 创建 Ingress 请求
 type CreateIngressRequest struct {
-	ClusterID     int                   `json:"clusterId" binding:"required"`
-	Namespace     string                `json:"namespace" binding:"required"`
-	Name          string                `json:"name" binding:"required"`
-	IngressClass  string                `json:"ingressClass"`
-	Rules         []IngressRuleCreate   `json:"rules" binding:"required"`
-	TLS           []IngressTLSCreate    `json:"tls"`
+	ClusterID    int                 `json:"clusterId" binding:"required"`
+	Namespace    string              `json:"namespace" binding:"required"`
+	Name         string              `json:"name" binding:"required"`
+	IngressClass string              `json:"ingressClass"`
+	Rules        []IngressRuleCreate `json:"rules" binding:"required"`
+	TLS          []IngressTLSCreate  `json:"tls"`
 }
 
 // IngressRuleCreate Ingress 规则创建信息
 type IngressRuleCreate struct {
-	Host  string                 `json:"host"`
-	Paths []IngressPathCreate    `json:"paths" binding:"required"`
+	Host  string              `json:"host"`
+	Paths []IngressPathCreate `json:"paths" binding:"required"`
 }
 
 // IngressPathCreate Ingress 路径创建信息
@@ -5654,18 +5793,18 @@ func cleanIngressForYAML(ing *networkingv1.Ingress) map[string]interface{} {
 
 // EndpointsInfo 端点信息
 type EndpointsInfo struct {
-	Name      string                `json:"name"`      // 端点名称（与 Service 同名）
-	Namespace string                `json:"namespace"` // 命名空间
-	Subsets   []EndpointSubsetInfo  `json:"subsets"`   // 端点子集
-	Age       string                `json:"age"`       // 创建时间
-	Labels    map[string]string     `json:"labels"`    // 标签
+	Name      string               `json:"name"`      // 端点名称（与 Service 同名）
+	Namespace string               `json:"namespace"` // 命名空间
+	Subsets   []EndpointSubsetInfo `json:"subsets"`   // 端点子集
+	Age       string               `json:"age"`       // 创建时间
+	Labels    map[string]string    `json:"labels"`    // 标签
 }
 
 // EndpointSubsetInfo 端点子集信息
 type EndpointSubsetInfo struct {
-	Addresses    []EndpointAddressInfo `json:"addresses"`    // 地址列表
+	Addresses         []EndpointAddressInfo `json:"addresses"`         // 地址列表
 	NotReadyAddresses []EndpointAddressInfo `json:"notReadyAddresses"` // 未就绪地址
-	Ports        []EndpointPortInfo    `json:"ports"`        // 端口列表
+	Ports             []EndpointPortInfo    `json:"ports"`             // 端口列表
 }
 
 // EndpointAddressInfo 端点地址信息
@@ -5738,9 +5877,9 @@ func (h *ResourceHandler) ListEndpoints(c *gin.Context) {
 		subsets := make([]EndpointSubsetInfo, 0, len(ep.Subsets))
 		for _, subset := range ep.Subsets {
 			subsetInfo := EndpointSubsetInfo{
-				Addresses:    make([]EndpointAddressInfo, 0, len(subset.Addresses)),
+				Addresses:         make([]EndpointAddressInfo, 0, len(subset.Addresses)),
 				NotReadyAddresses: make([]EndpointAddressInfo, 0, len(subset.NotReadyAddresses)),
-				Ports:        make([]EndpointPortInfo, 0, len(subset.Ports)),
+				Ports:             make([]EndpointPortInfo, 0, len(subset.Ports)),
 			}
 
 			// 转换就绪地址
@@ -5849,14 +5988,287 @@ func (h *ResourceHandler) GetEndpointsDetail(c *gin.Context) {
 		return
 	}
 
-	// 转换为前端格式
-	// (复用 ListEndpoints 中的转换逻辑)
-	// ...
+	// 使用清理函数移除不需要的字段
+	cleaned := cleanEndpointsForYAML(ep)
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "success",
-		"data":    ep,
+		"data":    cleaned,
+	})
+}
+
+// CreateEndpointYAML 创建端点 (从 YAML)
+func (h *ResourceHandler) CreateEndpointYAML(c *gin.Context) {
+	namespace := c.Param("namespace")
+
+	// 直接绑定请求体到 map[string]interface{}
+	var jsonData map[string]interface{}
+	if err := c.ShouldBindJSON(&jsonData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "请求参数错误: " + err.Error(),
+		})
+		return
+	}
+
+	// 提取 clusterId
+	clusterIDFloat, ok := jsonData["clusterId"].(float64)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "缺少 clusterId 字段",
+		})
+		return
+	}
+	clusterID := int(clusterIDFloat)
+
+	// 删除 clusterId 字段，剩余的就是 Kubernetes 资源数据
+	delete(jsonData, "clusterId")
+
+	// 获取当前用户ID
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群客户端失败: " + err.Error(),
+		})
+		return
+	}
+
+	// 将 jsonData 转换为 Endpoints 对象
+	var endpoint v1.Endpoints
+	endpointData, err := json.Marshal(jsonData)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "序列化数据失败: " + err.Error(),
+		})
+		return
+	}
+
+	err = json.Unmarshal(endpointData, &endpoint)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "解析 Endpoints 数据失败: " + err.Error(),
+		})
+		return
+	}
+
+	// 确保命名空间正确
+	endpoint.Namespace = namespace
+
+	// 创建 Endpoint
+	_, err = clientset.CoreV1().Endpoints(namespace).Create(c.Request.Context(), &endpoint, metav1.CreateOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "端点")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "创建成功",
+		"data": gin.H{
+			"needRefresh": true,
+		},
+	})
+}
+
+// GetEndpointYAML 获取端点 YAML
+func (h *ResourceHandler) GetEndpointYAML(c *gin.Context) {
+	namespace := c.Param("namespace")
+	name := c.Param("name")
+	clusterIDStr := c.Query("clusterId")
+
+	clusterID, err := strconv.Atoi(clusterIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的集群ID",
+		})
+		return
+	}
+
+	// 获取当前用户ID
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群客户端失败: " + err.Error(),
+		})
+		return
+	}
+
+	ep, err := clientset.CoreV1().Endpoints(namespace).Get(c.Request.Context(), name, metav1.GetOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "端点")
+		return
+	}
+
+	// 使用清理函数移除不需要的字段
+	cleaned := cleanEndpointsForYAML(ep)
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "success",
+		"data":    cleaned,
+	})
+}
+
+// UpdateEndpointYAML 更新端点 YAML
+func (h *ResourceHandler) UpdateEndpointYAML(c *gin.Context) {
+	namespace := c.Param("namespace")
+	name := c.Param("name")
+
+	// 直接绑定请求体到 map[string]interface{}
+	var jsonData map[string]interface{}
+	if err := c.ShouldBindJSON(&jsonData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "请求参数错误: " + err.Error(),
+		})
+		return
+	}
+
+	// 提取 clusterId
+	clusterIDFloat, ok := jsonData["clusterId"].(float64)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "缺少 clusterId 字段",
+		})
+		return
+	}
+	clusterID := int(clusterIDFloat)
+
+	// 删除 clusterId 字段，剩余的就是 Kubernetes 资源数据
+	delete(jsonData, "clusterId")
+
+	// 获取当前用户ID
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群客户端失败: " + err.Error(),
+		})
+		return
+	}
+
+	// 获取现有 Endpoint 以保留资源版本等信息
+	existingEp, err := clientset.CoreV1().Endpoints(namespace).Get(c.Request.Context(), name, metav1.GetOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "端点")
+		return
+	}
+
+	// 将 jsonData 转换为 Endpoints 对象
+	var endpoint v1.Endpoints
+	endpointData, err := json.Marshal(jsonData)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "序列化数据失败: " + err.Error(),
+		})
+		return
+	}
+
+	err = json.Unmarshal(endpointData, &endpoint)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "解析 Endpoints 数据失败: " + err.Error(),
+		})
+		return
+	}
+
+	// 保留资源版本，确保更新成功
+	endpoint.ResourceVersion = existingEp.ResourceVersion
+
+	// 更新 Endpoint
+	_, err = clientset.CoreV1().Endpoints(namespace).Update(c.Request.Context(), &endpoint, metav1.UpdateOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "端点")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "更新成功",
+		"data": gin.H{
+			"needRefresh": true,
+		},
+	})
+}
+
+// DeleteEndpoint 删除端点
+func (h *ResourceHandler) DeleteEndpoint(c *gin.Context) {
+	namespace := c.Param("namespace")
+	name := c.Param("name")
+
+	var req DeleteServiceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "请求参数错误: " + err.Error(),
+		})
+		return
+	}
+
+	// 获取当前用户ID
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(req.ClusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群客户端失败: " + err.Error(),
+		})
+		return
+	}
+
+	err = clientset.CoreV1().Endpoints(namespace).Delete(c.Request.Context(), name, metav1.DeleteOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "端点")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "删除成功",
+		"data": gin.H{
+			"needRefresh": true,
+		},
 	})
 }
 
@@ -5864,13 +6276,13 @@ func (h *ResourceHandler) GetEndpointsDetail(c *gin.Context) {
 
 // NetworkPolicyDetailInfo 网络策略详情
 type NetworkPolicyDetailInfo struct {
-	Name        string              `json:"name"`        // 策略名称
-	Namespace   string              `json:"namespace"`   // 命名空间
-	PodSelector map[string]string   `json:"podSelector"` // Pod 选择器
-	Ingress     []PolicyRuleInfo    `json:"ingress"`     // 入站规则
-	Egress      []PolicyRuleInfo    `json:"egress"`      // 出站规则
-	Age         string              `json:"age"`         // 创建时间
-	Labels      map[string]string   `json:"labels"`      // 标签
+	Name        string            `json:"name"`        // 策略名称
+	Namespace   string            `json:"namespace"`   // 命名空间
+	PodSelector map[string]string `json:"podSelector"` // Pod 选择器
+	Ingress     []PolicyRuleInfo  `json:"ingress"`     // 入站规则
+	Egress      []PolicyRuleInfo  `json:"egress"`      // 出站规则
+	Age         string            `json:"age"`         // 创建时间
+	Labels      map[string]string `json:"labels"`      // 标签
 }
 
 // PolicyRuleInfo 策略规则
@@ -5890,7 +6302,7 @@ type PolicyPortInfo struct {
 type PolicyPeerInfo struct {
 	PodSelector       map[string]string `json:"podSelector"`       // Pod 选择器
 	NamespaceSelector map[string]string `json:"namespaceSelector"` // 命名空间选择器
-	IPBlock           *IPBlockInfo       `json:"ipBlock"`           // IP 块
+	IPBlock           *IPBlockInfo      `json:"ipBlock"`           // IP 块
 }
 
 // IPBlockInfo IP 块
@@ -6200,6 +6612,229 @@ func (h *ResourceHandler) UpdateNetworkPolicyYAML(c *gin.Context) {
 	})
 }
 
+// ==================== NetworkPolicy 创建相关 ====================
+
+// CreateNetworkPolicyRequest 创建 NetworkPolicy 请求
+type CreateNetworkPolicyRequest struct {
+	ClusterID   int                        `json:"clusterId" binding:"required"`
+	PodSelector map[string]string          `json:"podSelector"`
+	PolicyTypes []string                   `json:"policyTypes"` // Ingress, Egress
+	Ingress     []NetworkPolicyIngressRule `json:"ingress"`
+	Egress      []NetworkPolicyEgressRule  `json:"egress"`
+}
+
+// NetworkPolicyIngressRule 入站规则
+type NetworkPolicyIngressRule struct {
+	Ports []NetworkPolicyPort `json:"ports"`
+	From  []NetworkPolicyPeer `json:"from"`
+}
+
+// NetworkPolicyEgressRule 出站规则
+type NetworkPolicyEgressRule struct {
+	Ports []NetworkPolicyPort `json:"ports"`
+	To    []NetworkPolicyPeer `json:"to"`
+}
+
+// NetworkPolicyPort 端口
+type NetworkPolicyPort struct {
+	Protocol  string `json:"protocol"`  // TCP, UDP, SCTP
+	Port      *int32 `json:"port"`      // 端口编号
+	EndPort   *int32 `json:"endPort"`   // 结束端口（范围）
+	NamedPort string `json:"namedPort"` // 命名端口
+}
+
+// NetworkPolicyPeer 对端
+type NetworkPolicyPeer struct {
+	PodSelector       map[string]string     `json:"podSelector"`
+	NamespaceSelector map[string]string     `json:"namespaceSelector"`
+	IPBlock           *NetworkPolicyIPBlock `json:"ipBlock"`
+}
+
+// NetworkPolicyIPBlock IP 段
+type NetworkPolicyIPBlock struct {
+	CIDR   string   `json:"cidr"`   // IP 地址段
+	Except []string `json:"except"` // 排除的 IP
+}
+
+// CreateNetworkPolicy 创建网络策略
+func (h *ResourceHandler) CreateNetworkPolicy(c *gin.Context) {
+	namespace := c.Param("namespace")
+	name := c.Param("name")
+
+	var req CreateNetworkPolicyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "请求参数错误: " + err.Error(),
+		})
+		return
+	}
+
+	// 获取当前用户ID
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(req.ClusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群客户端失败: " + err.Error(),
+		})
+		return
+	}
+
+	// 构建 NetworkPolicy 对象
+	np := &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{
+				MatchLabels: req.PodSelector,
+			},
+		},
+	}
+
+	// 设置 PolicyTypes
+	for _, pt := range req.PolicyTypes {
+		np.Spec.PolicyTypes = append(np.Spec.PolicyTypes, networkingv1.PolicyType(pt))
+	}
+
+	// 转换 Ingress 规则
+	for _, rule := range req.Ingress {
+		npIngressRule := networkingv1.NetworkPolicyIngressRule{}
+
+		// 转换 Ports
+		for _, port := range rule.Ports {
+			npPort := networkingv1.NetworkPolicyPort{}
+			if port.Protocol != "" {
+				protocol := v1.Protocol(port.Protocol)
+				npPort.Protocol = &protocol
+			}
+
+			if port.Port != nil {
+				intOrStr := intstr.FromInt(int(*port.Port))
+				npPort.Port = &intOrStr
+			}
+			if port.EndPort != nil {
+				npPort.EndPort = port.EndPort
+			}
+			if port.NamedPort != "" {
+				// 使用 intstr.String
+				strVal := intstr.FromString(port.NamedPort)
+				npPort.Port = &strVal
+			}
+
+			npIngressRule.Ports = append(npIngressRule.Ports, npPort)
+		}
+
+		// 转换 From
+		for _, peer := range rule.From {
+			npPeer := networkingv1.NetworkPolicyPeer{}
+
+			if peer.PodSelector != nil {
+				npPeer.PodSelector = &metav1.LabelSelector{
+					MatchLabels: peer.PodSelector,
+				}
+			}
+
+			if peer.NamespaceSelector != nil {
+				npPeer.NamespaceSelector = &metav1.LabelSelector{
+					MatchLabels: peer.NamespaceSelector,
+				}
+			}
+
+			if peer.IPBlock != nil {
+				npPeer.IPBlock = &networkingv1.IPBlock{
+					CIDR:   peer.IPBlock.CIDR,
+					Except: peer.IPBlock.Except,
+				}
+			}
+
+			npIngressRule.From = append(npIngressRule.From, npPeer)
+		}
+
+		np.Spec.Ingress = append(np.Spec.Ingress, npIngressRule)
+	}
+
+	// 转换 Egress 规则
+	for _, rule := range req.Egress {
+		npEgressRule := networkingv1.NetworkPolicyEgressRule{}
+
+		// 转换 Ports
+		for _, port := range rule.Ports {
+			npPort := networkingv1.NetworkPolicyPort{}
+			if port.Protocol != "" {
+				protocol := v1.Protocol(port.Protocol)
+				npPort.Protocol = &protocol
+			}
+
+			if port.Port != nil {
+				intOrStr := intstr.FromInt(int(*port.Port))
+				npPort.Port = &intOrStr
+			}
+			if port.EndPort != nil {
+				npPort.EndPort = port.EndPort
+			}
+			if port.NamedPort != "" {
+				strVal := intstr.FromString(port.NamedPort)
+				npPort.Port = &strVal
+			}
+
+			npEgressRule.Ports = append(npEgressRule.Ports, npPort)
+		}
+
+		// 转换 To
+		for _, peer := range rule.To {
+			npPeer := networkingv1.NetworkPolicyPeer{}
+
+			if peer.PodSelector != nil {
+				npPeer.PodSelector = &metav1.LabelSelector{
+					MatchLabels: peer.PodSelector,
+				}
+			}
+
+			if peer.NamespaceSelector != nil {
+				npPeer.NamespaceSelector = &metav1.LabelSelector{
+					MatchLabels: peer.NamespaceSelector,
+				}
+			}
+
+			if peer.IPBlock != nil {
+				npPeer.IPBlock = &networkingv1.IPBlock{
+					CIDR:   peer.IPBlock.CIDR,
+					Except: peer.IPBlock.Except,
+				}
+			}
+
+			npEgressRule.To = append(npEgressRule.To, npPeer)
+		}
+
+		np.Spec.Egress = append(np.Spec.Egress, npEgressRule)
+	}
+
+	// 创建 NetworkPolicy
+	_, err = clientset.NetworkingV1().NetworkPolicies(namespace).Create(c.Request.Context(), np, metav1.CreateOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "网络策略")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "创建成功",
+		"data": gin.H{
+			"needRefresh": true,
+		},
+	})
+}
+
 // DeleteNetworkPolicy 删除网络策略
 func (h *ResourceHandler) DeleteNetworkPolicy(c *gin.Context) {
 	namespace := c.Param("namespace")
@@ -6256,6 +6891,7 @@ func cleanNetworkPolicyForYAML(np *networkingv1.NetworkPolicy) map[string]interf
 	result["spec"] = np.Spec
 	return result
 }
+
 // CreateNamespaceRequest 创建命名空间请求
 type CreateNamespaceRequest struct {
 	YAML string `json:"yaml" binding:"required"`
@@ -6266,7 +6902,6 @@ type UpdateNamespaceYAMLRequest struct {
 	ClusterID int    `json:"clusterId" binding:"required"`
 	YAML      string `json:"yaml" binding:"required"`
 }
-
 
 // CreateNamespace 创建命名空间
 func (h *ResourceHandler) CreateNamespace(c *gin.Context) {
@@ -6532,12 +7167,12 @@ func cleanNamespaceForYAML(ns *v1.Namespace) map[string]interface{} {
 
 // ConfigMapInfo ConfigMap 信息
 type ConfigMapInfo struct {
-	Name       string            `json:"name"`       // ConfigMap 名称
-	Namespace  string            `json:"namespace"`  // 命名空间
-	DataCount  int               `json:"dataCount"`  // 数据项数量
-	Age        string            `json:"age"`        // 创建时间
-	CreatedAt  string            `json:"createdAt"`  // 创建时间（完整格式）
-	Labels     map[string]string `json:"labels"`     // 标签
+	Name      string            `json:"name"`      // ConfigMap 名称
+	Namespace string            `json:"namespace"` // 命名空间
+	DataCount int               `json:"dataCount"` // 数据项数量
+	Age       string            `json:"age"`       // 创建时间
+	CreatedAt string            `json:"createdAt"` // 创建时间（完整格式）
+	Labels    map[string]string `json:"labels"`    // 标签
 }
 
 // ListConfigMaps 获取 ConfigMap 列表
@@ -6648,22 +7283,13 @@ func (h *ResourceHandler) GetConfigMapYAML(c *gin.Context) {
 		return
 	}
 
-	// 转换为 YAML
-	yamlData, err := yaml.Marshal(configMap)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    500,
-			"message": "YAML 转换失败: " + err.Error(),
-		})
-		return
-	}
+	// 使用清理函数移除不需要的字段
+	cleaned := cleanConfigMapForYAML(configMap)
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "success",
-		"data": gin.H{
-			"yaml": string(yamlData),
-		},
+		"data":    cleaned,
 	})
 }
 
@@ -6785,12 +7411,12 @@ func (h *ResourceHandler) DeleteConfigMap(c *gin.Context) {
 
 // SecretInfo Secret 信息
 type SecretInfo struct {
-	Name       string            `json:"name"`       // Secret 名称
-	Namespace  string            `json:"namespace"`  // 命名空间
-	Type       string            `json:"type"`       // Secret 类型
-	DataCount  int               `json:"dataCount"`  // 数据项数量
-	Age        string            `json:"age"`        // 创建时间
-	Labels     map[string]string `json:"labels"`     // 标签
+	Name      string            `json:"name"`      // Secret 名称
+	Namespace string            `json:"namespace"` // 命名空间
+	Type      string            `json:"type"`      // Secret 类型
+	DataCount int               `json:"dataCount"` // 数据项数量
+	Age       string            `json:"age"`       // 创建时间
+	Labels    map[string]string `json:"labels"`    // 标签
 }
 
 // ListSecrets 获取 Secret 列表
@@ -6901,22 +7527,13 @@ func (h *ResourceHandler) GetSecretYAML(c *gin.Context) {
 		return
 	}
 
-	// 转换为 YAML
-	yamlData, err := yaml.Marshal(secret)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    500,
-			"message": "YAML 转换失败: " + err.Error(),
-		})
-		return
-	}
+	// 使用清理函数移除不需要的字段
+	cleaned := cleanSecretForYAML(secret)
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "success",
-		"data": gin.H{
-			"yaml": string(yamlData),
-		},
+		"data":    cleaned,
 	})
 }
 
@@ -7192,8 +7809,8 @@ func (h *ResourceHandler) GetPodsMetrics(c *gin.Context) {
 		metricsMap[podName] = map[string]interface{}{
 			"cpu":       cpuUsage,    // 毫核
 			"memory":    memoryUsage, // 字节
-			"cpuStr":     formatCPUMetrics(cpuUsage),
-			"memoryStr":  formatMemoryMetrics(memoryUsage),
+			"cpuStr":    formatCPUMetrics(cpuUsage),
+			"memoryStr": formatMemoryMetrics(memoryUsage),
 		}
 	}
 
@@ -7273,6 +7890,12 @@ func (h *ResourceHandler) PodShellWebSocket(c *gin.Context) {
 		return
 	}
 
+	// 获取用户名（从认证中间件设置的 context 中获取）
+	username := ""
+	if usernameVal, exists := c.Get("username"); exists {
+		username = usernameVal.(string)
+	}
+
 	// 升级到 WebSocket 连接
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
@@ -7326,12 +7949,27 @@ func (h *ResourceHandler) PodShellWebSocket(c *gin.Context) {
 		return
 	}
 
-	// 创建 WebSocket 读写器
-	wsReader := &WebSocketReader{
-		conn: conn,
-		data: make(chan []byte, 256),
+	// 创建录制器（录制目录）
+	recordingDir := "./data/terminal-recordings"
+	recorder, err := NewAsciinemaRecorder(recordingDir, 120, 30)
+	if err != nil {
+		log.Printf("创建录制器失败: %v", err)
+		// 录制失败不影响终端使用，只是不录制
+		recorder = nil
 	}
-	wsWriter := &WebSocketWriter{conn: conn}
+
+	// 创建 WebSocket 读写器（带录制功能）
+	wsReader := &RecordingWebSocketReader{
+		conn:      conn,
+		data:      make(chan []byte, 256),
+		recorder:  recorder,
+		startTime: time.Now(),
+	}
+	wsWriter := &RecordingWebSocketWriter{
+		conn:      conn,
+		recorder:  recorder,
+		startTime: time.Now(),
+	}
 
 	// 处理 WebSocket 消息
 	done := make(chan struct{})
@@ -7363,6 +8001,48 @@ func (h *ResourceHandler) PodShellWebSocket(c *gin.Context) {
 
 	// 等待读取 goroutine 结束
 	<-done
+
+	// 关闭录制器并保存会话记录
+	if recorder != nil {
+		duration := recorder.GetDuration()
+		fileSize := recorder.GetFileSize()
+		recordingPath := recorder.GetRecordingPath()
+
+		if err := recorder.Close(); err != nil {
+			log.Printf("关闭录制器失败: %v", err)
+		}
+
+		// 获取集群名称
+		var cluster models.Cluster
+		clusterName := ""
+		h.db.First(&cluster, clusterID)
+		clusterName = cluster.Alias
+		if clusterName == "" {
+			clusterName = cluster.Name
+		}
+
+		// 保存会话记录到数据库（所有会话都记录）
+		session := model.TerminalSession{
+			ClusterID:     uint(clusterID),
+			ClusterName:   clusterName,
+			Namespace:     namespace,
+			PodName:       podName,
+			ContainerName: containerName,
+			UserID:        currentUserID.(uint),
+			Username:      username,
+			RecordingPath: recordingPath,
+			Duration:      duration,
+			FileSize:      fileSize,
+			Status:        model.SessionStatusCompleted,
+		}
+
+		if err := h.db.Create(&session).Error; err != nil {
+			log.Printf("保存终端会话记录失败: %v", err)
+		} else {
+			fmt.Printf("✅ 终端会话已保存: ID=%d, 时长=%ds, 大小=%d bytes\n", session.ID, duration, fileSize)
+		}
+	}
+
 	fmt.Printf("🐚 WebSocket connection closed for pod %s/%s\n", namespace, podName)
 }
 
@@ -7371,11 +8051,11 @@ func (h *ResourceHandler) PauseWorkload(c *gin.Context) {
 	fmt.Printf("🎯 PauseWorkload called\n")
 
 	var req struct {
-		ClusterID  uint   `json:"clusterId" binding:"required"`
-		Namespace  string `json:"namespace" binding:"required"`
-		Name       string `json:"name" binding:"required"`
-		Type       string `json:"type" binding:"required"`
-		Paused     bool   `json:"paused"`
+		ClusterID uint   `json:"clusterId" binding:"required"`
+		Namespace string `json:"namespace" binding:"required"`
+		Name      string `json:"name" binding:"required"`
+		Type      string `json:"type" binding:"required"`
+		Paused    bool   `json:"paused"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -7455,11 +8135,11 @@ func (h *ResourceHandler) RollbackWorkload(c *gin.Context) {
 	fmt.Printf("🔄 RollbackWorkload called\n")
 
 	var req struct {
-		ClusterID  uint   `json:"clusterId" binding:"required"`
-		Namespace  string `json:"namespace" binding:"required"`
-		Name       string `json:"name" binding:"required"`
-		Type       string `json:"type" binding:"required"`
-		Revision   string `json:"revision" binding:"required"`
+		ClusterID uint   `json:"clusterId" binding:"required"`
+		Namespace string `json:"namespace" binding:"required"`
+		Name      string `json:"name" binding:"required"`
+		Type      string `json:"type" binding:"required"`
+		Revision  string `json:"revision" binding:"required"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -7572,5 +8252,3335 @@ func (h *ResourceHandler) RollbackWorkload(c *gin.Context) {
 		"data": gin.H{
 			"revision": req.Revision,
 		},
+	})
+}
+
+// FileInfo 文件信息
+type FileInfo struct {
+	Name    string `json:"name"`
+	Size    string `json:"size"`
+	Mode    string `json:"mode"`
+	IsDir   bool   `json:"isDir"`
+	ModTime string `json:"modTime"`
+	User    string `json:"user"`
+	Group   string `json:"group"`
+	Link    string `json:"link"`
+	Path    string `json:"path"`
+}
+
+// GetPodDetail 获取 Pod 详情
+func (h *ResourceHandler) GetPodDetail(c *gin.Context) {
+	clusterIDStr := c.Query("clusterId")
+	namespace := c.Param("namespace")
+	podName := c.Param("name")
+
+	clusterID, err := strconv.Atoi(clusterIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的集群ID",
+		})
+		return
+	}
+
+	currentUserID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"code":    401,
+			"message": "未授权",
+		})
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID.(uint))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群连接失败: " + err.Error(),
+		})
+		return
+	}
+
+	pod, err := clientset.CoreV1().Pods(namespace).Get(c.Request.Context(), podName, metav1.GetOptions{})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取 Pod 失败: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, pod)
+}
+
+// GetPodEvents 获取 Pod 事件
+func (h *ResourceHandler) GetPodEvents(c *gin.Context) {
+	clusterIDStr := c.Query("clusterId")
+	namespace := c.Param("namespace")
+	podName := c.Param("name")
+
+	clusterID, err := strconv.Atoi(clusterIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的集群ID",
+		})
+		return
+	}
+
+	currentUserID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"code":    401,
+			"message": "未授权",
+		})
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID.(uint))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群连接失败: " + err.Error(),
+		})
+		return
+	}
+
+	events, err := clientset.CoreV1().Events(namespace).List(c.Request.Context(), metav1.ListOptions{
+		FieldSelector: fmt.Sprintf("involvedObject.name=%s", podName),
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取事件失败: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"events": events.Items,
+	})
+}
+
+// ListContainerFiles 列出容器文件
+func (h *ResourceHandler) ListContainerFiles(c *gin.Context) {
+	clusterIDStr := c.Query("cluster_id")
+	if clusterIDStr == "" {
+		clusterIDStr = c.Query("clusterId")
+	}
+	clusterID, err := strconv.Atoi(clusterIDStr)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"code": 400,
+			"msg":  "无效的集群ID",
+		})
+		return
+	}
+
+	namespace := c.Query("namespace")
+	podName := c.Query("podName")
+	containerName := c.Query("containerName")
+	path := c.Query("path")
+
+	if namespace == "" || podName == "" || containerName == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"code": 400,
+			"msg":  "缺少必要参数",
+		})
+		return
+	}
+
+	if path == "" {
+		path = "/"
+	}
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	restConfig, err := h.clusterService.GetRESTConfig(uint(clusterID), currentUserID)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"code": 500,
+			"msg":  "获取集群配置失败: " + err.Error(),
+		})
+		return
+	}
+
+	serverURL, err := url.Parse(restConfig.Host)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"code": 500,
+			"msg":  "解析集群 URL 失败: " + err.Error(),
+		})
+		return
+	}
+
+	query := url.Values{}
+	query.Set("container", containerName)
+	query.Set("stdin", "true")
+	query.Set("stdout", "true")
+	query.Set("stderr", "true")
+	query.Set("tty", "false")
+
+	cmdStr := fmt.Sprintf("ls -la '%s'", path)
+	query.Add("command", "sh")
+	query.Add("command", "-c")
+	query.Add("command", cmdStr)
+
+	execURL := &url.URL{
+		Scheme:   serverURL.Scheme,
+		Host:     serverURL.Host,
+		Path:     fmt.Sprintf("/api/v1/namespaces/%s/pods/%s/exec", namespace, podName),
+		RawQuery: query.Encode(),
+	}
+
+	executor, err := remotecommand.NewSPDYExecutor(restConfig, "POST", execURL)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"code": 500,
+			"msg":  "创建 executor 失败: " + err.Error(),
+		})
+		return
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	pr, pw := io.Pipe()
+	defer pr.Close()
+	defer pw.Close()
+
+	go func() {
+		pw.Close()
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	err = executor.StreamWithContext(ctx, remotecommand.StreamOptions{
+		Stdin:  pr,
+		Stdout: &stdout,
+		Stderr: &stderr,
+		Tty:    false,
+	})
+
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"code": 500,
+			"msg":  "执行命令失败: " + err.Error(),
+		})
+		return
+	}
+
+	output := stdout.String()
+	files := parseLsOutput(output)
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"data": gin.H{
+			"files": files,
+		},
+		"msg": "获取成功",
+	})
+}
+
+// DownloadContainerFile 下载容器文件
+func (h *ResourceHandler) DownloadContainerFile(c *gin.Context) {
+	clusterIDStr := c.Query("cluster_id")
+	if clusterIDStr == "" {
+		clusterIDStr = c.Query("clusterId")
+	}
+	clusterID, err := strconv.Atoi(clusterIDStr)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"code": 400,
+			"msg":  "无效的集群ID",
+		})
+		return
+	}
+
+	namespace := c.Query("namespace")
+	podName := c.Query("podName")
+	containerName := c.Query("containerName")
+	path := c.Query("path")
+
+	if namespace == "" || podName == "" || containerName == "" || path == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"code": 400,
+			"msg":  "缺少必要参数",
+		})
+		return
+	}
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	restConfig, err := h.clusterService.GetRESTConfig(uint(clusterID), currentUserID)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"code": 500,
+			"msg":  "获取集群配置失败: " + err.Error(),
+		})
+		return
+	}
+
+	serverURL, err := url.Parse(restConfig.Host)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"code": 500,
+			"msg":  "解析集群 URL 失败: " + err.Error(),
+		})
+		return
+	}
+
+	query := url.Values{}
+	query.Set("container", containerName)
+	query.Set("stdin", "true")
+	query.Set("stdout", "true")
+	query.Set("stderr", "true")
+	query.Set("tty", "false")
+
+	cmdStr := fmt.Sprintf("cat '%s' | base64", path)
+	query.Add("command", "sh")
+	query.Add("command", "-c")
+	query.Add("command", cmdStr)
+
+	execURL := &url.URL{
+		Scheme:   serverURL.Scheme,
+		Host:     serverURL.Host,
+		Path:     fmt.Sprintf("/api/v1/namespaces/%s/pods/%s/exec", namespace, podName),
+		RawQuery: query.Encode(),
+	}
+
+	executor, err := remotecommand.NewSPDYExecutor(restConfig, "POST", execURL)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"code": 500,
+			"msg":  "创建 executor 失败: " + err.Error(),
+		})
+		return
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	pr, pw := io.Pipe()
+	defer pr.Close()
+	defer pw.Close()
+
+	go func() {
+		pw.Close()
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	err = executor.StreamWithContext(ctx, remotecommand.StreamOptions{
+		Stdin:  pr,
+		Stdout: &stdout,
+		Stderr: &stderr,
+		Tty:    false,
+	})
+
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"code": 500,
+			"msg":  "读取文件失败: " + err.Error(),
+		})
+		return
+	}
+
+	decodedData, err := base64.StdEncoding.DecodeString(stdout.String())
+	if err != nil {
+		decodedData = stdout.Bytes()
+	}
+
+	c.Header("Content-Type", "application/octet-stream")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filepath.Base(path)))
+	c.Data(http.StatusOK, "application/octet-stream", decodedData)
+}
+
+// UploadContainerFile 上传文件到容器
+func (h *ResourceHandler) UploadContainerFile(c *gin.Context) {
+	clusterIDStr := c.PostForm("cluster_id")
+	if clusterIDStr == "" {
+		clusterIDStr = c.PostForm("clusterId")
+	}
+	clusterID, err := strconv.Atoi(clusterIDStr)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"code": 400,
+			"msg":  "无效的集群ID",
+		})
+		return
+	}
+
+	namespace := c.PostForm("namespace")
+	podName := c.PostForm("podName")
+	containerName := c.PostForm("containerName")
+	path := c.PostForm("path")
+
+	if namespace == "" || podName == "" || containerName == "" || path == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"code": 400,
+			"msg":  "缺少必要参数",
+		})
+		return
+	}
+
+	file, err := c.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"code": 400,
+			"msg":  "获取上传文件失败: " + err.Error(),
+		})
+		return
+	}
+
+	// 构造完整的文件路径（目录 + 文件名）
+	fileName := filepath.Base(file.Filename)
+	targetPath := path
+	if !strings.HasSuffix(targetPath, "/") {
+		targetPath += "/"
+	}
+	targetPath += fileName
+
+	src, err := file.Open()
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"code": 500,
+			"msg":  "打开文件失败: " + err.Error(),
+		})
+		return
+	}
+	defer src.Close()
+
+	fileData, err := io.ReadAll(src)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"code": 500,
+			"msg":  "读取文件失败: " + err.Error(),
+		})
+		return
+	}
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	restConfig, err := h.clusterService.GetRESTConfig(uint(clusterID), currentUserID)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"code": 500,
+			"msg":  "获取集群配置失败: " + err.Error(),
+		})
+		return
+	}
+
+	serverURL, err := url.Parse(restConfig.Host)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"code": 500,
+			"msg":  "解析集群 URL 失败: " + err.Error(),
+		})
+		return
+	}
+
+	query := url.Values{}
+	query.Set("container", containerName)
+	query.Set("stdin", "true")
+	query.Set("stdout", "true")
+	query.Set("stderr", "true")
+	query.Set("tty", "false")
+
+	// 使用 base64 -d 从 stdin 读取并解码到文件
+	cmdStr := fmt.Sprintf("base64 -d > '%s'", targetPath)
+	query.Add("command", "sh")
+	query.Add("command", "-c")
+	query.Add("command", cmdStr)
+
+	execURL := &url.URL{
+		Scheme:   serverURL.Scheme,
+		Host:     serverURL.Host,
+		Path:     fmt.Sprintf("/api/v1/namespaces/%s/pods/%s/exec", namespace, podName),
+		RawQuery: query.Encode(),
+	}
+
+	executor, err := remotecommand.NewSPDYExecutor(restConfig, "POST", execURL)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"code": 500,
+			"msg":  "创建 executor 失败: " + err.Error(),
+		})
+		return
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	// 创建 pipe 用于 stdin
+	pr, pw := io.Pipe()
+	defer pr.Close()
+	defer pw.Close()
+
+	// 在 goroutine 中写入 base64 编码的文件内容到 stdin
+	go func() {
+		encodedContent := base64.StdEncoding.EncodeToString(fileData)
+		pw.Write([]byte(encodedContent))
+		pw.Close()
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	err = executor.StreamWithContext(ctx, remotecommand.StreamOptions{
+		Stdin:  pr,
+		Stdout: &stdout,
+		Stderr: &stderr,
+		Tty:    false,
+	})
+
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"code": 500,
+			"msg":  "上传文件失败: " + err.Error() + ", stderr: " + stderr.String(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 0,
+		"msg":  "文件上传成功",
+	})
+}
+
+// parseLsOutput 解析 ls -la 命令的输出
+func parseLsOutput(output string) []FileInfo {
+	lines := strings.Split(output, "\n")
+	var files []FileInfo
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "total") || strings.HasPrefix(line, "ERROR:") {
+			continue
+		}
+
+		fields := strings.Fields(line)
+		if len(fields) < 8 {
+			continue
+		}
+
+		fileInfo := FileInfo{
+			Mode:  fields[0],
+			User:  fields[2],
+			Group: fields[3],
+			Size:  fields[4],
+		}
+
+		fileInfo.IsDir = strings.HasPrefix(fileInfo.Mode, "d")
+
+		nameAndLink := strings.Join(fields[8:], " ")
+
+		if idx := strings.Index(nameAndLink, " -> "); idx > 0 {
+			fileInfo.Name = nameAndLink[:idx]
+			fileInfo.Link = nameAndLink[idx+4:]
+		} else {
+			fileInfo.Name = nameAndLink
+		}
+
+		// 跳过 . 和 .. 目录
+		if fileInfo.Name == "." || fileInfo.Name == ".." {
+			continue
+		}
+
+		if len(fields) >= 8 {
+			timeStr := strings.Join(fields[5:8], " ")
+			fileInfo.ModTime = timeStr
+		}
+
+		files = append(files, fileInfo)
+	}
+
+	return files
+}
+
+// ==================== Storage 相关 ====================
+
+// PVCInfo PersistentVolumeClaim 信息
+type PVCInfo struct {
+	Name         string            `json:"name"`
+	Namespace    string            `json:"namespace"`
+	Status       string            `json:"status"`
+	Capacity     string            `json:"capacity"`
+	AccessModes  []string          `json:"accessModes"`
+	StorageClass string            `json:"storageClass"`
+	VolumeName   string            `json:"volumeName"`
+	Age          string            `json:"age"`
+	Labels       map[string]string `json:"labels"`
+}
+
+// PVInfo PersistentVolume 信息
+type PVInfo struct {
+	Name          string            `json:"name"`
+	Capacity      string            `json:"capacity"`
+	AccessModes   []string          `json:"accessModes"`
+	ReclaimPolicy string            `json:"reclaimPolicy"`
+	Status        string            `json:"status"`
+	Claim         string            `json:"claim"`
+	StorageClass  string            `json:"storageClass"`
+	Reason        string            `json:"reason"`
+	Age           string            `json:"age"`
+	Labels        map[string]string `json:"labels"`
+}
+
+// StorageClassInfo StorageClass 信息
+type StorageClassInfo struct {
+	Name                 string            `json:"name"`
+	Provisioner          string            `json:"provisioner"`
+	ReclaimPolicy        string            `json:"reclaimPolicy"`
+	VolumeBindingMode    string            `json:"volumeBindingMode"`
+	AllowVolumeExpansion bool              `json:"allowVolumeExpansion"`
+	Age                  string            `json:"age"`
+	Labels               map[string]string `json:"labels"`
+}
+
+// ListPersistentVolumeClaims 获取 PVC 列表
+func (h *ResourceHandler) ListPersistentVolumeClaims(c *gin.Context) {
+	clusterIDStr := c.Query("clusterId")
+	clusterID, err := strconv.ParseUint(clusterIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的集群ID",
+		})
+		return
+	}
+
+	namespace := c.Query("namespace")
+	if namespace == "" {
+		namespace = v1.NamespaceAll
+	}
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群连接失败: " + err.Error(),
+		})
+		return
+	}
+
+	pvcs, err := clientset.CoreV1().PersistentVolumeClaims(namespace).List(c.Request.Context(), metav1.ListOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "PVC")
+		return
+	}
+
+	result := make([]PVCInfo, 0, len(pvcs.Items))
+	for _, pvc := range pvcs.Items {
+		accessModes := make([]string, len(pvc.Spec.AccessModes))
+		for i, am := range pvc.Spec.AccessModes {
+			accessModes[i] = string(am)
+		}
+
+		capacity := ""
+		if pvc.Spec.Resources.Requests != nil {
+			if storage, ok := pvc.Spec.Resources.Requests[v1.ResourceStorage]; ok {
+				capacity = storage.String()
+			}
+		}
+
+		storageClass := ""
+		if pvc.Spec.StorageClassName != nil {
+			storageClass = *pvc.Spec.StorageClassName
+		}
+
+		volumeName := ""
+		if pvc.Spec.VolumeName != "" {
+			volumeName = pvc.Spec.VolumeName
+		}
+
+		claim := PVCInfo{
+			Name:         pvc.Name,
+			Namespace:    pvc.Namespace,
+			Status:       string(pvc.Status.Phase),
+			Capacity:     capacity,
+			AccessModes:  accessModes,
+			StorageClass: storageClass,
+			VolumeName:   volumeName,
+			Age:          calculateAge(pvc.CreationTimestamp.Time),
+			Labels:       pvc.Labels,
+		}
+		result = append(result, claim)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "获取成功",
+		"data":    result,
+	})
+}
+
+// GetPersistentVolumeClaimYAML 获取 PVC YAML
+func (h *ResourceHandler) GetPersistentVolumeClaimYAML(c *gin.Context) {
+	clusterIDStr := c.Query("clusterId")
+	clusterID, err := strconv.ParseUint(clusterIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的集群ID",
+		})
+		return
+	}
+
+	namespace := c.Param("namespace")
+	name := c.Param("name")
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群连接失败: " + err.Error(),
+		})
+		return
+	}
+
+	pvc, err := clientset.CoreV1().PersistentVolumeClaims(namespace).Get(c.Request.Context(), name, metav1.GetOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "PVC")
+		return
+	}
+
+	// 使用清理函数移除不需要的字段
+	cleaned := cleanPersistentVolumeClaimForYAML(pvc)
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "获取成功",
+		"data":    cleaned,
+	})
+}
+
+// UpdatePersistentVolumeClaimYAML 更新 PVC YAML
+func (h *ResourceHandler) UpdatePersistentVolumeClaimYAML(c *gin.Context) {
+	clusterIDStr := c.Query("clusterId")
+	clusterID, err := strconv.ParseUint(clusterIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的集群ID",
+		})
+		return
+	}
+
+	namespace := c.Param("namespace")
+	name := c.Param("name")
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	var jsonData map[string]interface{}
+	if err := c.ShouldBindJSON(&jsonData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的请求数据: " + err.Error(),
+		})
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群连接失败: " + err.Error(),
+		})
+		return
+	}
+
+	existingPVC, err := clientset.CoreV1().PersistentVolumeClaims(namespace).Get(c.Request.Context(), name, metav1.GetOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "PVC")
+		return
+	}
+
+	var pvc v1.PersistentVolumeClaim
+	pvcData, err := json.Marshal(jsonData)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "序列化数据失败: " + err.Error(),
+		})
+		return
+	}
+
+	err = json.Unmarshal(pvcData, &pvc)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "解析 PVC 数据失败: " + err.Error(),
+		})
+		return
+	}
+
+	pvc.ResourceVersion = existingPVC.ResourceVersion
+
+	_, err = clientset.CoreV1().PersistentVolumeClaims(namespace).Update(c.Request.Context(), &pvc, metav1.UpdateOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "PVC")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "更新成功",
+	})
+}
+
+// DeletePersistentVolumeClaim 删除 PVC
+func (h *ResourceHandler) DeletePersistentVolumeClaim(c *gin.Context) {
+	clusterIDStr := c.Query("clusterId")
+	clusterID, err := strconv.ParseUint(clusterIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的集群ID",
+		})
+		return
+	}
+
+	namespace := c.Param("namespace")
+	name := c.Param("name")
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群连接失败: " + err.Error(),
+		})
+		return
+	}
+
+	err = clientset.CoreV1().PersistentVolumeClaims(namespace).Delete(c.Request.Context(), name, metav1.DeleteOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "PVC")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "删除成功",
+	})
+}
+
+// CreatePersistentVolumeClaimYAML 通过 YAML 创建 PVC
+func (h *ResourceHandler) CreatePersistentVolumeClaimYAML(c *gin.Context) {
+	clusterIDStr := c.Query("clusterId")
+	clusterID, err := strconv.ParseUint(clusterIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的集群ID",
+		})
+		return
+	}
+
+	namespace := c.Param("namespace")
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	var jsonData map[string]interface{}
+	if err := c.ShouldBindJSON(&jsonData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的请求数据: " + err.Error(),
+		})
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群连接失败: " + err.Error(),
+		})
+		return
+	}
+
+	var pvc v1.PersistentVolumeClaim
+	pvcData, err := json.Marshal(jsonData)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "序列化数据失败: " + err.Error(),
+		})
+		return
+	}
+
+	err = json.Unmarshal(pvcData, &pvc)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "解析 PVC 数据失败: " + err.Error(),
+		})
+		return
+	}
+
+	_, err = clientset.CoreV1().PersistentVolumeClaims(namespace).Create(c.Request.Context(), &pvc, metav1.CreateOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "PVC")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "创建成功",
+	})
+}
+
+// ListPersistentVolumes 获取 PV 列表
+func (h *ResourceHandler) ListPersistentVolumes(c *gin.Context) {
+	clusterIDStr := c.Query("clusterId")
+	clusterID, err := strconv.ParseUint(clusterIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的集群ID",
+		})
+		return
+	}
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群连接失败: " + err.Error(),
+		})
+		return
+	}
+
+	pvs, err := clientset.CoreV1().PersistentVolumes().List(c.Request.Context(), metav1.ListOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "PV")
+		return
+	}
+
+	result := make([]PVInfo, 0, len(pvs.Items))
+	for _, pv := range pvs.Items {
+		accessModes := make([]string, len(pv.Spec.AccessModes))
+		for i, am := range pv.Spec.AccessModes {
+			accessModes[i] = string(am)
+		}
+
+		capacity := ""
+		if pv.Spec.Capacity != nil {
+			if storage, ok := pv.Spec.Capacity[v1.ResourceStorage]; ok {
+				capacity = storage.String()
+			}
+		}
+
+		reclaimPolicy := string(pv.Spec.PersistentVolumeReclaimPolicy)
+
+		claim := ""
+		if pv.Spec.ClaimRef != nil {
+			claim = pv.Spec.ClaimRef.Namespace + "/" + pv.Spec.ClaimRef.Name
+		}
+
+		storageClass := pv.Spec.StorageClassName
+
+		reason := ""
+		if pv.Status.Reason != "" {
+			reason = pv.Status.Reason
+		}
+
+		volume := PVInfo{
+			Name:          pv.Name,
+			Capacity:      capacity,
+			AccessModes:   accessModes,
+			ReclaimPolicy: reclaimPolicy,
+			Status:        string(pv.Status.Phase),
+			Claim:         claim,
+			StorageClass:  storageClass,
+			Reason:        reason,
+			Age:           calculateAge(pv.CreationTimestamp.Time),
+			Labels:        pv.Labels,
+		}
+		result = append(result, volume)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "获取成功",
+		"data":    result,
+	})
+}
+
+// GetPersistentVolumeYAML 获取 PV YAML
+func (h *ResourceHandler) GetPersistentVolumeYAML(c *gin.Context) {
+	clusterIDStr := c.Query("clusterId")
+	clusterID, err := strconv.ParseUint(clusterIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的集群ID",
+		})
+		return
+	}
+
+	name := c.Param("name")
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群连接失败: " + err.Error(),
+		})
+		return
+	}
+
+	pv, err := clientset.CoreV1().PersistentVolumes().Get(c.Request.Context(), name, metav1.GetOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "PV")
+		return
+	}
+
+	// 使用清理函数移除不需要的字段
+	cleaned := cleanPersistentVolumeForYAML(pv)
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "获取成功",
+		"data":    cleaned,
+	})
+}
+
+// UpdatePersistentVolumeYAML 更新 PV YAML
+func (h *ResourceHandler) UpdatePersistentVolumeYAML(c *gin.Context) {
+	clusterIDStr := c.Query("clusterId")
+	clusterID, err := strconv.ParseUint(clusterIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的集群ID",
+		})
+		return
+	}
+
+	name := c.Param("name")
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	var jsonData map[string]interface{}
+	if err := c.ShouldBindJSON(&jsonData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的请求数据: " + err.Error(),
+		})
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群连接失败: " + err.Error(),
+		})
+		return
+	}
+
+	existingPV, err := clientset.CoreV1().PersistentVolumes().Get(c.Request.Context(), name, metav1.GetOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "PV")
+		return
+	}
+
+	var pv v1.PersistentVolume
+	pvData, err := json.Marshal(jsonData)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "序列化数据失败: " + err.Error(),
+		})
+		return
+	}
+
+	err = json.Unmarshal(pvData, &pv)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "解析 PV 数据失败: " + err.Error(),
+		})
+		return
+	}
+
+	pv.ResourceVersion = existingPV.ResourceVersion
+
+	_, err = clientset.CoreV1().PersistentVolumes().Update(c.Request.Context(), &pv, metav1.UpdateOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "PV")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "更新成功",
+	})
+}
+
+// DeletePersistentVolume 删除 PV
+func (h *ResourceHandler) DeletePersistentVolume(c *gin.Context) {
+	clusterIDStr := c.Query("clusterId")
+	clusterID, err := strconv.ParseUint(clusterIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的集群ID",
+		})
+		return
+	}
+
+	name := c.Param("name")
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群连接失败: " + err.Error(),
+		})
+		return
+	}
+
+	err = clientset.CoreV1().PersistentVolumes().Delete(c.Request.Context(), name, metav1.DeleteOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "PV")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "删除成功",
+	})
+}
+
+// CreatePersistentVolumeYAML 通过 YAML 创建 PV
+func (h *ResourceHandler) CreatePersistentVolumeYAML(c *gin.Context) {
+	clusterIDStr := c.Query("clusterId")
+	clusterID, err := strconv.ParseUint(clusterIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的集群ID",
+		})
+		return
+	}
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	var jsonData map[string]interface{}
+	if err := c.ShouldBindJSON(&jsonData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的请求数据: " + err.Error(),
+		})
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群连接失败: " + err.Error(),
+		})
+		return
+	}
+
+	var pv v1.PersistentVolume
+	pvData, err := json.Marshal(jsonData)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "序列化数据失败: " + err.Error(),
+		})
+		return
+	}
+
+	err = json.Unmarshal(pvData, &pv)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "解析 PV 数据失败: " + err.Error(),
+		})
+		return
+	}
+
+	_, err = clientset.CoreV1().PersistentVolumes().Create(c.Request.Context(), &pv, metav1.CreateOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "PV")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "创建成功",
+	})
+}
+
+// ListStorageClasses 获取 StorageClass 列表
+func (h *ResourceHandler) ListStorageClasses(c *gin.Context) {
+	clusterIDStr := c.Query("clusterId")
+	clusterID, err := strconv.ParseUint(clusterIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的集群ID",
+		})
+		return
+	}
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群连接失败: " + err.Error(),
+		})
+		return
+	}
+
+	scs, err := clientset.StorageV1().StorageClasses().List(c.Request.Context(), metav1.ListOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "StorageClass")
+		return
+	}
+
+	result := make([]StorageClassInfo, 0, len(scs.Items))
+	for _, sc := range scs.Items {
+		reclaimPolicy := ""
+		if sc.ReclaimPolicy != nil {
+			reclaimPolicy = string(*sc.ReclaimPolicy)
+		}
+
+		volumeBindingMode := ""
+		if sc.VolumeBindingMode != nil {
+			volumeBindingMode = string(*sc.VolumeBindingMode)
+		}
+
+		allowVolumeExpansion := false
+		if sc.AllowVolumeExpansion != nil {
+			allowVolumeExpansion = *sc.AllowVolumeExpansion
+		}
+
+		classInfo := StorageClassInfo{
+			Name:                 sc.Name,
+			Provisioner:          sc.Provisioner,
+			ReclaimPolicy:        reclaimPolicy,
+			VolumeBindingMode:    volumeBindingMode,
+			AllowVolumeExpansion: allowVolumeExpansion,
+			Age:                  calculateAge(sc.CreationTimestamp.Time),
+			Labels:               sc.Labels,
+		}
+		result = append(result, classInfo)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "获取成功",
+		"data":    result,
+	})
+}
+
+// GetStorageClassYAML 获取 StorageClass YAML
+func (h *ResourceHandler) GetStorageClassYAML(c *gin.Context) {
+	clusterIDStr := c.Query("clusterId")
+	clusterID, err := strconv.ParseUint(clusterIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的集群ID",
+		})
+		return
+	}
+
+	name := c.Param("name")
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群连接失败: " + err.Error(),
+		})
+		return
+	}
+
+	sc, err := clientset.StorageV1().StorageClasses().Get(c.Request.Context(), name, metav1.GetOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "StorageClass")
+		return
+	}
+
+	// 使用清理函数移除不需要的字段
+	cleaned := cleanStorageClassForYAML(sc)
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "获取成功",
+		"data":    cleaned,
+	})
+}
+
+// UpdateStorageClassYAML 更新 StorageClass YAML
+func (h *ResourceHandler) UpdateStorageClassYAML(c *gin.Context) {
+	clusterIDStr := c.Query("clusterId")
+	clusterID, err := strconv.ParseUint(clusterIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的集群ID",
+		})
+		return
+	}
+
+	name := c.Param("name")
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	var jsonData map[string]interface{}
+	if err := c.ShouldBindJSON(&jsonData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的请求数据: " + err.Error(),
+		})
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群连接失败: " + err.Error(),
+		})
+		return
+	}
+
+	existingSC, err := clientset.StorageV1().StorageClasses().Get(c.Request.Context(), name, metav1.GetOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "StorageClass")
+		return
+	}
+
+	var sc storagev1.StorageClass
+	scData, err := json.Marshal(jsonData)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "序列化数据失败: " + err.Error(),
+		})
+		return
+	}
+
+	err = json.Unmarshal(scData, &sc)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "解析 StorageClass 数据失败: " + err.Error(),
+		})
+		return
+	}
+
+	sc.ResourceVersion = existingSC.ResourceVersion
+
+	_, err = clientset.StorageV1().StorageClasses().Update(c.Request.Context(), &sc, metav1.UpdateOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "StorageClass")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "更新成功",
+	})
+}
+
+// DeleteStorageClass 删除 StorageClass
+func (h *ResourceHandler) DeleteStorageClass(c *gin.Context) {
+	clusterIDStr := c.Query("clusterId")
+	clusterID, err := strconv.ParseUint(clusterIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的集群ID",
+		})
+		return
+	}
+
+	name := c.Param("name")
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群连接失败: " + err.Error(),
+		})
+		return
+	}
+
+	err = clientset.StorageV1().StorageClasses().Delete(c.Request.Context(), name, metav1.DeleteOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "StorageClass")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "删除成功",
+	})
+}
+
+// CreateStorageClassYAML 通过 YAML 创建 StorageClass
+func (h *ResourceHandler) CreateStorageClassYAML(c *gin.Context) {
+	clusterIDStr := c.Query("clusterId")
+	clusterID, err := strconv.ParseUint(clusterIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的集群ID",
+		})
+		return
+	}
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	var jsonData map[string]interface{}
+	if err := c.ShouldBindJSON(&jsonData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的请求数据: " + err.Error(),
+		})
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群连接失败: " + err.Error(),
+		})
+		return
+	}
+
+	var sc storagev1.StorageClass
+	scData, err := json.Marshal(jsonData)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "序列化数据失败: " + err.Error(),
+		})
+		return
+	}
+
+	err = json.Unmarshal(scData, &sc)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "解析 StorageClass 数据失败: " + err.Error(),
+		})
+		return
+	}
+
+	_, err = clientset.StorageV1().StorageClasses().Create(c.Request.Context(), &sc, metav1.CreateOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "StorageClass")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "创建成功",
+	})
+}
+
+// ==================== ResourceQuota 相关 ====================
+
+// ResourceQuotaInfo ResourceQuota 信息
+type ResourceQuotaInfo struct {
+	Name           string `json:"name"`
+	Namespace      string `json:"namespace"`
+	RequestsCpu    string `json:"requestsCpu"`
+	RequestsMemory string `json:"requestsMemory"`
+	LimitsCpu      string `json:"limitsCpu"`
+	LimitsMemory   string `json:"limitsMemory"`
+	Age            string `json:"age"`
+	CreatedAt      string `json:"createdAt"`
+}
+
+// ListResourceQuotas 获取 ResourceQuota 列表
+func (h *ResourceHandler) ListResourceQuotas(c *gin.Context) {
+	clusterIDStr := c.Query("clusterId")
+	clusterID, err := strconv.ParseUint(clusterIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的集群ID",
+		})
+		return
+	}
+
+	namespace := c.Query("namespace")
+	if namespace == "" {
+		namespace = v1.NamespaceAll
+	}
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群连接失败: " + err.Error(),
+		})
+		return
+	}
+
+	quotas, err := clientset.CoreV1().ResourceQuotas(namespace).List(c.Request.Context(), metav1.ListOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "ResourceQuota")
+		return
+	}
+
+	quotaInfos := make([]ResourceQuotaInfo, 0, len(quotas.Items))
+	for _, q := range quotas.Items {
+		info := ResourceQuotaInfo{
+			Name:      q.Name,
+			Namespace: q.Namespace,
+			Age:       calculateAge(q.CreationTimestamp.Time),
+			CreatedAt: q.CreationTimestamp.Format("2006-01-02 15:04:05"),
+		}
+
+		if q.Spec.Hard != nil {
+			if cpu, ok := q.Spec.Hard[v1.ResourceCPU]; ok {
+				if req, ok := q.Status.Used[v1.ResourceCPU]; ok {
+					info.RequestsCpu = fmt.Sprintf("%s/%s", req.String(), cpu.String())
+				} else {
+					info.RequestsCpu = cpu.String()
+				}
+			}
+			if mem, ok := q.Spec.Hard[v1.ResourceMemory]; ok {
+				if req, ok := q.Status.Used[v1.ResourceMemory]; ok {
+					info.RequestsMemory = fmt.Sprintf("%s/%s", req.String(), mem.String())
+				} else {
+					info.RequestsMemory = mem.String()
+				}
+			}
+			if limitsCpu, ok := q.Spec.Hard[v1.ResourceLimitsCPU]; ok {
+				if used, ok := q.Status.Used[v1.ResourceLimitsCPU]; ok {
+					info.LimitsCpu = fmt.Sprintf("%s/%s", used.String(), limitsCpu.String())
+				} else {
+					info.LimitsCpu = limitsCpu.String()
+				}
+			}
+			if limitsMem, ok := q.Spec.Hard[v1.ResourceLimitsMemory]; ok {
+				if used, ok := q.Status.Used[v1.ResourceLimitsMemory]; ok {
+					info.LimitsMemory = fmt.Sprintf("%s/%s", used.String(), limitsMem.String())
+				} else {
+					info.LimitsMemory = limitsMem.String()
+				}
+			}
+		}
+
+		quotaInfos = append(quotaInfos, info)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "success",
+		"data":    quotaInfos,
+	})
+}
+
+// GetResourceQuotaYAML 获取 ResourceQuota YAML
+func (h *ResourceHandler) GetResourceQuotaYAML(c *gin.Context) {
+	namespace := c.Param("namespace")
+	name := c.Param("name")
+	clusterIDStr := c.Query("clusterId")
+
+	clusterID, err := strconv.Atoi(clusterIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的集群ID",
+		})
+		return
+	}
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群客户端失败: " + err.Error(),
+		})
+		return
+	}
+
+	quota, err := clientset.CoreV1().ResourceQuotas(namespace).Get(c.Request.Context(), name, metav1.GetOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "ResourceQuota")
+		return
+	}
+
+	yamlData, err := yaml.Marshal(quota)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "YAML 转换失败: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "success",
+		"data": gin.H{
+			"yaml": string(yamlData),
+		},
+	})
+}
+
+// UpdateResourceQuotaYAML 更新 ResourceQuota YAML
+func (h *ResourceHandler) UpdateResourceQuotaYAML(c *gin.Context) {
+	var req struct {
+		ClusterID int    `json:"clusterId"`
+		YAML      string `json:"yaml"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "请求参数错误: " + err.Error(),
+		})
+		return
+	}
+
+	namespace := c.Param("namespace")
+	name := c.Param("name")
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(req.ClusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群客户端失败: " + err.Error(),
+		})
+		return
+	}
+
+	var quota v1.ResourceQuota
+	if err := yaml.Unmarshal([]byte(req.YAML), &quota); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "解析 YAML 失败: " + err.Error(),
+		})
+		return
+	}
+
+	quota.Name = name
+	quota.Namespace = namespace
+
+	_, err = clientset.CoreV1().ResourceQuotas(namespace).Update(c.Request.Context(), &quota, metav1.UpdateOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "ResourceQuota")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "更新成功",
+		"data": gin.H{
+			"needRefresh": true,
+		},
+	})
+}
+
+// DeleteResourceQuota 删除 ResourceQuota
+func (h *ResourceHandler) DeleteResourceQuota(c *gin.Context) {
+	clusterIDStr := c.Query("clusterId")
+	clusterID, err := strconv.Atoi(clusterIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的集群ID",
+		})
+		return
+	}
+
+	namespace := c.Param("namespace")
+	name := c.Param("name")
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群客户端失败: " + err.Error(),
+		})
+		return
+	}
+
+	err = clientset.CoreV1().ResourceQuotas(namespace).Delete(c.Request.Context(), name, metav1.DeleteOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "ResourceQuota")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "删除成功",
+		"data": gin.H{
+			"needRefresh": true,
+		},
+	})
+}
+
+// CreateResourceQuotaFromYAML 从 YAML 创建 ResourceQuota
+func (h *ResourceHandler) CreateResourceQuotaFromYAML(c *gin.Context) {
+	var req struct {
+		ClusterID int    `json:"clusterId"`
+		YAML      string `json:"yaml"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "请求参数错误: " + err.Error(),
+		})
+		return
+	}
+
+	namespace := c.Param("namespace")
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(req.ClusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群客户端失败: " + err.Error(),
+		})
+		return
+	}
+
+	var quota v1.ResourceQuota
+	if err := yaml.Unmarshal([]byte(req.YAML), &quota); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "解析 YAML 失败: " + err.Error(),
+		})
+		return
+	}
+
+	quota.Namespace = namespace
+
+	_, err = clientset.CoreV1().ResourceQuotas(namespace).Create(c.Request.Context(), &quota, metav1.CreateOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "ResourceQuota")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "创建成功",
+		"data": gin.H{
+			"needRefresh": true,
+		},
+	})
+}
+
+// ==================== LimitRange 相关 ====================
+
+// LimitRangeInfo LimitRange 信息
+type LimitRangeInfo struct {
+	Name                 string `json:"name"`
+	Namespace            string `json:"namespace"`
+	Type                 string `json:"type"`
+	Resource             string `json:"resource"`
+	Min                  string `json:"min"`
+	Max                  string `json:"max"`
+	DefaultLimit         string `json:"defaultLimit"`
+	DefaultRequest       string `json:"defaultRequest"`
+	MaxLimitRequestRatio string `json:"maxLimitRequestRatio"`
+	Age                  string `json:"age"`
+}
+
+// ListLimitRanges 获取 LimitRange 列表
+func (h *ResourceHandler) ListLimitRanges(c *gin.Context) {
+	clusterIDStr := c.Query("clusterId")
+	clusterID, err := strconv.ParseUint(clusterIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的集群ID",
+		})
+		return
+	}
+
+	namespace := c.Query("namespace")
+	if namespace == "" {
+		namespace = v1.NamespaceAll
+	}
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群连接失败: " + err.Error(),
+		})
+		return
+	}
+
+	limitRanges, err := clientset.CoreV1().LimitRanges(namespace).List(c.Request.Context(), metav1.ListOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "LimitRange")
+		return
+	}
+
+	limitRangeInfos := make([]LimitRangeInfo, 0)
+	for _, lr := range limitRanges.Items {
+		info := LimitRangeInfo{
+			Name:      lr.Name,
+			Namespace: lr.Namespace,
+			Age:       calculateAge(lr.CreationTimestamp.Time),
+		}
+
+		for _, limit := range lr.Spec.Limits {
+			info.Type = string(limit.Type)
+
+			if limit.Min != nil {
+				for res, qty := range limit.Min {
+					info.Resource = string(res)
+					info.Min = qty.String()
+					break
+				}
+			}
+
+			if limit.Max != nil {
+				for res, qty := range limit.Max {
+					info.Resource = string(res)
+					info.Max = qty.String()
+					break
+				}
+			}
+
+			if limit.Default != nil {
+				for res, qty := range limit.Default {
+					info.Resource = string(res)
+					info.DefaultLimit = qty.String()
+					break
+				}
+			}
+
+			if limit.DefaultRequest != nil {
+				for res, qty := range limit.DefaultRequest {
+					info.Resource = string(res)
+					info.DefaultRequest = qty.String()
+					break
+				}
+			}
+
+			if limit.MaxLimitRequestRatio != nil {
+				for res, qty := range limit.MaxLimitRequestRatio {
+					info.Resource = string(res)
+					info.MaxLimitRequestRatio = qty.String()
+					break
+				}
+			}
+
+			limitRangeInfos = append(limitRangeInfos, info)
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "success",
+		"data":    limitRangeInfos,
+	})
+}
+
+// GetLimitRangeYAML 获取 LimitRange YAML
+func (h *ResourceHandler) GetLimitRangeYAML(c *gin.Context) {
+	namespace := c.Param("namespace")
+	name := c.Param("name")
+	clusterIDStr := c.Query("clusterId")
+
+	clusterID, err := strconv.Atoi(clusterIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的集群ID",
+		})
+		return
+	}
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群客户端失败: " + err.Error(),
+		})
+		return
+	}
+
+	limitRange, err := clientset.CoreV1().LimitRanges(namespace).Get(c.Request.Context(), name, metav1.GetOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "LimitRange")
+		return
+	}
+
+	yamlData, err := yaml.Marshal(limitRange)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "YAML 转换失败: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "success",
+		"data": gin.H{
+			"yaml": string(yamlData),
+		},
+	})
+}
+
+// UpdateLimitRangeYAML 更新 LimitRange YAML
+func (h *ResourceHandler) UpdateLimitRangeYAML(c *gin.Context) {
+	var req struct {
+		ClusterID int    `json:"clusterId"`
+		YAML      string `json:"yaml"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "请求参数错误: " + err.Error(),
+		})
+		return
+	}
+
+	namespace := c.Param("namespace")
+	name := c.Param("name")
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(req.ClusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群客户端失败: " + err.Error(),
+		})
+		return
+	}
+
+	var limitRange v1.LimitRange
+	if err := yaml.Unmarshal([]byte(req.YAML), &limitRange); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "解析 YAML 失败: " + err.Error(),
+		})
+		return
+	}
+
+	limitRange.Name = name
+	limitRange.Namespace = namespace
+
+	_, err = clientset.CoreV1().LimitRanges(namespace).Update(c.Request.Context(), &limitRange, metav1.UpdateOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "LimitRange")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "更新成功",
+		"data": gin.H{
+			"needRefresh": true,
+		},
+	})
+}
+
+// DeleteLimitRange 删除 LimitRange
+func (h *ResourceHandler) DeleteLimitRange(c *gin.Context) {
+	clusterIDStr := c.Query("clusterId")
+	clusterID, err := strconv.Atoi(clusterIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的集群ID",
+		})
+		return
+	}
+
+	namespace := c.Param("namespace")
+	name := c.Param("name")
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群客户端失败: " + err.Error(),
+		})
+		return
+	}
+
+	err = clientset.CoreV1().LimitRanges(namespace).Delete(c.Request.Context(), name, metav1.DeleteOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "LimitRange")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "删除成功",
+		"data": gin.H{
+			"needRefresh": true,
+		},
+	})
+}
+
+// CreateLimitRangeFromYAML 从 YAML 创建 LimitRange
+func (h *ResourceHandler) CreateLimitRangeFromYAML(c *gin.Context) {
+	var req struct {
+		ClusterID int    `json:"clusterId"`
+		YAML      string `json:"yaml"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "请求参数错误: " + err.Error(),
+		})
+		return
+	}
+
+	namespace := c.Param("namespace")
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(req.ClusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群客户端失败: " + err.Error(),
+		})
+		return
+	}
+
+	var limitRange v1.LimitRange
+	if err := yaml.Unmarshal([]byte(req.YAML), &limitRange); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "解析 YAML 失败: " + err.Error(),
+		})
+		return
+	}
+
+	limitRange.Namespace = namespace
+
+	_, err = clientset.CoreV1().LimitRanges(namespace).Create(c.Request.Context(), &limitRange, metav1.CreateOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "LimitRange")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "创建成功",
+		"data": gin.H{
+			"needRefresh": true,
+		},
+	})
+}
+
+// ==================== HPA 相关 ====================
+
+// HPAInfo HPA 信息
+type HPAInfo struct {
+	Name            string `json:"name"`
+	Namespace       string `json:"namespace"`
+	ReferenceTarget string `json:"referenceTarget"`
+	MinReplicas     *int32 `json:"minReplicas"`
+	MaxReplicas     int32  `json:"maxReplicas"`
+	CurrentReplicas int32  `json:"currentReplicas"`
+	TargetCPU       string `json:"targetCPU"`
+	TargetMemory    string `json:"targetMemory"`
+	Age             string `json:"age"`
+	CreatedAt       string `json:"createdAt"`
+}
+
+// ListHorizontalPodAutoscalers 获取 HPA 列表
+func (h *ResourceHandler) ListHorizontalPodAutoscalers(c *gin.Context) {
+	clusterIDStr := c.Query("clusterId")
+	clusterID, err := strconv.ParseUint(clusterIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的集群ID",
+		})
+		return
+	}
+
+	namespace := c.Query("namespace")
+	if namespace == "" {
+		namespace = v1.NamespaceAll
+	}
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群连接失败: " + err.Error(),
+		})
+		return
+	}
+
+	hpas, err := clientset.AutoscalingV1().HorizontalPodAutoscalers(namespace).List(c.Request.Context(), metav1.ListOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "HPA")
+		return
+	}
+
+	hpaInfos := make([]HPAInfo, 0, len(hpas.Items))
+	for _, hpa := range hpas.Items {
+		info := HPAInfo{
+			Name:            hpa.Name,
+			Namespace:       hpa.Namespace,
+			MaxReplicas:     hpa.Spec.MaxReplicas,
+			CurrentReplicas: hpa.Status.CurrentReplicas,
+			Age:             calculateAge(hpa.CreationTimestamp.Time),
+			CreatedAt:       hpa.CreationTimestamp.Format("2006-01-02 15:04:05"),
+		}
+
+		// 获取引用目标
+		if hpa.Spec.ScaleTargetRef.Name != "" {
+			info.ReferenceTarget = fmt.Sprintf("%s/%s", hpa.Spec.ScaleTargetRef.Kind, hpa.Spec.ScaleTargetRef.Name)
+		}
+
+		info.MinReplicas = hpa.Spec.MinReplicas
+
+		// v1 API 只支持 CPU 目标
+		if hpa.Spec.TargetCPUUtilizationPercentage != nil {
+			info.TargetCPU = fmt.Sprintf("%d%%", *hpa.Spec.TargetCPUUtilizationPercentage)
+		}
+
+		hpaInfos = append(hpaInfos, info)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "success",
+		"data":    hpaInfos,
+	})
+}
+
+// GetHorizontalPodAutoscalerYAML 获取 HPA YAML
+func (h *ResourceHandler) GetHorizontalPodAutoscalerYAML(c *gin.Context) {
+	namespace := c.Param("namespace")
+	name := c.Param("name")
+	clusterIDStr := c.Query("clusterId")
+
+	clusterID, err := strconv.Atoi(clusterIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的集群ID",
+		})
+		return
+	}
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群客户端失败: " + err.Error(),
+		})
+		return
+	}
+
+	hpa, err := clientset.AutoscalingV1().HorizontalPodAutoscalers(namespace).Get(c.Request.Context(), name, metav1.GetOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "HPA")
+		return
+	}
+
+	yamlData, err := yaml.Marshal(hpa)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "YAML 转换失败: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "success",
+		"data": gin.H{
+			"yaml": string(yamlData),
+		},
+	})
+}
+
+// UpdateHorizontalPodAutoscalerYAML 更新 HPA YAML
+func (h *ResourceHandler) UpdateHorizontalPodAutoscalerYAML(c *gin.Context) {
+	var req struct {
+		ClusterID int    `json:"clusterId"`
+		YAML      string `json:"yaml"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "请求参数错误: " + err.Error(),
+		})
+		return
+	}
+
+	namespace := c.Param("namespace")
+	name := c.Param("name")
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(req.ClusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群客户端失败: " + err.Error(),
+		})
+		return
+	}
+
+	var hpa autoscalingv1.HorizontalPodAutoscaler
+	if err := yaml.Unmarshal([]byte(req.YAML), &hpa); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "解析 YAML 失败: " + err.Error(),
+		})
+		return
+	}
+
+	hpa.Name = name
+	hpa.Namespace = namespace
+
+	_, err = clientset.AutoscalingV1().HorizontalPodAutoscalers(namespace).Update(c.Request.Context(), &hpa, metav1.UpdateOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "HPA")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "更新成功",
+		"data": gin.H{
+			"needRefresh": true,
+		},
+	})
+}
+
+// DeleteHorizontalPodAutoscaler 删除 HPA
+func (h *ResourceHandler) DeleteHorizontalPodAutoscaler(c *gin.Context) {
+	clusterIDStr := c.Query("clusterId")
+	clusterID, err := strconv.Atoi(clusterIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的集群ID",
+		})
+		return
+	}
+
+	namespace := c.Param("namespace")
+	name := c.Param("name")
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群客户端失败: " + err.Error(),
+		})
+		return
+	}
+
+	err = clientset.AutoscalingV1().HorizontalPodAutoscalers(namespace).Delete(c.Request.Context(), name, metav1.DeleteOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "HPA")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "删除成功",
+		"data": gin.H{
+			"needRefresh": true,
+		},
+	})
+}
+
+// CreateHPAFromYAML 从 YAML 创建 HPA
+func (h *ResourceHandler) CreateHPAFromYAML(c *gin.Context) {
+	var req struct {
+		ClusterID int    `json:"clusterId"`
+		YAML      string `json:"yaml"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "请求参数错误: " + err.Error(),
+		})
+		return
+	}
+
+	namespace := c.Param("namespace")
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(req.ClusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群客户端失败: " + err.Error(),
+		})
+		return
+	}
+
+	var hpa autoscalingv1.HorizontalPodAutoscaler
+	if err := yaml.Unmarshal([]byte(req.YAML), &hpa); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "解析 YAML 失败: " + err.Error(),
+		})
+		return
+	}
+
+	hpa.Namespace = namespace
+
+	_, err = clientset.AutoscalingV1().HorizontalPodAutoscalers(namespace).Create(c.Request.Context(), &hpa, metav1.CreateOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "HPA")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "创建成功",
+		"data": gin.H{
+			"needRefresh": true,
+		},
+	})
+}
+
+// ==================== PodDisruptionBudget 相关 ====================
+
+// PDBInfo PodDisruptionBudget 信息
+type PDBInfo struct {
+	Name               string `json:"name"`
+	Namespace          string `json:"namespace"`
+	MinAvailable       string `json:"minAvailable"`
+	MaxUnavailable     string `json:"maxUnavailable"`
+	AllowedDisruptions int32  `json:"allowedDisruptions"`
+	CurrentHealthy     int32  `json:"currentHealthy"`
+	DesiredHealthy     int32  `json:"desiredHealthy"`
+	Age                string `json:"age"`
+	CreatedAt          string `json:"createdAt"`
+}
+
+// ListPodDisruptionBudgets 获取 PodDisruptionBudget 列表
+func (h *ResourceHandler) ListPodDisruptionBudgets(c *gin.Context) {
+	clusterIDStr := c.Query("clusterId")
+	clusterID, err := strconv.ParseUint(clusterIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的集群ID",
+		})
+		return
+	}
+
+	namespace := c.Query("namespace")
+	if namespace == "" {
+		namespace = v1.NamespaceAll
+	}
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群连接失败: " + err.Error(),
+		})
+		return
+	}
+
+	pdbs, err := clientset.PolicyV1().PodDisruptionBudgets(namespace).List(c.Request.Context(), metav1.ListOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "PodDisruptionBudget")
+		return
+	}
+
+	pdbInfos := make([]PDBInfo, 0, len(pdbs.Items))
+	for _, pdb := range pdbs.Items {
+		info := PDBInfo{
+			Name:               pdb.Name,
+			Namespace:          pdb.Namespace,
+			AllowedDisruptions: pdb.Status.DisruptionsAllowed,
+			CurrentHealthy:     pdb.Status.CurrentHealthy,
+			DesiredHealthy:     pdb.Status.DesiredHealthy,
+			Age:                calculateAge(pdb.CreationTimestamp.Time),
+			CreatedAt:          pdb.CreationTimestamp.Format("2006-01-02 15:04:05"),
+		}
+
+		if pdb.Spec.MinAvailable != nil {
+			info.MinAvailable = pdb.Spec.MinAvailable.String()
+		}
+
+		if pdb.Spec.MaxUnavailable != nil {
+			info.MaxUnavailable = pdb.Spec.MaxUnavailable.String()
+		}
+
+		pdbInfos = append(pdbInfos, info)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "success",
+		"data":    pdbInfos,
+	})
+}
+
+// GetPodDisruptionBudgetYAML 获取 PodDisruptionBudget YAML
+func (h *ResourceHandler) GetPodDisruptionBudgetYAML(c *gin.Context) {
+	namespace := c.Param("namespace")
+	name := c.Param("name")
+	clusterIDStr := c.Query("clusterId")
+
+	clusterID, err := strconv.Atoi(clusterIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的集群ID",
+		})
+		return
+	}
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群客户端失败: " + err.Error(),
+		})
+		return
+	}
+
+	pdb, err := clientset.PolicyV1().PodDisruptionBudgets(namespace).Get(c.Request.Context(), name, metav1.GetOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "PodDisruptionBudget")
+		return
+	}
+
+	yamlData, err := yaml.Marshal(pdb)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "YAML 转换失败: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "success",
+		"data": gin.H{
+			"yaml": string(yamlData),
+		},
+	})
+}
+
+// UpdatePodDisruptionBudgetYAML 更新 PodDisruptionBudget YAML
+func (h *ResourceHandler) UpdatePodDisruptionBudgetYAML(c *gin.Context) {
+	var req struct {
+		ClusterID int    `json:"clusterId"`
+		YAML      string `json:"yaml"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "请求参数错误: " + err.Error(),
+		})
+		return
+	}
+
+	namespace := c.Param("namespace")
+	name := c.Param("name")
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(req.ClusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群客户端失败: " + err.Error(),
+		})
+		return
+	}
+
+	var pdb policyv1.PodDisruptionBudget
+	if err := yaml.Unmarshal([]byte(req.YAML), &pdb); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "解析 YAML 失败: " + err.Error(),
+		})
+		return
+	}
+
+	pdb.Name = name
+	pdb.Namespace = namespace
+
+	_, err = clientset.PolicyV1().PodDisruptionBudgets(namespace).Update(c.Request.Context(), &pdb, metav1.UpdateOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "PodDisruptionBudget")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "更新成功",
+		"data": gin.H{
+			"needRefresh": true,
+		},
+	})
+}
+
+// DeletePodDisruptionBudget 删除 PodDisruptionBudget
+func (h *ResourceHandler) DeletePodDisruptionBudget(c *gin.Context) {
+	clusterIDStr := c.Query("clusterId")
+	clusterID, err := strconv.Atoi(clusterIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "无效的集群ID",
+		})
+		return
+	}
+
+	namespace := c.Param("namespace")
+	name := c.Param("name")
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群客户端失败: " + err.Error(),
+		})
+		return
+	}
+
+	err = clientset.PolicyV1().PodDisruptionBudgets(namespace).Delete(c.Request.Context(), name, metav1.DeleteOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "PodDisruptionBudget")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "删除成功",
+		"data": gin.H{
+			"needRefresh": true,
+		},
+	})
+}
+
+// CreatePDBFromYAML 从 YAML 创建 PodDisruptionBudget
+func (h *ResourceHandler) CreatePDBFromYAML(c *gin.Context) {
+	var req struct {
+		ClusterID int    `json:"clusterId"`
+		YAML      string `json:"yaml"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "请求参数错误: " + err.Error(),
+		})
+		return
+	}
+
+	namespace := c.Param("namespace")
+
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(req.ClusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取集群客户端失败: " + err.Error(),
+		})
+		return
+	}
+
+	var pdb policyv1.PodDisruptionBudget
+	if err := yaml.Unmarshal([]byte(req.YAML), &pdb); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "解析 YAML 失败: " + err.Error(),
+		})
+		return
+	}
+
+	pdb.Namespace = namespace
+
+	_, err = clientset.PolicyV1().PodDisruptionBudgets(namespace).Create(c.Request.Context(), &pdb, metav1.CreateOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "PodDisruptionBudget")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "创建成功",
+		"data": gin.H{
+			"needRefresh": true,
+		},
+	})
+}
+
+// ==================== 终端审计相关 ====================
+
+// TerminalSessionInfo 终端会话信息
+type TerminalSessionInfo struct {
+	ID            uint   `json:"id"`
+	ClusterID     uint   `json:"clusterId"`
+	ClusterName   string `json:"clusterName"`
+	Namespace     string `json:"namespace"`
+	PodName       string `json:"podName"`
+	ContainerName string `json:"containerName"`
+	UserID        uint   `json:"userId"`
+	Username      string `json:"username"`
+	Duration      int    `json:"duration"`
+	FileSize      int64  `json:"fileSize"`
+	CreatedAt     string `json:"createdAt"`
+}
+
+// ListTerminalSessions 获取终端会话列表
+func (h *ResourceHandler) ListTerminalSessions(c *gin.Context) {
+	// 获取当前用户ID
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	var sessions []model.TerminalSession
+	err := h.db.Where("user_id = ?", currentUserID).Order("created_at DESC").Find(&sessions).Error
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "获取会话列表失败: " + err.Error(),
+		})
+		return
+	}
+
+	// 转换为前端格式
+	result := make([]TerminalSessionInfo, 0, len(sessions))
+	for _, session := range sessions {
+		// 获取集群名称
+		var cluster models.Cluster
+		clusterName := ""
+		if session.ClusterID > 0 {
+			h.db.First(&cluster, session.ClusterID)
+			clusterName = cluster.Alias
+			if clusterName == "" {
+				clusterName = cluster.Name
+			}
+		}
+
+		result = append(result, TerminalSessionInfo{
+			ID:            session.ID,
+			ClusterID:     session.ClusterID,
+			ClusterName:   clusterName,
+			Namespace:     session.Namespace,
+			PodName:       session.PodName,
+			ContainerName: session.ContainerName,
+			UserID:        session.UserID,
+			Username:      session.Username,
+			Duration:      session.Duration,
+			FileSize:      session.FileSize,
+			CreatedAt:     session.CreatedAt.Format("2006-01-02 15:04:05"),
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "success",
+		"data":    result,
+	})
+}
+
+// PlayTerminalSession 播放终端会话
+func (h *ResourceHandler) PlayTerminalSession(c *gin.Context) {
+	sessionID := c.Param("id")
+	if sessionID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "会话ID不能为空",
+		})
+		return
+	}
+
+	// 获取当前用户ID
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	var session model.TerminalSession
+	err := h.db.Where("id = ? AND user_id = ?", sessionID, currentUserID).First(&session).Error
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"code":    404,
+			"message": "会话不存在",
+		})
+		return
+	}
+
+	// 读取录制文件
+	data, err := os.ReadFile(session.RecordingPath)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "读取录制文件失败: " + err.Error(),
+		})
+		return
+	}
+
+	// 设置响应头
+	c.Header("Content-Type", "application/json")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=terminal-%d.cast", session.ID))
+
+	c.Data(http.StatusOK, "application/json", data)
+}
+
+// DeleteTerminalSession 删除终端会话
+func (h *ResourceHandler) DeleteTerminalSession(c *gin.Context) {
+	sessionID := c.Param("id")
+	if sessionID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "会话ID不能为空",
+		})
+		return
+	}
+
+	// 获取当前用户ID
+	currentUserID, ok := GetCurrentUserID(c)
+	if !ok {
+		return
+	}
+
+	var session model.TerminalSession
+	err := h.db.Where("id = ? AND user_id = ?", sessionID, currentUserID).First(&session).Error
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"code":    404,
+			"message": "会话不存在",
+		})
+		return
+	}
+
+	// 删除录制文件
+	if session.RecordingPath != "" {
+		os.Remove(session.RecordingPath)
+	}
+
+	// 删除数据库记录
+	err = h.db.Delete(&session).Error
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    500,
+			"message": "删除会话失败: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "删除成功",
+	})
+}
+
+// ==================== 访问控制资源 ====================
+
+// ListServiceAccounts 获取ServiceAccount列表
+func (h *ResourceHandler) ListServiceAccounts(c *gin.Context) {
+	clusterIDStr := c.Query("clusterId")
+	namespace := c.Query("namespace")
+	clusterID, err := strconv.ParseUint(clusterIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "无效的集群ID"})
+		return
+	}
+
+	userIDVal, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "未授权：无法获取用户信息"})
+		return
+	}
+	currentUserID, ok := userIDVal.(uint)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "用户ID类型错误"})
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取集群连接失败: " + err.Error()})
+		return
+	}
+
+	list, err := clientset.CoreV1().ServiceAccounts(namespace).List(c.Request.Context(), metav1.ListOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "ServiceAccount")
+		return
+	}
+
+	result := make([]gin.H, 0, len(list.Items))
+	for _, item := range list.Items {
+		secretNames := make([]string, 0, len(item.Secrets))
+		for _, s := range item.Secrets {
+			secretNames = append(secretNames, s.Name)
+		}
+		result = append(result, gin.H{
+			"name":      item.Name,
+			"namespace": item.Namespace,
+			"secrets":   secretNames,
+			"age":       calculateAge(item.CreationTimestamp.Time),
+			"labels":    item.Labels,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "success",
+		"data":    result,
+	})
+}
+
+// ListRoles 获取Role列表
+func (h *ResourceHandler) ListRoles(c *gin.Context) {
+	clusterIDStr := c.Query("clusterId")
+	namespace := c.Query("namespace")
+	clusterID, err := strconv.ParseUint(clusterIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "无效的集群ID"})
+		return
+	}
+
+	if namespace == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "namespace 参数必填"})
+		return
+	}
+
+	userIDVal, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "未授权：无法获取用户信息"})
+		return
+	}
+	currentUserID, ok := userIDVal.(uint)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "用户ID类型错误"})
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取集群连接失败: " + err.Error()})
+		return
+	}
+
+	list, err := clientset.RbacV1().Roles(namespace).List(c.Request.Context(), metav1.ListOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "Role")
+		return
+	}
+
+	result := make([]gin.H, 0, len(list.Items))
+	for _, item := range list.Items {
+		result = append(result, gin.H{
+			"name":      item.Name,
+			"namespace": item.Namespace,
+			"age":       calculateAge(item.CreationTimestamp.Time),
+			"labels":    item.Labels,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "success",
+		"data":    result,
+	})
+}
+
+// ListRoleBindings 获取RoleBinding列表
+func (h *ResourceHandler) ListRoleBindings(c *gin.Context) {
+	clusterIDStr := c.Query("clusterId")
+	namespace := c.Query("namespace")
+	clusterID, err := strconv.ParseUint(clusterIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "无效的集群ID"})
+		return
+	}
+
+	if namespace == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "namespace 参数必填"})
+		return
+	}
+
+	userIDVal, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "未授权：无法获取用户信息"})
+		return
+	}
+	currentUserID, ok := userIDVal.(uint)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "用户ID类型错误"})
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取集群连接失败: " + err.Error()})
+		return
+	}
+
+	list, err := clientset.RbacV1().RoleBindings(namespace).List(c.Request.Context(), metav1.ListOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "RoleBinding")
+		return
+	}
+
+	result := make([]gin.H, 0, len(list.Items))
+	for _, item := range list.Items {
+		result = append(result, gin.H{
+			"name":      item.Name,
+			"namespace": item.Namespace,
+			"age":       calculateAge(item.CreationTimestamp.Time),
+			"labels":    item.Labels,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "success",
+		"data":    result,
+	})
+}
+
+// ListClusterRoles 获取ClusterRole列表
+func (h *ResourceHandler) ListClusterRoles(c *gin.Context) {
+	clusterIDStr := c.Query("clusterId")
+	clusterID, err := strconv.ParseUint(clusterIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "无效的集群ID"})
+		return
+	}
+
+	userIDVal, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "未授权：无法获取用户信息"})
+		return
+	}
+	currentUserID, ok := userIDVal.(uint)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "用户ID类型错误"})
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取集群连接失败: " + err.Error()})
+		return
+	}
+
+	list, err := clientset.RbacV1().ClusterRoles().List(c.Request.Context(), metav1.ListOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "ClusterRole")
+		return
+	}
+
+	result := make([]gin.H, 0, len(list.Items))
+	for _, item := range list.Items {
+		result = append(result, gin.H{
+			"name":   item.Name,
+			"age":    calculateAge(item.CreationTimestamp.Time),
+			"labels": item.Labels,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "success",
+		"data":    result,
+	})
+}
+
+// ListClusterRoleBindings 获取ClusterRoleBinding列表
+func (h *ResourceHandler) ListClusterRoleBindings(c *gin.Context) {
+	clusterIDStr := c.Query("clusterId")
+	clusterID, err := strconv.ParseUint(clusterIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "无效的集群ID"})
+		return
+	}
+
+	userIDVal, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "未授权：无法获取用户信息"})
+		return
+	}
+	currentUserID, ok := userIDVal.(uint)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "用户ID类型错误"})
+		return
+	}
+
+	clientset, err := h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取集群连接失败: " + err.Error()})
+		return
+	}
+
+	list, err := clientset.RbacV1().ClusterRoleBindings().List(c.Request.Context(), metav1.ListOptions{})
+	if err != nil {
+		HandleK8sError(c, err, "ClusterRoleBinding")
+		return
+	}
+
+	result := make([]gin.H, 0, len(list.Items))
+	for _, item := range list.Items {
+		result = append(result, gin.H{
+			"name":   item.Name,
+			"age":    calculateAge(item.CreationTimestamp.Time),
+			"labels": item.Labels,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "success",
+		"data":    result,
+	})
+}
+
+// ListPodSecurityPolicies 获取PodSecurityPolicy列表
+func (h *ResourceHandler) ListPodSecurityPolicies(c *gin.Context) {
+	clusterIDStr := c.Query("clusterId")
+	clusterID, err := strconv.ParseUint(clusterIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1, "message": "无效的集群ID"})
+		return
+	}
+
+	userIDVal, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "未授权：无法获取用户信息"})
+		return
+	}
+	currentUserID, ok := userIDVal.(uint)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "用户ID类型错误"})
+		return
+	}
+
+	// 验证集群连接
+	_, err = h.clusterService.GetClientsetForUser(c.Request.Context(), uint(clusterID), currentUserID)
+	if err != nil {
+		if h.handleGetClientsetError(c, err) {
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": "获取集群连接失败: " + err.Error()})
+		return
+	}
+
+	// PodSecurityPolicy 已在 Kubernetes 1.25+ 中废弃，API不存在
+	// 直接返回空列表和提示信息
+	c.JSON(http.StatusOK, gin.H{
+		"code":    0,
+		"message": "PodSecurityPolicy API已废弃，Kubernetes 1.25+不再支持",
+		"data":    []gin.H{},
 	})
 }

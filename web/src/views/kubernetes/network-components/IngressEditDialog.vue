@@ -93,7 +93,9 @@
                         <el-col :span="6">
                           <div class="field-group">
                             <label>Service 名称</label>
-                            <el-input v-model="path.service" placeholder="服务名称" size="small" />
+                            <el-select v-model="path.service" placeholder="选择服务" size="small" style="width: 100%" filterable>
+                              <el-option v-for="svc in servicesList" :key="svc.name" :label="svc.name" :value="svc.name" />
+                            </el-select>
                           </div>
                         </el-col>
                         <el-col :span="6">
@@ -291,7 +293,7 @@
 import { ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Delete, Plus, Document, Lock, Link, PriceTag } from '@element-plus/icons-vue'
-import { getIngressYAML, updateIngressYAML, createIngress, getSecrets, type IngressInfo } from '@/api/kubernetes'
+import { getIngressYAML, updateIngressYAML, createIngress, getSecrets, getServices, type IngressInfo } from '@/api/kubernetes'
 
 interface PathConfig {
   path: string
@@ -330,6 +332,7 @@ const originalData = ref<any>(null)
 const activeTab = ref('rules')
 const newTLSHost = ref<string[]>([])
 const secretsList = ref<any[]>([])
+const servicesList = ref<any[]>([])
 
 const formData = ref({
   name: '',
@@ -415,6 +418,9 @@ const openEdit = async (ingress: IngressInfo, nsList: any[]) => {
 
     // 加载 Secret 列表
     await loadSecrets()
+
+    // 加载 Service 列表
+    await loadServices()
 
     if (formData.value.rules.length === 0) {
       addRule()
@@ -576,10 +582,22 @@ const loadSecrets = async () => {
   }
 }
 
-// 监听命名空间变化，自动加载 Secret 列表
+// 加载 Service 列表
+const loadServices = async () => {
+  if (!props.clusterId || !formData.value.namespace) return
+  try {
+    const data = await getServices(props.clusterId, formData.value.namespace)
+    servicesList.value = data || []
+  } catch (error) {
+    console.error('获取 Service 列表失败:', error)
+  }
+}
+
+// 监听命名空间变化，自动加载 Secret 列表和 Service 列表
 watch(() => formData.value.namespace, () => {
   if (formData.value.namespace) {
     loadSecrets()
+    loadServices()
   }
 })
 
@@ -630,11 +648,16 @@ const buildSaveData = () => {
     }
   }
 
-  // 添加 TLS
-  const validTLS = formData.value.tls.filter(t => t.hosts.length > 0 || t.secretName)
-  if (validTLS.length > 0) {
+  // 添加 TLS（显式处理空数组的情况）
+  // 只保留有 secretName 的 TLS 配置，hosts 可选
+  const validTLS = formData.value.tls.filter(t => t.secretName)
+  // 如果编辑模式下原本有 TLS 配置但被删除了，需要显式设置 tls 为空数组
+  const originalHasTLS = isEdit.value && originalData.value?.spec?.tls && originalData.value.spec.tls.length > 0
+  if (originalHasTLS && formData.value.tls.length === 0) {
+    ingressData.spec.tls = []
+  } else if (validTLS.length > 0) {
     ingressData.spec.tls = validTLS.map(t => ({
-      hosts: t.hosts,
+      hosts: t.hosts.length > 0 ? t.hosts : undefined,
       secretName: t.secretName
     }))
   }
@@ -692,6 +715,20 @@ const handleSave = async () => {
     return
   }
 
+  // 验证 TLS 配置：如果配置了证书，secretName 必须填写
+  const invalidTLS = formData.value.tls.filter(t => !t.secretName && t.hosts.length === 0)
+  if (invalidTLS.length > 0) {
+    ElMessage.error('请填写 TLS 证书的 Secret 名称或删除无效的证书配置')
+    return
+  }
+
+  // 只保留有 secretName 的 TLS 配置
+  const tlsWithSecret = formData.value.tls.filter(t => t.secretName)
+  if (tlsWithSecret.length !== formData.value.tls.length) {
+    ElMessage.warning('已自动过滤未填写 Secret 名称的证书配置')
+    formData.value.tls = tlsWithSecret
+  }
+
   saving.value = true
   try {
     const ingressData = buildSaveData()
@@ -722,9 +759,9 @@ const handleSave = async () => {
               }))
           })),
         tls: formData.value.tls
-          .filter(t => t.hosts.length > 0)
+          .filter(t => t.secretName)
           .map(t => ({
-            hosts: t.hosts,
+            hosts: t.hosts.length > 0 ? t.hosts : undefined,
             secretName: t.secretName
           }))
       }
@@ -753,6 +790,7 @@ const handleClose = () => {
   annotationsList.value = []
   newTLSHost.value = []
   secretsList.value = []
+  servicesList.value = []
 }
 
 defineExpose({

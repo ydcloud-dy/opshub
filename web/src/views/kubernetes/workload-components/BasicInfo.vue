@@ -47,11 +47,6 @@
         <el-input value="请使用「扩容配置」中的 CronJob 配置" disabled size="small" />
         <div class="form-tip">CronJob 通过调度规则和 Job 配置来管理 Pod，而非传统副本数</div>
       </div>
-      <div class="form-row" v-if="formData.type === 'CronJob' && isCreateMode">
-        <label>调度规则</label>
-        <el-input v-model="formData.schedule" size="small" placeholder="例如: */5 * * * * (每5分钟执行一次)" />
-        <div class="form-tip">Cron 表达式格式: 分 时 日 月 周。常用示例: */5 * * * * (每5分钟)、0 * * * * (每小时)、0 0 * * * (每天零点)</div>
-      </div>
       <div class="form-section">
         <div class="form-section-header">
           <label>标签</label>
@@ -94,7 +89,6 @@ interface FormData {
   namespace: string
   type: string
   replicas: number
-  schedule?: string  // CronJob 调度规则
   labels: { key: string; value: string }[]
   annotations: { key: string; value: string }[]
 }
