@@ -90,6 +90,12 @@ const router = createRouter({
           meta: { title: '凭据管理' }
         },
         {
+          path: 'asset/cloud-accounts',
+          name: 'AssetCloudAccounts',
+          component: () => import('@/views/asset/CloudAccounts.vue'),
+          meta: { title: '云账号管理' }
+        },
+        {
           path: 'asset/groups',
           name: 'AssetGroups',
           component: () => import('@/views/asset/Groups.vue'),

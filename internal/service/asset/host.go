@@ -346,6 +346,49 @@ func (s *HostService) GetAllCloudAccounts(c *gin.Context) {
 	response.Success(c, accounts)
 }
 
+// GetCloudInstances 获取云平台的实例列表
+func (s *HostService) GetCloudInstances(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		response.ErrorCode(c, http.StatusBadRequest, "无效的账号ID")
+		return
+	}
+
+	// 从查询参数获取区域
+	region := c.Query("region")
+	if region == "" {
+		response.ErrorCode(c, http.StatusBadRequest, "请指定区域")
+		return
+	}
+
+	instances, err := s.cloudUseCase.GetInstances(c.Request.Context(), uint(id), region)
+	if err != nil {
+		response.ErrorCode(c, http.StatusInternalServerError, "获取实例列表失败: "+err.Error())
+		return
+	}
+
+	response.Success(c, instances)
+}
+
+// GetCloudRegions 获取云平台的区域列表
+func (s *HostService) GetCloudRegions(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		response.ErrorCode(c, http.StatusBadRequest, "无效的账号ID")
+		return
+	}
+
+	regions, err := s.cloudUseCase.GetRegions(c.Request.Context(), uint(id))
+	if err != nil {
+		response.ErrorCode(c, http.StatusInternalServerError, "获取区域列表失败: "+err.Error())
+		return
+	}
+
+	response.Success(c, regions)
+}
+
 // ImportFromCloud 从云平台导入主机
 func (s *HostService) ImportFromCloud(c *gin.Context) {
 	var req asset.CloudImportRequest
@@ -513,6 +556,21 @@ func (s *HostService) ImportFromExcel(c *gin.Context) {
 		return
 	}
 
+	// 获取主机类型（默认为自建主机）
+	hostType := c.PostForm("type")
+	if hostType == "" {
+		hostType = "self"
+	}
+
+	// 获取分组ID
+	var groupID uint
+	if groupIDStr := c.PostForm("groupId"); groupIDStr != "" {
+		id, err := strconv.ParseUint(groupIDStr, 10, 32)
+		if err == nil {
+			groupID = uint(id)
+		}
+	}
+
 	// 检查文件类型
 	if file.Header.Get("Content-Type") != "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" &&
 		!strings.HasSuffix(file.Filename, ".xlsx") {
@@ -535,7 +593,7 @@ func (s *HostService) ImportFromExcel(c *gin.Context) {
 	}
 
 	// 调用导入方法
-	result, err := s.hostUseCase.ImportFromExcel(c.Request.Context(), buf.Bytes())
+	result, err := s.hostUseCase.ImportFromExcelWithType(c.Request.Context(), buf.Bytes(), hostType, groupID)
 	if err != nil {
 		response.ErrorCode(c, http.StatusInternalServerError, "导入失败: "+err.Error())
 		return

@@ -10,6 +10,7 @@ type AssetGroupRepo interface {
 	GetTree(ctx context.Context) ([]*AssetGroup, error)
 	GetAll(ctx context.Context) ([]*AssetGroup, error)
 	List(ctx context.Context, page, pageSize int, keyword string) ([]*AssetGroup, int64, error)
+	GetDescendantIDs(ctx context.Context, id uint) ([]uint, error)
 }
 
 type HostRepo interface {
@@ -18,9 +19,10 @@ type HostRepo interface {
 	Update(ctx context.Context, host *Host) error
 	Delete(ctx context.Context, id uint) error
 	GetByID(ctx context.Context, id uint) (*Host, error)
-	List(ctx context.Context, page, pageSize int, keyword string, groupID *uint) ([]*Host, int64, error)
+	List(ctx context.Context, page, pageSize int, keyword string, groupIDs []uint) ([]*Host, int64, error)
 	GetByGroupID(ctx context.Context, groupID uint) ([]*Host, error)
 	GetByIP(ctx context.Context, ip string) (*Host, error)
+	GetByCloudInstanceID(ctx context.Context, instanceID string) (*Host, error)
 }
 
 type CredentialRepo interface {

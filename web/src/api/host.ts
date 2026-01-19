@@ -75,6 +75,14 @@ export const importFromCloud = (data: any) => {
   return request.post('/api/v1/cloud-accounts/import', data)
 }
 
+export const getCloudInstances = (accountId: number, region: string) => {
+  return request.get(`/api/v1/cloud-accounts/${accountId}/instances`, { params: { region } })
+}
+
+export const getCloudRegions = (accountId: number) => {
+  return request.get(`/api/v1/cloud-accounts/${accountId}/regions`)
+}
+
 // 采集主机信息
 export const collectHostInfo = (id: number) => {
   return request.post(`/api/v1/hosts/${id}/collect`)
@@ -96,9 +104,11 @@ export const downloadExcelTemplate = () => {
 }
 
 // Excel批量导入主机
-export const importFromExcel = (file: File) => {
+export const importFromExcel = (file: File, type?: string, groupId?: number) => {
   const formData = new FormData()
   formData.append('file', file)
+  if (type) formData.append('type', type)
+  if (groupId) formData.append('groupId', String(groupId))
   return request.post('/api/v1/hosts/import', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   })

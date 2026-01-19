@@ -146,7 +146,11 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="最后检查" prop="lastCheck" width="180" />
+        <el-table-column label="最后检查" prop="lastCheck" width="180">
+          <template #default="{ row }">
+            <span>{{ formatDateTime(row.lastCheck) }}</span>
+          </template>
+        </el-table-column>
 
         <el-table-column label="操作" width="200" fixed="right" align="center">
           <template #default="{ row }">
@@ -200,8 +204,36 @@
         </el-form-item>
         <el-form-item label="告警通知" prop="enableAlert">
           <el-switch v-model="form.enableAlert" />
-          <div class="form-tip">域名异常时发送告警通知</div>
+          <div class="form-tip">启用后当域名异常时将发送告警通知</div>
         </el-form-item>
+
+        <!-- 告警配置 -->
+        <template v-if="form.enableAlert">
+          <el-divider content-position="left">告警触发条件</el-divider>
+
+          <el-form-item label="响应时间阈值" prop="responseThreshold">
+            <el-input-number v-model="form.responseThreshold" :min="100" :max="30000" :step="100" style="width: 100%;" />
+            <div class="form-tip">响应时间超过此值时触发告警（毫秒），默认1000ms</div>
+          </el-form-item>
+
+          <el-form-item label="SSL过期告警" prop="sslExpiryDays">
+            <el-input-number v-model="form.sslExpiryDays" :min="1" :max="365" style="width: 100%;" />
+            <div class="form-tip">SSL证书过期前多少天开始告警，默认30天</div>
+          </el-form-item>
+
+          <el-alert
+            title="告警通道配置提示"
+            type="info"
+            :closable="false"
+            show-icon
+            style="margin-bottom: 16px;"
+          >
+            <template #default>
+              <div>告警通知支持邮件、企业微信、钉钉、飞书、Webhook等方式。</div>
+              <div style="margin-top: 4px; color: #909399; font-size: 12px;">请在"告警配置"页面配置通知通道和接收人。</div>
+            </template>
+          </el-alert>
+        </template>
       </el-form>
 
       <template #footer>
@@ -248,7 +280,7 @@
           </div>
           <div class="info-item">
             <span class="info-label">SSL到期:</span>
-            <span class="info-value">{{ currentDomain.sslExpiry || '-' }}</span>
+            <span class="info-value">{{ formatDateTime(currentDomain.sslExpiry) }}</span>
           </div>
           <div class="info-item">
             <span class="info-label">检查间隔:</span>
@@ -256,15 +288,15 @@
           </div>
           <div class="info-item">
             <span class="info-label">最后检查:</span>
-            <span class="info-value">{{ currentDomain.lastCheck }}</span>
+            <span class="info-value">{{ formatDateTime(currentDomain.lastCheck) }}</span>
           </div>
           <div class="info-item">
             <span class="info-label">创建时间:</span>
-            <span class="info-value">{{ currentDomain.createdAt }}</span>
+            <span class="info-value">{{ formatDateTime(currentDomain.createdAt) }}</span>
           </div>
           <div class="info-item">
             <span class="info-label">更新时间:</span>
-            <span class="info-value">{{ currentDomain.updatedAt }}</span>
+            <span class="info-value">{{ formatDateTime(currentDomain.updatedAt) }}</span>
           </div>
         </div>
 
@@ -356,7 +388,9 @@ const form = reactive({
   domain: '',
   checkInterval: 5,
   enableSSL: true,
-  enableAlert: true
+  enableAlert: false,
+  responseThreshold: 1000,
+  sslExpiryDays: 30
 })
 
 const rules: FormRules = {
@@ -382,6 +416,26 @@ const getResponseTimeClass = (time: number) => {
   if (time < 200) return 'response-time-good'
   if (time < 500) return 'response-time-warning'
   return 'response-time-error'
+}
+
+// 格式化时间
+const formatDateTime = (dateTime: string | null | undefined | Date) => {
+  if (!dateTime) return '-'
+  // 如果是 Date 对象，转换为字符串
+  let dateStr = ''
+  if (dateTime instanceof Date) {
+    const year = dateTime.getFullYear()
+    const month = String(dateTime.getMonth() + 1).padStart(2, '0')
+    const day = String(dateTime.getDate()).padStart(2, '0')
+    const hours = String(dateTime.getHours()).padStart(2, '0')
+    const minutes = String(dateTime.getMinutes()).padStart(2, '0')
+    const seconds = String(dateTime.getSeconds()).padStart(2, '0')
+    dateStr = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
+  } else {
+    // 如果是字符串，移除T和时区部分
+    dateStr = String(dateTime).replace('T', ' ').split('+')[0].split('.')[0]
+  }
+  return dateStr
 }
 
 // 重置搜索
@@ -416,7 +470,9 @@ const handleAdd = () => {
     domain: '',
     checkInterval: 5,
     enableSSL: true,
-    enableAlert: true
+    enableAlert: false,
+    responseThreshold: 1000,
+    sslExpiryDays: 30
   })
   dialogVisible.value = true
 }
@@ -429,7 +485,9 @@ const handleEdit = (row: any) => {
     domain: row.domain,
     checkInterval: row.checkInterval,
     enableSSL: row.enableSSL ?? true,
-    enableAlert: row.enableAlert ?? true
+    enableAlert: row.enableAlert ?? false,
+    responseThreshold: row.responseThreshold ?? 1000,
+    sslExpiryDays: row.sslExpiryDays ?? 30
   })
   dialogVisible.value = true
 }
@@ -495,8 +553,14 @@ const handleSubmit = async () => {
           await updateDomainMonitor(form.id, form)
           ElMessage.success('更新成功')
         } else {
-          await createDomainMonitor(form)
+          const result = await createDomainMonitor(form)
           ElMessage.success('创建成功')
+          // 创建成功后自动执行一次检查
+          try {
+            await checkDomain(result.id)
+          } catch (checkError) {
+            console.warn('首次检查失败，但监控已创建:', checkError)
+          }
         }
         dialogVisible.value = false
         await loadData()

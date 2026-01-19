@@ -10,7 +10,10 @@ export interface DomainMonitor {
   checkInterval: number
   enableSSL: boolean
   enableAlert: boolean
+  responseThreshold?: number
+  sslExpiryDays?: number
   lastCheck: string
+  nextCheck?: string
   createdAt?: string
   updatedAt?: string
 }

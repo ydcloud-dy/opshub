@@ -194,52 +194,47 @@
             v-loading="hostLoading"
             class="modern-table"
             :header-cell-style="{ background: '#fafbfc', color: '#606266', fontWeight: '600' }"
-            @row-dblclick="handleHostDblClick"
             @selection-change="handleHostSelectionChange"
           >
             <el-table-column type="selection" width="55" fixed="left" />
-            <el-table-column label="主机名" prop="name" min-width="150" fixed="left">
+            <el-table-column label="主机" prop="name" min-width="140" fixed="left">
               <template #default="{ row }">
-                <div class="hostname-cell">
-                  <el-icon class="host-icon" :color="getStatusColor(row.status)">
-                    <Monitor />
-                  </el-icon>
-                  <div>
-                    <div class="hostname">{{ row.name }}</div>
-                    <div class="ip">{{ row.ip }}:{{ row.port }}</div>
+                <div class="hostname-cell" @click="handleShowHostDetail(row)">
+                  <div class="host-avatar" :class="`host-status-${row.status}`">
+                    <el-icon><Monitor /></el-icon>
+                  </div>
+                  <div class="host-info">
+                    <div class="hostname hostname-clickable">{{ row.name }}</div>
+                    <div class="host-meta">
+                      <span class="ip">{{ row.ip }}</span>
+                      <span class="port">:{{ row.port }}</span>
+                    </div>
                   </div>
                 </div>
               </template>
             </el-table-column>
 
-            <el-table-column label="分组" prop="groupName" min-width="120" show-overflow-tooltip>
+            <el-table-column label="状态" width="70" align="center">
               <template #default="{ row }">
-                <span v-if="row.groupName">{{ row.groupName }}</span>
-                <span v-else class="text-muted">-</span>
-              </template>
-            </el-table-column>
-
-            <el-table-column label="凭证" min-width="140" show-overflow-tooltip>
-              <template #default="{ row }">
-                <div v-if="row.credential" class="credential-cell">
-                  <span class="credential-name">{{ row.credential.name }}</span>
-                  <el-tag size="small" :type="row.credential.type === 'password' ? 'warning' : 'success'">
-                    {{ row.credential.typeText }}
-                  </el-tag>
+                <div class="status-cell">
+                  <span class="status-dot" :class="`status-dot-${row.status}`"></span>
+                  <span class="status-text" :class="`status-text-${row.status}`">{{ row.statusText }}</span>
                 </div>
-                <span v-else class="text-muted text-danger">未配置</span>
               </template>
             </el-table-column>
 
-            <el-table-column label="状态" width="80" align="center">
+            <el-table-column label="类型" width="90" align="center">
               <template #default="{ row }">
-                <el-tag :type="getStatusType(row.status)" effect="dark" size="small">
-                  {{ row.statusText }}
+                <el-tag v-if="row.type === 'cloud'" :icon="Cloudy" size="small" type="warning">
+                  {{ row.cloudProviderText || '云主机' }}
+                </el-tag>
+                <el-tag v-else :icon="Monitor" size="small" type="info">
+                  自建
                 </el-tag>
               </template>
             </el-table-column>
 
-            <el-table-column label="CPU" min-width="120">
+            <el-table-column label="CPU" min-width="100" align="center">
               <template #default="{ row }">
                 <div class="resource-cell">
                   <div v-if="row.cpuCores" class="resource-info">
@@ -247,7 +242,7 @@
                     <el-progress
                       :percentage="row.cpuUsage ? parseFloat(row.cpuUsage.toFixed(1)) : 0"
                       :color="getUsageColor(row.cpuUsage)"
-                      :stroke-width="6"
+                      :stroke-width="5"
                       :show-text="true"
                     />
                   </div>
@@ -256,15 +251,15 @@
               </template>
             </el-table-column>
 
-            <el-table-column label="内存" min-width="140">
+            <el-table-column label="内存" min-width="120" align="center">
               <template #default="{ row }">
                 <div class="resource-cell">
                   <div v-if="row.memoryTotal" class="resource-info">
-                    <span class="resource-label">{{ formatBytes(row.memoryUsed) }} / {{ formatBytes(row.memoryTotal) }}</span>
+                    <span class="resource-label resource-compact">{{ formatBytesCompact(row.memoryUsed) }} / {{ formatBytesCompact(row.memoryTotal) }}</span>
                     <el-progress
                       :percentage="row.memoryUsage ? parseFloat(row.memoryUsage.toFixed(1)) : 0"
                       :color="getUsageColor(row.memoryUsage)"
-                      :stroke-width="6"
+                      :stroke-width="5"
                       :show-text="true"
                     />
                   </div>
@@ -273,15 +268,15 @@
               </template>
             </el-table-column>
 
-            <el-table-column label="磁盘" min-width="140">
+            <el-table-column label="磁盘" min-width="120" align="center">
               <template #default="{ row }">
                 <div class="resource-cell">
                   <div v-if="row.diskTotal" class="resource-info">
-                    <span class="resource-label">{{ formatBytes(row.diskUsed) }} / {{ formatBytes(row.diskTotal) }}</span>
+                    <span class="resource-label resource-compact">{{ formatBytesCompact(row.diskUsed) }} / {{ formatBytesCompact(row.diskTotal) }}</span>
                     <el-progress
                       :percentage="row.diskUsage ? parseFloat(row.diskUsage.toFixed(1)) : 0"
                       :color="getUsageColor(row.diskUsage)"
-                      :stroke-width="6"
+                      :stroke-width="5"
                       :show-text="true"
                     />
                   </div>
@@ -290,42 +285,42 @@
               </template>
             </el-table-column>
 
-            <el-table-column label="标签" prop="tags" min-width="120">
+            <el-table-column label="标签" min-width="80">
               <template #default="{ row }">
                 <div v-if="row.tags && row.tags.length > 0" class="tags-cell">
                   <el-tag
-                    v-for="(tag, index) in row.tags.slice(0, 3)"
+                    v-for="(tag, index) in row.tags.slice(0, 2)"
                     :key="index"
                     size="small"
                     class="tag-item"
                   >
                     {{ tag }}
                   </el-tag>
-                  <el-tag v-if="row.tags.length > 3" size="small" type="info">
-                    +{{ row.tags.length - 3 }}
+                  <el-tag v-if="row.tags.length > 2" size="small" type="info" class="tag-more">
+                    +{{ row.tags.length - 2 }}
                   </el-tag>
                 </div>
                 <span v-else class="text-muted">-</span>
               </template>
             </el-table-column>
 
-            <el-table-column label="配置" min-width="180" show-overflow-tooltip>
+            <el-table-column label="系统信息" min-width="120" show-overflow-tooltip>
               <template #default="{ row }">
-                <div v-if="row.os || row.kernel || row.arch" class="config-cell">
+                <div v-if="row.os || row.arch" class="config-cell">
                   <div v-if="row.os" class="config-item">
                     <el-icon><Platform /></el-icon>
                     <span class="config-text">{{ row.os }}</span>
                   </div>
-                  <div v-if="row.kernel" class="config-item">
-                    <el-icon><Operation /></el-icon>
-                    <span class="config-text">{{ row.kernel }}</span>
+                  <div v-if="row.arch" class="config-item">
+                    <el-icon><Cpu /></el-icon>
+                    <span class="config-text">{{ row.arch }}</span>
                   </div>
                 </div>
                 <span v-else class="text-muted">-</span>
               </template>
             </el-table-column>
 
-            <el-table-column label="操作" width="240" fixed="right" align="center">
+            <el-table-column label="操作" width="130" fixed="right" align="center">
               <template #default="{ row }">
                 <div class="action-buttons">
                   <el-tooltip content="采集信息" placement="top">
@@ -491,6 +486,27 @@
             </el-form-item>
           </el-col>
           <el-col :span="12">
+            <el-form-item label="主机类型" prop="type">
+              <el-select v-model="hostForm.type" placeholder="请选择主机类型" style="width: 100%">
+                <el-option label="自建主机" value="self">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <el-icon><Monitor /></el-icon>
+                    <span>自建主机</span>
+                  </div>
+                </el-option>
+                <el-option label="云主机" value="cloud">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <el-icon><Cloudy /></el-icon>
+                    <span>云主机</span>
+                  </div>
+                </el-option>
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-row :gutter="20">
+          <el-col :span="12">
             <el-form-item label="所属分组" prop="groupId">
               <el-tree-select
                 v-model="hostForm.groupId"
@@ -502,6 +518,7 @@
               />
             </el-form-item>
           </el-col>
+          <el-col :span="12"></el-col>
         </el-row>
 
         <el-row :gutter="20">
@@ -568,6 +585,245 @@
       </template>
     </el-dialog>
 
+    <!-- 主机详情对话框 -->
+    <el-dialog
+      v-model="showHostDetailDialog"
+      title=""
+      width="65%"
+      class="host-detail-dialog"
+      @close="handleCloseHostDetail"
+    >
+      <template #header="{ close }">
+        <div class="detail-dialog-header">
+          <div class="detail-header-left">
+            <div class="host-avatar-lg" :class="`host-status-${hostDetail?.status}`">
+              <el-icon><Monitor /></el-icon>
+            </div>
+            <div class="detail-header-info">
+              <div class="detail-hostname">{{ hostDetail?.name }}</div>
+              <div class="detail-hostmeta">
+                <span class="detail-ip">{{ hostDetail?.ip }}:{{ hostDetail?.port }}</span>
+                <el-tag :type="getStatusType(hostDetail?.status)" size="small">{{ hostDetail?.statusText }}</el-tag>
+              </div>
+            </div>
+          </div>
+          <el-button link @click="close"><el-icon><Close /></el-icon></el-button>
+        </div>
+      </template>
+      <div v-loading="hostDetailLoading" class="host-detail-content">
+        <template v-if="hostDetail">
+          <!-- 信息网格 -->
+          <div class="info-grid">
+            <!-- 基本信息 -->
+            <div class="info-card">
+              <div class="info-card-header">
+                <div class="info-icon info-icon-basic">
+                  <el-icon><InfoFilled /></el-icon>
+                </div>
+                <span class="info-card-title">基本信息</span>
+              </div>
+              <div class="info-card-body">
+                <div class="info-row">
+                  <span class="info-label">主机类型</span>
+                  <span class="info-value">
+                    <el-tag v-if="hostDetail.type === 'cloud'" :icon="Cloudy" size="small" type="warning">
+                      {{ hostDetail.cloudProviderText || '云主机' }}
+                    </el-tag>
+                    <el-tag v-else :icon="Monitor" size="small" type="info">
+                      自建主机
+                    </el-tag>
+                  </span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">SSH用户</span>
+                  <span class="info-value">{{ hostDetail.sshUser }}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">分组</span>
+                  <span class="info-value">{{ hostDetail.groupName || '未分组' }}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">最后连接</span>
+                  <span class="info-value">{{ hostDetail.lastSeen || '未连接' }}</span>
+                </div>
+                <div class="info-row" v-if="hostDetail.createTime">
+                  <span class="info-label">创建时间</span>
+                  <span class="info-value">{{ hostDetail.createTime }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 系统信息 -->
+            <div class="info-card">
+              <div class="info-card-header">
+                <div class="info-icon info-icon-system">
+                  <el-icon><Platform /></el-icon>
+                </div>
+                <span class="info-card-title">系统信息</span>
+              </div>
+              <div class="info-card-body">
+                <div class="info-row">
+                  <span class="info-label">操作系统</span>
+                  <span class="info-value">{{ hostDetail.os || '-' }}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">内核版本</span>
+                  <span class="info-value">{{ hostDetail.kernel || '-' }}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">系统架构</span>
+                  <span class="info-value">{{ hostDetail.arch || '-' }}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">主机名</span>
+                  <span class="info-value">{{ hostDetail.hostname || '-' }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 认证信息 -->
+            <div class="info-card" v-if="hostDetail.credential">
+              <div class="info-card-header">
+                <div class="info-icon info-icon-auth">
+                  <el-icon><Lock /></el-icon>
+                </div>
+                <span class="info-card-title">认证信息</span>
+              </div>
+              <div class="info-card-body">
+                <div class="info-row">
+                  <span class="info-label">凭证名称</span>
+                  <span class="info-value">{{ hostDetail.credential.name }}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">认证方式</span>
+                  <el-tag :type="hostDetail.credential.type === 'password' ? 'warning' : 'success'" size="small">
+                    {{ hostDetail.credential.typeText }}
+                  </el-tag>
+                </div>
+                <div class="info-row" v-if="hostDetail.credential.username">
+                  <span class="info-label">用户名</span>
+                  <span class="info-value">{{ hostDetail.credential.username }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 标签 -->
+            <div class="info-card" v-if="hostDetail.tags && hostDetail.tags.length > 0">
+              <div class="info-card-header">
+                <div class="info-icon info-icon-tags">
+                  <el-icon><Collection /></el-icon>
+                </div>
+                <span class="info-card-title">标签</span>
+              </div>
+              <div class="info-card-body">
+                <div class="tags-list">
+                  <el-tag v-for="(tag, index) in hostDetail.tags" :key="index" size="large">
+                    {{ tag }}
+                  </el-tag>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 资源信息 -->
+          <div class="resource-section" v-if="hostDetail.cpuCores || hostDetail.memoryTotal">
+            <div class="info-card resource-card-wrapper">
+              <div class="info-card-header">
+                <div class="info-icon info-icon-resource">
+                  <el-icon><DataLine /></el-icon>
+                </div>
+                <span class="info-card-title">资源信息</span>
+              </div>
+              <div class="info-card-body">
+                <div class="resource-grid">
+                  <!-- CPU -->
+                  <div class="resource-card">
+                    <div class="resource-card-header">
+                      <el-icon class="resource-icon cpu-icon"><Cpu /></el-icon>
+                      <span>CPU</span>
+                    </div>
+                    <div class="resource-card-body">
+                      <div class="resource-value">{{ hostDetail.cpuCores }}核</div>
+                      <div class="resource-usage" :class="`usage-${getUsageLevel(hostDetail.cpuUsage)}`">
+                        <el-progress
+                          :percentage="hostDetail.cpuUsage ? parseFloat(hostDetail.cpuUsage.toFixed(1)) : 0"
+                          :color="getUsageColor(hostDetail.cpuUsage)"
+                          :stroke-width="8"
+                          :show-text="false"
+                        />
+                        <span class="usage-text" :class="getUsageLevel(hostDetail.cpuUsage)">{{ hostDetail.cpuUsage ? hostDetail.cpuUsage.toFixed(1) : '-' }}%</span>
+                      </div>
+                    </div>
+                  </div>
+                  <!-- 内存 -->
+                  <div class="resource-card">
+                    <div class="resource-card-header">
+                      <el-icon class="resource-icon memory-icon"><Coin /></el-icon>
+                      <span>内存</span>
+                    </div>
+                    <div class="resource-card-body">
+                      <div class="resource-value">{{ formatBytes(hostDetail.memoryTotal) }}</div>
+                      <div class="resource-usage" :class="`usage-${getUsageLevel(hostDetail.memoryUsage)}`">
+                        <el-progress
+                          :percentage="hostDetail.memoryUsage ? parseFloat(hostDetail.memoryUsage.toFixed(1)) : 0"
+                          :color="getUsageColor(hostDetail.memoryUsage)"
+                          :stroke-width="8"
+                          :show-text="false"
+                        />
+                        <span class="usage-text" :class="getUsageLevel(hostDetail.memoryUsage)">{{ hostDetail.memoryUsage ? hostDetail.memoryUsage.toFixed(1) : '-' }}%</span>
+                      </div>
+                    </div>
+                  </div>
+                  <!-- 磁盘 -->
+                  <div class="resource-card">
+                    <div class="resource-card-header">
+                      <el-icon class="resource-icon disk-icon"><Files /></el-icon>
+                      <span>磁盘</span>
+                    </div>
+                    <div class="resource-card-body">
+                      <div class="resource-value">{{ formatBytes(hostDetail.diskTotal) }}</div>
+                      <div class="resource-usage" :class="`usage-${getUsageLevel(hostDetail.diskUsage)}`">
+                        <el-progress
+                          :percentage="hostDetail.diskUsage ? parseFloat(hostDetail.diskUsage.toFixed(1)) : 0"
+                          :color="getUsageColor(hostDetail.diskUsage)"
+                          :stroke-width="8"
+                          :show-text="false"
+                        />
+                        <span class="usage-text" :class="getUsageLevel(hostDetail.diskUsage)">{{ hostDetail.diskUsage ? hostDetail.diskUsage.toFixed(1) : '-' }}%</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="resource-legend">
+                  <span class="legend-item"><span class="legend-dot legend-low"></span>正常 &lt;70%</span>
+                  <span class="legend-item"><span class="legend-dot legend-high"></span>繁忙 ≥70%</span>
+                  <span class="legend-item"><span class="legend-dot legend-critical"></span>严重 ≥90%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 备注 -->
+          <div class="remark-section" v-if="hostDetail.description">
+            <div class="remark-header">
+              <div class="info-icon info-icon-remark">
+                <el-icon><Document /></el-icon>
+              </div>
+              <span class="section-title">备注</span>
+            </div>
+            <div class="remark-content">{{ hostDetail.description }}</div>
+          </div>
+        </template>
+      </div>
+      <template #footer>
+        <el-button @click="showHostDetailDialog = false">关闭</el-button>
+        <el-button type="primary" @click="handleCollectHostFromDetail" :loading="hostDetailLoading">
+          <el-icon><Refresh /></el-icon>
+          采集信息
+        </el-button>
+      </template>
+    </el-dialog>
+
     <!-- Excel导入对话框 -->
     <el-dialog
       v-model="excelImportVisible"
@@ -587,6 +843,23 @@
         </el-alert>
 
         <el-form :model="excelImportForm" label-width="120px">
+          <el-form-item label="主机类型">
+            <el-select v-model="excelImportForm.type" placeholder="请选择主机类型" style="width: 100%">
+              <el-option label="自建主机" value="self">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <el-icon><Monitor /></el-icon>
+                  <span>自建主机</span>
+                </div>
+              </el-option>
+              <el-option label="云主机" value="cloud">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <el-icon><Cloudy /></el-icon>
+                  <span>云主机</span>
+                </div>
+              </el-option>
+            </el-select>
+          </el-form-item>
+
           <el-form-item label="所属分组">
             <el-tree-select
               v-model="excelImportForm.groupId"
@@ -665,7 +938,7 @@
           <el-form-item label="云平台">
             <el-select v-model="cloudImportForm.accountId" placeholder="请选择云平台账号" filterable>
               <el-option
-                v-for="account in cloudAccountList"
+                v-for="account in enabledCloudAccounts"
                 :key="account.id"
                 :label="`${account.name} (${account.providerText})`"
                 :value="account.id"
@@ -686,16 +959,8 @@
           </el-form-item>
 
           <el-form-item label="区域">
-            <el-select v-model="cloudImportForm.region" placeholder="请选择区域" filterable>
-              <el-option label="华北1 (青岛)" value="cn-qingdao" />
-              <el-option label="华北2 (北京)" value="cn-beijing" />
-              <el-option label="华北3 (张家口)" value="cn-zhangjiakou" />
-              <el-option label="华北5 (呼和浩特)" value="cn-huhehaote" />
-              <el-option label="华东1 (杭州)" value="cn-hangzhou" />
-              <el-option label="华东2 (上海)" value="cn-shanghai" />
-              <el-option label="华南1 (深圳)" value="cn-shenzhen" />
-              <el-option label="华南2 (河源)" value="cn-heyuan" />
-              <el-option label="华南3 (广州)" value="cn-guangzhou" />
+            <el-select v-model="cloudImportForm.region" placeholder="请先选择云平台账号" filterable :loading="loadingCloudRegions">
+              <el-option v-for="region in cloudRegions" :key="region.value" :label="region.label" :value="region.value" />
             </el-select>
           </el-form-item>
 
@@ -992,7 +1257,14 @@ import {
   Document,
   UploadFilled,
   Platform,
-  Operation
+  Operation,
+  Cpu,
+  Lock,
+  Key,
+  DataLine,
+  InfoFilled,
+  Coin,
+  Files
 } from '@element-plus/icons-vue'
 import {
   getGroupTree,
@@ -1002,6 +1274,7 @@ import {
 } from '@/api/assetGroup'
 import {
   getHostList,
+  getHost,
   createHost,
   updateHost,
   deleteHost,
@@ -1010,6 +1283,8 @@ import {
   getCloudAccounts,
   createCloudAccount,
   importFromCloud,
+  getCloudRegions,
+  getCloudInstances,
   collectHostInfo,
   testHostConnection,
   batchCollectHostInfo,
@@ -1017,6 +1292,7 @@ import {
   importFromExcel,
   batchDeleteHosts
 } from '@/api/host'
+import type { CloudInstanceVO, CloudRegionVO } from '@/api/host'
 
 // 加载状态
 const groupLoading = ref(false)
@@ -1047,6 +1323,11 @@ const excelImportVisible = ref(false)
 const cloudImportVisible = ref(false)
 const showCredentialDialog = ref(false)
 const showCloudAccountDialog = ref(false)
+
+// 主机详情
+const showHostDetailDialog = ref(false)
+const hostDetail = ref<any>(null)
+const hostDetailLoading = ref(false)
 const groupDialogVisible = ref(false)
 
 const groupDialogTitle = ref('')
@@ -1097,6 +1378,7 @@ const hostForm = reactive({
   id: 0,
   name: '',
   groupId: null as number | null,
+  type: 'self',
   sshUser: 'root',
   ip: '',
   port: 22,
@@ -1129,6 +1411,7 @@ const cloudAccountForm = reactive({
 
 // Excel导入表单
 const excelImportForm = reactive({
+  type: 'self',
   groupId: null as number | null
 })
 const uploadedFile = ref<UploadFile | null>(null)
@@ -1143,6 +1426,8 @@ const cloudImportForm = reactive({
 const cloudHostList = ref<any[]>([])
 const selectedCloudHosts = ref<any[]>([])
 const selectAllCloudHosts = ref(false)
+const cloudRegions = ref<any[]>([])
+const loadingCloudRegions = ref(false)
 
 // 主机批量选择
 const selectedHosts = ref<any[]>([])
@@ -1164,6 +1449,7 @@ const groupForm = reactive({
 // 表单验证规则
 const hostRules: FormRules = {
   name: [{ required: true, message: '请输入主机名称', trigger: 'blur' }],
+  type: [{ required: true, message: '请选择主机类型', trigger: 'change' }],
   ip: [{ required: true, message: '请输入IP地址', trigger: 'blur' }],
   sshUser: [{ required: true, message: '请输入SSH用户名', trigger: 'blur' }],
   port: [{ required: true, message: '请输入SSH端口', trigger: 'blur' }]
@@ -1373,6 +1659,11 @@ const loadCloudAccountList = async () => {
     console.error('获取云平台账号列表失败:', error)
   }
 }
+
+// 获取启用的云平台账号列表
+const enabledCloudAccounts = computed(() => {
+  return cloudAccountList.value.filter((a: any) => a.status === 1)
+})
 
 // 终端相关方法
 const openTerminalTab = () => {
@@ -1626,6 +1917,7 @@ const handleDirectImport = async () => {
     id: 0,
     name: '',
     groupId: selectedGroup.value?.id || null,
+    type: 'self',
     sshUser: 'root',
     ip: '',
     port: 22,
@@ -1735,12 +2027,28 @@ const handleExcelImportSubmit = async () => {
   try {
     excelImporting.value = true
     const file = uploadedFile.value.raw
-    const result = await importFromExcel(file)
+    const result = await importFromExcel(file, excelImportForm.type, excelImportForm.groupId || undefined)
 
     if (result.successCount > 0) {
       ElMessage.success(`成功导入 ${result.successCount} 台主机`)
-      loadHostList()
+      // 刷新列表和分组树
+      await loadHostList()
       loadGroupTree()
+
+      // 自动采集新导入的主机（状态为-1的主机）
+      await new Promise(resolve => setTimeout(resolve, 500))
+      const newHosts = hostList.value.filter((h: any) => h.status === -1)
+      if (newHosts.length > 0) {
+        ElMessage.info('正在自动采集主机信息...')
+        const hostIds = newHosts.map((h: any) => h.id)
+        try {
+          await batchCollectHostInfo({ hostIds })
+          await loadHostList()
+          ElMessage.success(`成功采集 ${newHosts.length} 台主机信息`)
+        } catch (error) {
+          console.error('批量采集失败:', error)
+        }
+      }
     }
     if (result.failedCount > 0) {
       ElMessage.warning(`${result.failedCount} 台主机导入失败`)
@@ -1770,6 +2078,7 @@ const handleCloudImport = () => {
   cloudImportStep.value = 0
   cloudHostList.value = []
   selectedCloudHosts.value = []
+  cloudRegions.value = []
   Object.assign(cloudImportForm, {
     accountId: null,
     region: '',
@@ -1791,42 +2100,16 @@ const handleGetCloudHosts = async () => {
 
   loadingCloudHosts.value = true
   try {
-    // 模拟数据 - 实际应该调用云平台SDK
-    setTimeout(() => {
-      cloudHostList.value = [
-        {
-          instanceId: 'i-bp1234567890',
-          name: 'web-server-01',
-          publicIp: '47.97.123.45',
-          privateIp: '172.16.0.10',
-          os: 'CentOS 7.9 64位',
-          status: 'Running'
-        },
-        {
-          instanceId: 'i-bp1234567891',
-          name: 'web-server-02',
-          publicIp: '47.97.123.46',
-          privateIp: '172.16.0.11',
-          os: 'CentOS 7.9 64位',
-          status: 'Running'
-        },
-        {
-          instanceId: 'i-bp1234567892',
-          name: 'db-master',
-          publicIp: '47.97.123.47',
-          privateIp: '172.16.0.20',
-          os: 'Ubuntu 20.04 64位',
-          status: 'Running'
-        }
-      ]
-      selectedCloudAccount.value = cloudAccountList.value.find(a => a.id === cloudImportForm.accountId)
-      selectedCloudGroup.value = groupTree.value.find((g: any) => g.id === cloudImportForm.groupId)
-      loadingCloudHosts.value = false
-      cloudImportStep.value = 1
-    }, 1000)
-  } catch (error) {
+    // 调用真实的云平台API获取实例列表
+    const res = await getCloudInstances(cloudImportForm.accountId!, cloudImportForm.region)
+    cloudHostList.value = Array.isArray(res) ? res : []
+    selectedCloudAccount.value = cloudAccountList.value.find(a => a.id === cloudImportForm.accountId)
+    selectedCloudGroup.value = groupTree.value.find((g: any) => g.id === cloudImportForm.groupId)
+    cloudImportStep.value = 1
+  } catch (error: any) {
     console.error('获取云主机列表失败:', error)
-    ElMessage.error('获取云主机列表失败')
+    ElMessage.error(error.message || '获取云主机列表失败')
+  } finally {
     loadingCloudHosts.value = false
   }
 }
@@ -1985,6 +2268,45 @@ const handleEditHost = async (row: any) => {
   directImportVisible.value = true
 }
 
+// 显示主机详情
+const handleShowHostDetail = async (row: any) => {
+  try {
+    hostDetailLoading.value = true
+    showHostDetailDialog.value = true
+    const data = await getHost(row.id)
+    hostDetail.value = data
+  } catch (error: any) {
+    ElMessage.error(error.message || '获取主机详情失败')
+  } finally {
+    hostDetailLoading.value = false
+  }
+}
+
+// 关闭主机详情
+const handleCloseHostDetail = () => {
+  showHostDetailDialog.value = false
+  hostDetail.value = null
+}
+
+// 从详情页采集主机信息
+const handleCollectHostFromDetail = async () => {
+  if (!hostDetail.value) return
+  try {
+    hostDetailLoading.value = true
+    await collectHostInfo(hostDetail.value.id)
+    ElMessage.success('采集成功')
+    // 重新获取详情
+    const data = await getHost(hostDetail.value.id)
+    hostDetail.value = data
+    // 刷新列表
+    loadHostList()
+  } catch (error: any) {
+    ElMessage.error(error.message || '采集失败')
+  } finally {
+    hostDetailLoading.value = false
+  }
+}
+
 // 删除主机
 const handleDeleteHost = (row: any) => {
   ElMessageBox.confirm(`确定要删除主机"${row.name}"吗？`, '提示', {
@@ -2098,11 +2420,32 @@ const formatBytes = (bytes: number): string => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
+// 格式化字节数（紧凑格式，不换行）
+const formatBytesCompact = (bytes: number): string => {
+  if (bytes === 0) return '0B'
+  const k = 1024
+  const sizes = ['B', 'K', 'M', 'G', 'T']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  const value = bytes / Math.pow(k, i)
+  if (value >= 100) {
+    return Math.round(value) + sizes[i]
+  }
+  return parseFloat(value.toFixed(1)) + sizes[i]
+}
+
 // 获取使用率颜色
 const getUsageColor = (usage: number): string => {
   if (usage >= 90) return '#f56c6c'
   if (usage >= 70) return '#e6a23c'
   return '#67c23a'
+}
+
+// 获取使用率等级
+const getUsageLevel = (usage: number | undefined): string => {
+  if (!usage) return 'low'
+  if (usage >= 90) return 'critical'
+  if (usage >= 70) return 'high'
+  return 'low'
 }
 
 // 采集主机信息
@@ -2124,6 +2467,33 @@ watch(activeTerminalHost, async (newHost) => {
     connectSSH(newHost)
   } else {
     closeTerminal()
+  }
+})
+
+// 监听云平台账号变化，加载区域列表
+watch(() => cloudImportForm.accountId, async (accountId) => {
+  if (accountId) {
+    cloudRegions.value = []
+    cloudImportForm.region = ''
+    loadingCloudRegions.value = true
+    try {
+      const res = await getCloudRegions(accountId)
+      cloudRegions.value = Array.isArray(res) ? res : []
+
+      // 如果账号有默认区域且在列表中，自动选中
+      const account = cloudAccountList.value.find((a: any) => a.id === accountId)
+      if (account?.region && cloudRegions.value.some((r: any) => r.value === account.region)) {
+        cloudImportForm.region = account.region
+      }
+    } catch (error: any) {
+      console.error('加载区域列表失败:', error)
+      ElMessage.error(error.message || '加载区域列表失败')
+    } finally {
+      loadingCloudRegions.value = false
+    }
+  } else {
+    cloudRegions.value = []
+    cloudImportForm.region = ''
   }
 })
 
@@ -2443,26 +2813,207 @@ onMounted(() => {
   background-color: #f8fafc !important;
 }
 
+.modern-table :deep(.el-table__header th) {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.modern-table :deep(.el-table__body td) {
+  font-size: 13px;
+}
+
 .hostname-cell {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-.host-icon {
-  font-size: 20px;
+/* 主机头像/状态图标 */
+.host-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+  background: #f0f2f5;
+  color: #909399;
+}
+
+.host-avatar.host-status-1 {
+  background: #e7f8e8;
+  color: #67c23a;
+}
+
+.host-avatar.host-status-0 {
+  background: #fef0f0;
+  color: #f56c6c;
+}
+
+.host-avatar.host-status--1 {
+  background: #f4f4f5;
+  color: #909399;
+}
+
+.host-avatar .el-icon {
+  font-size: 18px;
+}
+
+/* 主机信息 */
+.host-info {
+  flex: 1;
+  min-width: 0;
 }
 
 .hostname {
   font-weight: 500;
   color: #303133;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.host-meta {
+  font-size: 12px;
+  color: #909399;
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .ip {
-  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.port {
+  flex-shrink: 0;
+}
+
+/* 分组单元格 */
+.group-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: #f5f7fa;
+  border-radius: 6px;
+  width: fit-content;
+}
+
+.group-icon {
+  font-size: 14px;
+  color: #409eff;
+  flex-shrink: 0;
+}
+
+.group-name {
+  font-size: 13px;
+  color: #606266;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 70px;
+}
+
+/* 凭证单元格新样式 */
+.credential-cell-new {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: #f5f7fa;
+  border-radius: 6px;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.credential-icon {
+  font-size: 14px;
   color: #909399;
-  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.credential-icon.icon-key {
+  color: #e6a23c;
+}
+
+.credential-icon.icon-lock {
+  color: #67c23a;
+}
+
+.credential-cell-new .credential-name {
+  font-size: 12px;
+  color: #606266;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 70px;
+}
+
+/* 空状态文本 */
+.empty-text {
+  font-size: 13px;
+  color: #c0c4cc;
+}
+
+.empty-warning {
+  color: #e6a23c;
+}
+
+/* 状态单元格 */
+.status-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-dot-1 {
+  background: #67c23a;
+  box-shadow: 0 0 0 2px rgba(103, 194, 58, 0.2);
+}
+
+.status-dot-0 {
+  background: #f56c6c;
+  box-shadow: 0 0 0 2px rgba(245, 108, 108, 0.2);
+}
+
+.status-dot--1 {
+  background: #909399;
+  box-shadow: 0 0 0 2px rgba(144, 148, 153, 0.2);
+}
+
+.status-text {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.status-text-1 {
+  color: #67c23a;
+}
+
+.status-text-0 {
+  color: #f56c6c;
+}
+
+.status-text--1 {
+  color: #909399;
+}
+
+.host-icon {
+  font-size: 20px;
+  flex-shrink: 0;
 }
 
 .config-info {
@@ -2528,20 +3079,192 @@ onMounted(() => {
   gap: 10px;
 }
 
-.host-icon {
-  font-size: 20px;
+/* 主机头像/状态图标 */
+.host-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+  background: #f0f2f5;
+  color: #909399;
+}
+
+.host-avatar.host-status-1 {
+  background: #e7f8e8;
+  color: #67c23a;
+}
+
+.host-avatar.host-status-0 {
+  background: #fef0f0;
+  color: #f56c6c;
+}
+
+.host-avatar.host-status--1 {
+  background: #f4f4f5;
+  color: #909399;
+}
+
+.host-avatar .el-icon {
+  font-size: 18px;
+}
+
+/* 主机信息 */
+.host-info {
+  flex: 1;
+  min-width: 0;
 }
 
 .hostname {
   font-weight: 500;
   color: #303133;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.host-meta {
+  font-size: 12px;
+  color: #909399;
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .ip {
-  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.port {
+  flex-shrink: 0;
+}
+
+/* 分组单元格 */
+.group-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: #f5f7fa;
+  border-radius: 6px;
+  width: fit-content;
+}
+
+.group-icon {
+  font-size: 14px;
+  color: #409eff;
+  flex-shrink: 0;
+}
+
+.group-name {
+  font-size: 13px;
+  color: #606266;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 70px;
+}
+
+/* 凭证单元格新样式 */
+.credential-cell-new {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: #f5f7fa;
+  border-radius: 6px;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.credential-icon {
+  font-size: 14px;
   color: #909399;
-  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.credential-icon.icon-key {
+  color: #e6a23c;
+}
+
+.credential-icon.icon-lock {
+  color: #67c23a;
+}
+
+.credential-cell-new .credential-name {
+  font-size: 12px;
+  color: #606266;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 70px;
+}
+
+/* 空状态文本 */
+.empty-text {
+  font-size: 13px;
+  color: #c0c4cc;
+}
+
+.empty-warning {
+  color: #e6a23c;
+}
+
+/* 状态单元格 */
+.status-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-dot-1 {
+  background: #67c23a;
+  box-shadow: 0 0 0 2px rgba(103, 194, 58, 0.2);
+}
+
+.status-dot-0 {
+  background: #f56c6c;
+  box-shadow: 0 0 0 2px rgba(245, 108, 108, 0.2);
+}
+
+.status-dot--1 {
+  background: #909399;
+  box-shadow: 0 0 0 2px rgba(144, 148, 153, 0.2);
+}
+
+.status-text {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.status-text-1 {
+  color: #67c23a;
+}
+
+.status-text-0 {
+  color: #f56c6c;
+}
+
+.status-text--1 {
+  color: #909399;
+}
+
+.host-icon {
+  font-size: 20px;
+  flex-shrink: 0;
 }
 
 .config-info {
@@ -2613,9 +3336,11 @@ onMounted(() => {
 }
 
 :deep(.el-tag) {
-  border-radius: 6px;
-  padding: 4px 10px;
+  border-radius: 4px;
+  padding: 2px 8px;
   font-weight: 500;
+  height: auto;
+  line-height: 1.5;
 }
 
 :deep(.responsive-dialog) {
@@ -2716,15 +3441,21 @@ onMounted(() => {
 .resource-info {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   width: 100%;
-  padding: 0 8px;
+  padding: 0 4px;
 }
 
 .resource-label {
   font-size: 12px;
   color: #606266;
   font-weight: 500;
+  white-space: nowrap;
+}
+
+.resource-compact {
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .resource-info :deep(.el-progress) {
@@ -2732,8 +3463,12 @@ onMounted(() => {
 }
 
 .resource-info :deep(.el-progress__text) {
-  font-size: 11px !important;
-  min-width: 30px;
+  font-size: 10px !important;
+  min-width: 28px;
+}
+
+.resource-info :deep(.el-progress-bar__outer) {
+  height: 5px !important;
 }
 
 /* 配置单元格样式 */
@@ -2783,18 +3518,36 @@ onMounted(() => {
   height: auto;
 }
 
+.tags-cell .tag-more {
+  font-size: 11px;
+  padding: 2px 6px;
+  height: auto;
+}
+
 /* 凭证单元格样式 */
 .credential-cell {
   display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+}
+
+.credential-type-tag {
+  font-size: 10px;
+  padding: 1px 6px;
+  height: 18px;
+  line-height: 16px;
 }
 
 .credential-name {
-  font-size: 13px;
+  font-size: 12px;
   color: #303133;
   font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 .text-danger {
@@ -2802,6 +3555,178 @@ onMounted(() => {
 }
 
 /* 终端按钮样式 */
+/* 主机详情对话框样式 */
+.host-detail-dialog {
+  border-radius: 12px;
+}
+
+.host-detail-content {
+  padding: 10px 0;
+}
+
+/* 信息网格布局 */
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+.info-card {
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.info-card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+  border-bottom: 1px solid #e4e7ed;
+}
+
+.info-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.info-icon-basic {
+  background: linear-gradient(135deg, #409eff 0%, #66b1ff 100%);
+}
+
+.info-icon-system {
+  background: linear-gradient(135deg, #67c23a 0%, #85ce61 100%);
+}
+
+.info-icon-auth {
+  background: linear-gradient(135deg, #e6a23c 0%, #ebb563 100%);
+}
+
+.info-icon-tags {
+  background: linear-gradient(135deg, #909399 0%, #a6a9ad 100%);
+}
+
+.info-icon-resource {
+  background: linear-gradient(135deg, #f56c6c 0%, #f78989 100%);
+}
+
+.info-icon-remark {
+  background: linear-gradient(135deg, #606266 0%, #909399 100%);
+}
+
+.info-card-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.info-card-body {
+  padding: 16px 20px;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid #f5f5f5;
+}
+
+.info-row:last-child {
+  border-bottom: none;
+}
+
+.info-label {
+  font-size: 14px;
+  color: #909399;
+  flex-shrink: 0;
+}
+
+.info-value {
+  font-size: 15px;
+  color: #303133;
+  font-weight: 500;
+  text-align: right;
+  word-break: break-all;
+}
+
+/* 资源区域 */
+.resource-section {
+  margin-bottom: 24px;
+}
+
+.resource-card-wrapper .info-card-body {
+  padding: 20px;
+}
+
+.resource-section-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.section-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: #303133;
+}
+
+/* 备注区域 */
+.remark-section {
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.remark-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+  border-bottom: 1px solid #e4e7ed;
+}
+
+.remark-content {
+  padding: 16px 20px;
+  font-size: 15px;
+  color: #606266;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.tags-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* 主机名点击样式 */
+.hostname-clickable {
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.hostname-clickable:hover {
+  color: #409eff;
+}
+
+.hostname-cell {
+  cursor: pointer;
+}
+
 .terminal-button {
   background-color: #1a1a1a !important;
   color: #ffffff !important;
@@ -3147,5 +4072,223 @@ onMounted(() => {
 
 .xterm-container :deep(.xterm .xterm-screen) {
   padding: 0;
+}
+
+/* 主机详情弹窗样式 */
+.detail-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0;
+}
+
+.detail-header-left {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex: 1;
+}
+
+.host-avatar-lg {
+  width: 72px;
+  height: 72px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.host-avatar-lg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  padding: 2px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.3), transparent);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+.host-avatar-lg.host-status-1 {
+  background: linear-gradient(135deg, #67c23a 0%, #85ce61 100%);
+  color: #fff;
+}
+
+.host-avatar-lg.host-status-0 {
+  background: linear-gradient(135deg, #f56c6c 0%, #f78989 100%);
+  color: #fff;
+}
+
+.host-avatar-lg.host-status--1 {
+  background: linear-gradient(135deg, #909399 0%, #a6a9ad 100%);
+  color: #fff;
+}
+
+.detail-header-info {
+  flex: 1;
+}
+
+.detail-hostname {
+  font-size: 26px;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 8px;
+}
+
+.detail-hostmeta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.detail-ip {
+  font-size: 16px;
+  color: #606266;
+  font-family: 'Monaco', 'Menlo', monospace;
+}
+
+/* 资源卡片网格 */
+.resource-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.resource-card {
+  background: #fafbfc;
+  border: 1px solid #e8e8e8;
+  border-radius: 10px;
+  padding: 16px;
+  transition: all 0.3s ease;
+}
+
+.resource-card:hover {
+  background: #f5f6f7;
+  border-color: #d8d8d8;
+}
+
+.resource-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #606266;
+  margin-bottom: 10px;
+}
+
+.resource-icon {
+  font-size: 20px;
+}
+
+.cpu-icon {
+  color: #409eff;
+}
+
+.memory-icon {
+  color: #67c23a;
+}
+
+.disk-icon {
+  color: #e6a23c;
+}
+
+.resource-card-body {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.resource-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.resource-usage {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.resource-usage :deep(.el-progress) {
+  flex: 1;
+}
+
+.resource-usage.usage-low :deep(.el-progress-bar__inner) {
+  background: linear-gradient(90deg, #67c23a 0%, #85ce61 100%);
+}
+
+.resource-usage.usage-high :deep(.el-progress-bar__inner) {
+  background: linear-gradient(90deg, #e6a23c 0%, #ebb563 100%);
+}
+
+.resource-usage.usage-critical :deep(.el-progress-bar__inner) {
+  background: linear-gradient(90deg, #f56c6c 0%, #f78989 100%);
+}
+
+.usage-text {
+  font-size: 15px;
+  font-weight: 600;
+  min-width: 50px;
+  text-align: right;
+}
+
+.usage-text.low {
+  color: #67c23a;
+}
+
+.usage-text.high {
+  color: #e6a23c;
+}
+
+.usage-text.critical {
+  color: #f56c6c;
+}
+
+.usage-legend {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  margin-top: 16px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: #909399;
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.legend-dot.low {
+  background: #67c23a;
+}
+
+.legend-dot.high {
+  background: #e6a23c;
+}
+
+.legend-dot.critical {
+  background: #f56c6c;
 }
 </style>

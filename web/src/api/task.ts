@@ -27,23 +27,23 @@ export interface JobTaskListParams {
 }
 
 export const getJobTaskList = (params: JobTaskListParams) => {
-  return request.get<any, any>('/plugins/task/jobs', { params })
+  return request.get<any, any>('/api/v1/plugins/jobs', { params })
 }
 
 export const getJobTaskDetail = (id: number) => {
-  return request.get<any, JobTask>(`/plugins/task/jobs/${id}`)
+  return request.get<any, JobTask>(`/api/v1/plugins/jobs/${id}`)
 }
 
 export const createJobTask = (data: any) => {
-  return request.post<any, JobTask>('/plugins/task/jobs', data)
+  return request.post<any, JobTask>('/api/v1/plugins/jobs', data)
 }
 
 export const updateJobTask = (id: number, data: any) => {
-  return request.put<any, JobTask>(`/plugins/task/jobs/${id}`, data)
+  return request.put<any, JobTask>(`/api/v1/plugins/jobs/${id}`, data)
 }
 
 export const deleteJobTask = (id: number) => {
-  return request.delete<any, any>(`/plugins/task/jobs/${id}`)
+  return request.delete<any, any>(`/api/v1/plugins/jobs/${id}`)
 }
 
 // ==================== 任务模板 ====================
@@ -75,27 +75,27 @@ export interface JobTemplateListParams {
 }
 
 export const getJobTemplateList = (params: JobTemplateListParams) => {
-  return request.get<any, any>('/plugins/task/templates', { params })
+  return request.get<any, any>('/api/v1/plugins/templates', { params })
 }
 
 export const getAllJobTemplates = (category?: string) => {
-  return request.get<any, JobTemplate[]>('/plugins/task/templates/all', { params: { category } })
+  return request.get<any, JobTemplate[]>('/api/v1/plugins/templates/all', { params: { category } })
 }
 
 export const getJobTemplateDetail = (id: number) => {
-  return request.get<any, JobTemplate>(`/plugins/task/templates/${id}`)
+  return request.get<any, JobTemplate>(`/api/v1/plugins/templates/${id}`)
 }
 
 export const createJobTemplate = (data: any) => {
-  return request.post<any, JobTemplate>('/plugins/task/templates', data)
+  return request.post<any, JobTemplate>('/api/v1/plugins/templates', data)
 }
 
 export const updateJobTemplate = (id: number, data: any) => {
-  return request.put<any, JobTemplate>(`/plugins/task/templates/${id}`, data)
+  return request.put<any, JobTemplate>(`/api/v1/plugins/templates/${id}`, data)
 }
 
 export const deleteJobTemplate = (id: number) => {
-  return request.delete<any, any>(`/plugins/task/templates/${id}`)
+  return request.delete<any, any>(`/api/v1/plugins/templates/${id}`)
 }
 
 // ==================== Ansible任务 ====================
@@ -127,21 +127,21 @@ export interface AnsibleTaskListParams {
 }
 
 export const getAnsibleTaskList = (params: AnsibleTaskListParams) => {
-  return request.get<any, any>('/plugins/task/ansible', { params })
+  return request.get<any, any>('/api/v1/plugins/ansible', { params })
 }
 
 export const getAnsibleTaskDetail = (id: number) => {
-  return request.get<any, AnsibleTask>(`/plugins/task/ansible/${id}`)
+  return request.get<any, AnsibleTask>(`/api/v1/plugins/ansible/${id}`)
 }
 
 export const createAnsibleTask = (data: any) => {
-  return request.post<any, AnsibleTask>('/plugins/task/ansible', data)
+  return request.post<any, AnsibleTask>('/api/v1/plugins/ansible', data)
 }
 
 export const updateAnsibleTask = (id: number, data: any) => {
-  return request.put<any, AnsibleTask>(`/plugins/task/ansible/${id}`, data)
+  return request.put<any, AnsibleTask>(`/api/v1/plugins/ansible/${id}`, data)
 }
 
 export const deleteAnsibleTask = (id: number) => {
-  return request.delete<any, any>(`/plugins/task/ansible/${id}`)
+  return request.delete<any, any>(`/api/v1/plugins/ansible/${id}`)
 }

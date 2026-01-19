@@ -80,7 +80,7 @@ func (r *hostRepo) GetByID(ctx context.Context, id uint) (*asset.Host, error) {
 }
 
 // List 列表查询
-func (r *hostRepo) List(ctx context.Context, page, pageSize int, keyword string, groupID *uint) ([]*asset.Host, int64, error) {
+func (r *hostRepo) List(ctx context.Context, page, pageSize int, keyword string, groupIDs []uint) ([]*asset.Host, int64, error) {
 	var hosts []*asset.Host
 	var total int64
 
@@ -90,9 +90,9 @@ func (r *hostRepo) List(ctx context.Context, page, pageSize int, keyword string,
 		query = query.Where("name LIKE ? OR ip LIKE ?", "%"+keyword+"%", "%"+keyword+"%")
 	}
 
-	// 添加分组ID筛选
-	if groupID != nil && *groupID > 0 {
-		query = query.Where("group_id = ?", *groupID)
+	// 添加分组ID筛选（支持多个分组ID）
+	if len(groupIDs) > 0 {
+		query = query.Where("group_id IN ?", groupIDs)
 	}
 
 	err := query.Order("id DESC").Count(&total).Error
@@ -122,6 +122,16 @@ func (r *hostRepo) GetByGroupID(ctx context.Context, groupID uint) ([]*asset.Hos
 func (r *hostRepo) GetByIP(ctx context.Context, ip string) (*asset.Host, error) {
 	var host asset.Host
 	err := r.db.WithContext(ctx).Where("ip = ?", ip).First(&host).Error
+	if err != nil {
+		return nil, err
+	}
+	return &host, nil
+}
+
+// GetByCloudInstanceID 根据云实例ID获取主机
+func (r *hostRepo) GetByCloudInstanceID(ctx context.Context, instanceID string) (*asset.Host, error) {
+	var host asset.Host
+	err := r.db.WithContext(ctx).Where("cloud_instance_id = ?", instanceID).First(&host).Error
 	if err != nil {
 		return nil, err
 	}
@@ -415,7 +425,7 @@ func (r *cloudAccountRepo) List(ctx context.Context, page, pageSize int) ([]*ass
 // GetAll 获取所有启用的云平台账号
 func (r *cloudAccountRepo) GetAll(ctx context.Context) ([]*asset.CloudAccount, error) {
 	var accounts []*asset.CloudAccount
-	err := r.db.WithContext(ctx).Where("status = 1").Order("id DESC").Find(&accounts).Error
+	err := r.db.WithContext(ctx).Order("id DESC").Find(&accounts).Error
 	if err != nil {
 		return nil, err
 	}

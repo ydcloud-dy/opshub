@@ -71,6 +71,8 @@ func (s *HTTPServer) RegisterRoutes(r *gin.RouterGroup) {
 		cloudAccounts.GET("", s.hostService.ListCloudAccounts)
 		cloudAccounts.GET("/all", s.hostService.GetAllCloudAccounts)
 		cloudAccounts.GET("/:id", s.hostService.GetCloudAccount)
+		cloudAccounts.GET("/:id/regions", s.hostService.GetCloudRegions)
+		cloudAccounts.GET("/:id/instances", s.hostService.GetCloudInstances)
 		cloudAccounts.POST("", s.hostService.CreateCloudAccount)
 		cloudAccounts.PUT("/:id", s.hostService.UpdateCloudAccount)
 		cloudAccounts.DELETE("/:id", s.hostService.DeleteCloudAccount)

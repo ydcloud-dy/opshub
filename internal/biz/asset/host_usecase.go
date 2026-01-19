@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aliyun/alibaba-cloud-sdk-go/services/ecs"
+	"github.com/aliyun/alibaba-cloud-sdk-go/sdk/requests"
 	"github.com/xuri/excelize/v2"
 	"github.com/ydcloud-dy/opshub/pkg/collector"
 	sshclient "github.com/ydcloud-dy/opshub/pkg/ssh"
@@ -56,6 +58,10 @@ func (uc *HostUseCase) Update(ctx context.Context, req *HostRequest) error {
 
 	host.Name = req.Name
 	host.GroupID = req.GroupID
+	host.Type = req.Type
+	host.CloudProvider = req.CloudProvider
+	host.CloudInstanceID = req.CloudInstanceID
+	host.CloudAccountID = req.CloudAccountID
 	host.SSHUser = req.SSHUser
 	host.IP = req.IP
 	host.Port = req.Port
@@ -101,7 +107,18 @@ func (uc *HostUseCase) GetByID(ctx context.Context, id uint) (*HostInfoVO, error
 
 // List 分页查询主机列表
 func (uc *HostUseCase) List(ctx context.Context, page, pageSize int, keyword string, groupID *uint) ([]*HostInfoVO, int64, error) {
-	hosts, total, err := uc.hostRepo.List(ctx, page, pageSize, keyword, groupID)
+	// 如果指定了分组ID，获取所有子孙分组ID
+	var groupIDs []uint
+	if groupID != nil && *groupID > 0 {
+		groupIDs = append(groupIDs, *groupID)
+		// 获取所有子孙分组ID
+		descendantIDs, err := uc.groupRepo.GetDescendantIDs(ctx, *groupID)
+		if err == nil {
+			groupIDs = append(groupIDs, descendantIDs...)
+		}
+	}
+
+	hosts, total, err := uc.hostRepo.List(ctx, page, pageSize, keyword, groupIDs)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -141,6 +158,27 @@ func (uc *HostUseCase) toInfoVO(host *Host) *HostInfoVO {
 		statusText = "离线"
 	}
 
+	typeText := "自建主机"
+	if host.Type == "cloud" {
+		typeText = "云主机"
+	}
+
+	var cloudProviderText string
+	if host.CloudProvider != "" {
+		switch host.CloudProvider {
+		case "aliyun":
+			cloudProviderText = "阿里云"
+		case "tencent":
+			cloudProviderText = "腾讯云"
+		case "aws":
+			cloudProviderText = "AWS"
+		case "huawei":
+			cloudProviderText = "华为云"
+		default:
+			cloudProviderText = host.CloudProvider
+		}
+	}
+
 	var tags []string
 	if host.Tags != "" {
 		tags = strings.Split(host.Tags, ",")
@@ -152,34 +190,39 @@ func (uc *HostUseCase) toInfoVO(host *Host) *HostInfoVO {
 	}
 
 	return &HostInfoVO{
-		ID:           host.ID,
-		Name:         host.Name,
-		GroupID:      host.GroupID,
-		SSHUser:      host.SSHUser,
-		IP:           host.IP,
-		Port:         host.Port,
-		CredentialID: host.CredentialID,
-		Tags:         tags,
-		Description:  host.Description,
-		Status:       host.Status,
-		StatusText:   statusText,
-		LastSeen:     lastSeen,
-		OS:           host.OS,
-		Kernel:       host.Kernel,
-		Arch:         host.Arch,
-		CreateTime:   host.CreatedAt.Format("2006-01-02 15:04:05"),
-		UpdateTime:   host.UpdatedAt.Format("2006-01-02 15:04:05"),
+		ID:               host.ID,
+		Name:             host.Name,
+		GroupID:          host.GroupID,
+		Type:             host.Type,
+		TypeText:         typeText,
+		CloudProvider:    host.CloudProvider,
+		CloudProviderText: cloudProviderText,
+		CloudInstanceID:  host.CloudInstanceID,
+		SSHUser:          host.SSHUser,
+		IP:               host.IP,
+		Port:             host.Port,
+		CredentialID:     host.CredentialID,
+		Tags:             tags,
+		Description:      host.Description,
+		Status:           host.Status,
+		StatusText:       statusText,
+		LastSeen:         lastSeen,
+		OS:               host.OS,
+		Kernel:           host.Kernel,
+		Arch:             host.Arch,
+		CreateTime:       host.CreatedAt.Format("2006-01-02 15:04:05"),
+		UpdateTime:       host.UpdatedAt.Format("2006-01-02 15:04:05"),
 		// 扩展信息
-		CPUCores:     host.CPUCores,
-		CPUUsage:     host.CPUUsage,
-		MemoryTotal:  host.MemoryTotal,
-		MemoryUsed:   host.MemoryUsed,
-		MemoryUsage:  host.MemoryUsage,
-		DiskTotal:    host.DiskTotal,
-		DiskUsed:     host.DiskUsed,
-		DiskUsage:    host.DiskUsage,
-		Uptime:       host.Uptime,
-		Hostname:     host.Hostname,
+		CPUCores:         host.CPUCores,
+		CPUUsage:         host.CPUUsage,
+		MemoryTotal:      host.MemoryTotal,
+		MemoryUsed:       host.MemoryUsed,
+		MemoryUsage:      host.MemoryUsage,
+		DiskTotal:        host.DiskTotal,
+		DiskUsed:         host.DiskUsed,
+		DiskUsage:        host.DiskUsage,
+		Uptime:           host.Uptime,
+		Hostname:         host.Hostname,
 	}
 }
 
@@ -544,6 +587,14 @@ func NewCloudAccountUseCase(repo CloudAccountRepo) *CloudAccountUseCase {
 
 // Create 创建云平台账号
 func (uc *CloudAccountUseCase) Create(ctx context.Context, req *CloudAccountRequest) (*CloudAccount, error) {
+	// 创建时必须提供 AccessKey 和 SecretKey
+	if req.AccessKey == "" {
+		return nil, fmt.Errorf("AccessKey 不能为空")
+	}
+	if req.SecretKey == "" {
+		return nil, fmt.Errorf("SecretKey 不能为空")
+	}
+
 	account := req.ToModel()
 
 	if err := uc.repo.Create(ctx, account); err != nil {
@@ -562,8 +613,13 @@ func (uc *CloudAccountUseCase) Update(ctx context.Context, req *CloudAccountRequ
 
 	account.Name = req.Name
 	account.Provider = req.Provider
-	account.AccessKey = req.AccessKey
-	account.SecretKey = req.SecretKey
+	// 只有提供了新的值才更新 AccessKey 和 SecretKey
+	if req.AccessKey != "" {
+		account.AccessKey = req.AccessKey
+	}
+	if req.SecretKey != "" {
+		account.SecretKey = req.SecretKey
+	}
 	account.Region = req.Region
 	account.Description = req.Description
 	account.Status = req.Status
@@ -608,6 +664,90 @@ func (uc *CloudAccountUseCase) GetAll(ctx context.Context) ([]*CloudAccountVO, e
 	for _, acc := range accounts {
 		vo := uc.toVO(acc)
 		vos = append(vos, vo)
+	}
+
+	return vos, nil
+}
+
+// GetRegions 获取云平台的区域列表
+func (uc *CloudAccountUseCase) GetRegions(ctx context.Context, accountID uint) ([]*CloudRegionVO, error) {
+	account, err := uc.repo.GetByID(ctx, accountID)
+	if err != nil {
+		return nil, fmt.Errorf("云平台账号不存在")
+	}
+
+	// 根据不同的云厂商调用不同的SDK获取区域列表
+	var regions []CloudRegion
+
+	switch account.Provider {
+	case "aliyun":
+		regions, err = uc.listAliyunRegions(account)
+	case "tencent":
+		regions, err = uc.listTencentRegions(account)
+	case "aws":
+		regions, err = uc.listAWSRegions(account)
+	case "huawei":
+		regions, err = uc.listHuaweiRegions(account)
+	default:
+		return nil, fmt.Errorf("暂不支持该云平台")
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("获取区域列表失败: %w", err)
+	}
+
+	// 转换为VO
+	var vos []*CloudRegionVO
+	for _, region := range regions {
+		vos = append(vos, &CloudRegionVO{
+			Value: region.Value,
+			Label: region.Label,
+		})
+	}
+
+	return vos, nil
+}
+
+// GetInstances 获取云平台的实例列表
+func (uc *CloudAccountUseCase) GetInstances(ctx context.Context, accountID uint, region string) ([]*CloudInstanceVO, error) {
+	account, err := uc.repo.GetByID(ctx, accountID)
+	if err != nil {
+		return nil, fmt.Errorf("云平台账号不存在")
+	}
+
+	// 根据不同的云厂商调用不同的SDK获取实例列表
+	var instances []CloudInstance
+
+	switch account.Provider {
+	case "aliyun":
+		instances, err = uc.listAliyunInstances(account, region)
+	case "tencent":
+		instances, err = uc.listTencentInstances(account, region)
+	case "aws":
+		// TODO: AWS instances list not implemented
+		return nil, fmt.Errorf("AWS平台暂未实现")
+	case "huawei":
+		// TODO: Huawei instances list not implemented
+		return nil, fmt.Errorf("华为云平台暂未实现")
+	default:
+		return nil, fmt.Errorf("暂不支持该云平台")
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("获取云主机列表失败: %w", err)
+	}
+
+	// 转换为VO
+	var vos []*CloudInstanceVO
+	for _, inst := range instances {
+		vos = append(vos, &CloudInstanceVO{
+			InstanceID: inst.InstanceID,
+			Name:       inst.Name,
+			PublicIP:   inst.PublicIP,
+			PrivateIP:  inst.PrivateIP,
+			OS:         inst.OS,
+			Status:     inst.Status,
+		})
 	}
 
 	return vos, nil
@@ -662,26 +802,74 @@ func (uc *CloudAccountUseCase) ImportFromCloud(ctx context.Context, req *CloudIm
 	}
 
 	// 批量导入主机
+	successCount := 0
+	var importErrors []string
+
 	for _, instance := range instances {
 		// 如果指定了实例ID列表，只导入指定的实例
 		if len(req.InstanceIDs) > 0 && !utils.Contains(req.InstanceIDs, instance.InstanceID) {
 			continue
 		}
 
-		// 检查是否已存在（通过IP）
-		existHost, _ := hostUseCase.hostRepo.GetByIP(ctx, instance.PublicIP)
-		if existHost != nil {
+		// 检查是否已存在（通过云实例ID）
+		existHost, err := hostUseCase.hostRepo.GetByCloudInstanceID(ctx, instance.InstanceID)
+		if err == nil && existHost != nil {
+			// 主机已存在，更新分组
+			existHost.GroupID = req.GroupID
+			existHost.Name = instance.Name
+			if err := hostUseCase.hostRepo.Update(ctx, existHost); err != nil {
+				importErrors = append(importErrors, fmt.Sprintf("实例 %s 更新失败: %v", instance.InstanceID, err))
+			} else {
+				successCount++
+			}
 			continue
 		}
 
-		// 创建主机请求
+		// 确定使用的IP地址（优先公网IP，如果没有则使用私网IP）
+		ip := instance.PublicIP
+		if ip == "" {
+			ip = instance.PrivateIP
+		}
+
+		// 如果都没有IP，跳过该实例
+		if ip == "" {
+			importErrors = append(importErrors, fmt.Sprintf("实例 %s (%s) 没有IP地址，跳过", instance.Name, instance.InstanceID))
+			continue
+		}
+
+		// 检查IP是否已被其他主机使用
+		existByIP, _ := hostUseCase.hostRepo.GetByIP(ctx, ip)
+		if existByIP != nil {
+			// IP已被使用，但不是同一个云实例，更新该主机为云主机
+			existByIP.Type = "cloud"
+			existByIP.CloudProvider = account.Provider
+			existByIP.CloudInstanceID = instance.InstanceID
+			existByIP.CloudAccountID = req.AccountID
+			existByIP.GroupID = req.GroupID
+			existByIP.Name = instance.Name
+			if instance.OS != "" {
+				existByIP.OS = instance.OS
+			}
+			if err := hostUseCase.hostRepo.Update(ctx, existByIP); err != nil {
+				importErrors = append(importErrors, fmt.Sprintf("实例 %s 关联IP失败: %v", instance.InstanceID, err))
+			} else {
+				successCount++
+			}
+			continue
+		}
+
+		// 创建新主机
 		hostReq := &HostRequest{
-			Name:        instance.Name,
-			GroupID:     req.GroupID,
-			SSHUser:     "root", // 默认使用root
-			IP:          instance.PublicIP,
-			Port:        22,
-			Description: fmt.Sprintf("从%s导入", account.Name),
+			Name:            instance.Name,
+			GroupID:         req.GroupID,
+			Type:            "cloud",
+			CloudProvider:   account.Provider,
+			CloudInstanceID: instance.InstanceID,
+			CloudAccountID:  req.AccountID,
+			SSHUser:         "root", // 默认使用root
+			IP:              ip,
+			Port:            22,
+			Description:     fmt.Sprintf("从%s导入", account.Name),
 		}
 
 		host := hostReq.ToModel()
@@ -689,9 +877,14 @@ func (uc *CloudAccountUseCase) ImportFromCloud(ctx context.Context, req *CloudIm
 		host.OS = instance.OS
 
 		if err := hostUseCase.hostRepo.Create(ctx, host); err != nil {
-			// 记录错误但继续处理其他主机
-			continue
+			importErrors = append(importErrors, fmt.Sprintf("实例 %s 创建失败: %v", instance.InstanceID, err))
+		} else {
+			successCount++
 		}
+	}
+
+	if len(importErrors) > 0 {
+		return fmt.Errorf("导入完成，成功 %d 个，失败: %s", successCount, strings.Join(importErrors, "; "))
 	}
 
 	return nil
@@ -707,18 +900,191 @@ type CloudInstance struct {
 	Status     string
 }
 
-// listAliyunInstances 获取阿里云实例列表（占位实现）
+// CloudRegion 云区域
+type CloudRegion struct {
+	Value string
+	Label string
+}
+
+// listAliyunRegions 获取阿里云区域列表
+func (uc *CloudAccountUseCase) listAliyunRegions(account *CloudAccount) ([]CloudRegion, error) {
+	// 使用杭州区域创建客户端（DescribeRegions API 可以使用任意区域）
+	client, err := ecs.NewClientWithAccessKey(
+		"cn-hangzhou",
+		account.AccessKey,
+		account.SecretKey,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("创建阿里云客户端失败: %w", err)
+	}
+
+	// 创建 DescribeRegions 请求
+	request := ecs.CreateDescribeRegionsRequest()
+	request.Scheme = "https"
+
+	// 调用 API
+	response, err := client.DescribeRegions(request)
+	if err != nil {
+		return nil, fmt.Errorf("获取阿里云区域列表失败: %w", err)
+	}
+
+	// 转换为 CloudRegion 格式
+	var regions []CloudRegion
+	for _, region := range response.Regions.Region {
+		// 只返回可用的区域
+		if region.LocalName != "" && region.RegionId != "" {
+			regions = append(regions, CloudRegion{
+				Value: region.RegionId,
+				Label: fmt.Sprintf("%s (%s)", region.LocalName, region.RegionId),
+			})
+		}
+	}
+
+	return regions, nil
+}
+
+// listTencentRegions 获取腾讯云区域列表
+func (uc *CloudAccountUseCase) listTencentRegions(account *CloudAccount) ([]CloudRegion, error) {
+	// TODO: 实现腾讯云SDK调用获取区域列表
+	return []CloudRegion{
+		{Value: "ap-guangzhou", Label: "华南地区 (广州)"},
+		{Value: "ap-shanghai", Label: "华东地区 (上海)"},
+		{Value: "ap-nanjing", Label: "华东地区 (南京)"},
+		{Value: "ap-beijing", Label: "华北地区 (北京)"},
+		{Value: "ap-chengdu", Label: "西南地区 (成都)"},
+		{Value: "ap-chongqing", Label: "西南地区 (重庆)"},
+		{Value: "ap-hongkong", Label: "中国香港"},
+		{Value: "ap-singapore", Label: "东南亚 (新加坡)"},
+		{Value: "ap-tokyo", Label: "日本 (东京)"},
+		{Value: "ap-seoul", Label: "韩国 (首尔)"},
+		{Value: "na-siliconvalley", Label: "美国西部 (硅谷)"},
+		{Value: "na-ashburn", Label: "美国东部 (弗吉尼亚)"},
+		{Value: "eu-frankfurt", Label: "欧洲 (法兰克福)"},
+	}, nil
+}
+
+// listAWSRegions 获取AWS区域列表
+func (uc *CloudAccountUseCase) listAWSRegions(account *CloudAccount) ([]CloudRegion, error) {
+	// TODO: 实现AWS SDK调用获取区域列表
+	return []CloudRegion{
+		{Value: "us-east-1", Label: "US East (N. Virginia)"},
+		{Value: "us-east-2", Label: "US East (Ohio)"},
+		{Value: "us-west-1", Label: "US West (N. California)"},
+		{Value: "us-west-2", Label: "US West (Oregon)"},
+		{Value: "ap-southeast-1", Label: "Asia Pacific (Singapore)"},
+		{Value: "ap-southeast-2", Label: "Asia Pacific (Sydney)"},
+		{Value: "ap-northeast-1", Label: "Asia Pacific (Tokyo)"},
+		{Value: "ap-northeast-2", Label: "Asia Pacific (Seoul)"},
+		{Value: "ap-south-1", Label: "Asia Pacific (Mumbai)"},
+		{Value: "eu-central-1", Label: "Europe (Frankfurt)"},
+		{Value: "eu-west-1", Label: "Europe (Ireland)"},
+	}, nil
+}
+
+// listHuaweiRegions 获取华为云区域列表
+func (uc *CloudAccountUseCase) listHuaweiRegions(account *CloudAccount) ([]CloudRegion, error) {
+	// TODO: 实现华为云SDK调用获取区域列表
+	return []CloudRegion{
+		{Value: "cn-south-1", Label: "华南-广州"},
+		{Value: "cn-east-3", Label: "华东-上海"},
+		{Value: "cn-north-1", Label: "华北-北京"},
+		{Value: "cn-north-4", Label: "华北-乌兰察布"},
+		{Value: "cn-southwest-2", Label: "西南-贵阳"},
+		{Value: "ap-southeast-1", Label: "中国香港"},
+		{Value: "ap-southeast-2", Label: "亚太-曼谷"},
+		{Value: "ap-southeast-3", Label: "亚太-新加坡"},
+	}, nil
+}
+
+// listAliyunInstances 获取阿里云实例列表
 func (uc *CloudAccountUseCase) listAliyunInstances(account *CloudAccount, region string) ([]CloudInstance, error) {
-	// TODO: 实现阿里云SDK调用
-	// 这里先返回空列表
-	return []CloudInstance{}, nil
+	// 创建ECS客户端
+	client, err := ecs.NewClientWithAccessKey(
+		region,
+		account.AccessKey,
+		account.SecretKey,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("创建阿里云客户端失败: %w", err)
+	}
+
+	var allInstances []CloudInstance
+	pageSize := 100
+	pageNumber := 1
+
+	for {
+		// 创建请求
+		request := ecs.CreateDescribeInstancesRequest()
+		request.Scheme = "https"
+		request.PageSize = requests.NewInteger(pageSize)
+		request.PageNumber = requests.NewInteger(pageNumber)
+
+		// 发送请求
+		response, err := client.DescribeInstances(request)
+		if err != nil {
+			return nil, fmt.Errorf("获取阿里云实例失败: %w", err)
+		}
+
+		// 转换结果
+		for _, instance := range response.Instances.Instance {
+			var publicIP, privateIP string
+			if len(instance.PublicIpAddress.IpAddress) > 0 {
+				publicIP = instance.PublicIpAddress.IpAddress[0]
+			}
+			if len(instance.InnerIpAddress.IpAddress) > 0 {
+				privateIP = instance.InnerIpAddress.IpAddress[0]
+			}
+
+			allInstances = append(allInstances, CloudInstance{
+				InstanceID: instance.InstanceId,
+				Name:      instance.InstanceName,
+				PublicIP:  publicIP,
+				PrivateIP: privateIP,
+				OS:        instance.OSName,
+				Status:    instance.Status,
+			})
+		}
+
+		// 检查是否还有更多页
+		totalCount := int(response.TotalCount)
+		if len(allInstances) >= totalCount || pageNumber*pageSize >= totalCount {
+			break
+		}
+		pageNumber++
+
+		// 最多获取10页（1000条）
+		if pageNumber > 10 {
+			break
+		}
+	}
+
+	return allInstances, nil
 }
 
 // listTencentInstances 获取腾讯云实例列表（占位实现）
 func (uc *CloudAccountUseCase) listTencentInstances(account *CloudAccount, region string) ([]CloudInstance, error) {
 	// TODO: 实现腾讯云SDK调用
-	// 这里先返回空列表
-	return []CloudInstance{}, nil
+	// 返回模拟数据用于测试
+	return []CloudInstance{
+		{InstanceID: "ins-12345678", Name: "tencent-web-01", PublicIP: "119.29.1.100", PrivateIP: "10.0.1.10", OS: "CentOS 7.6", Status: "Running"},
+		{InstanceID: "ins-87654321", Name: "tencent-api-01", PublicIP: "119.29.1.101", PrivateIP: "10.0.1.11", OS: "Ubuntu 20.04", Status: "Running"},
+	}, nil
+}
+
+// listAWSInstances 获取AWS实例列表（占位实现）
+func (uc *CloudAccountUseCase) listAWSInstances(account *CloudAccount, region string) ([]CloudInstance, error) {
+	// TODO: 实现AWS SDK调用
+	return []CloudInstance{
+		{InstanceID: "i-0123456789abcdef0", Name: "aws-web-server", PublicIP: "54.123.45.67", PrivateIP: "10.0.1.10", OS: "Amazon Linux 2", Status: "Running"},
+	}, nil
+}
+
+// listHuaweiInstances 获取华为云实例列表（占位实现）
+func (uc *CloudAccountUseCase) listHuaweiInstances(account *CloudAccount, region string) ([]CloudInstance, error) {
+	// TODO: 实现华为云SDK调用
+	return []CloudInstance{
+		{InstanceID: "i-12345678-1234-1234-1234-123456789012", Name: "huawei-server-01", PublicIP: "119.8.1.100", PrivateIP: "192.168.1.10", OS: "EulerOS 2.0", Status: "Running"},
+	}, nil
 }
 
 // ExcelImportResult Excel导入结果
@@ -862,3 +1228,144 @@ func (uc *HostUseCase) ImportFromExcel(ctx context.Context, excelData []byte) (*
 
 	return result, nil
 }
+
+// ImportFromExcelWithType 从Excel批量导入主机（带类型和分组）
+func (uc *HostUseCase) ImportFromExcelWithType(ctx context.Context, excelData []byte, hostType string, defaultGroupID uint) (*ExcelImportResult, error) {
+	// 使用excelize读取Excel文件
+	f, err := excelize.OpenReader(bytes.NewReader(excelData))
+	if err != nil {
+		return nil, fmt.Errorf("读取Excel文件失败: %w", err)
+	}
+	defer f.Close()
+
+	// 获取第一个sheet
+	sheets := f.GetSheetList()
+	if len(sheets) == 0 {
+		return nil, fmt.Errorf("Excel文件中没有工作表")
+	}
+
+	// 读取数据（跳过标题行，从第2行开始）
+	rows, err := f.GetRows(sheets[0])
+	if err != nil {
+		return nil, fmt.Errorf("读取Excel数据失败: %w", err)
+	}
+
+	result := &ExcelImportResult{
+		FailedRows: make([]int, 0),
+		Errors:     make([]string, 0),
+	}
+
+	// 获取所有分组和凭证映射
+	groups, _ := uc.groupRepo.GetAll(ctx)
+	groupCodeMap := make(map[string]uint)
+	for _, g := range groups {
+		groupCodeMap[g.Code] = g.ID
+	}
+
+	credentials, _ := uc.credentialRepo.GetAll(ctx)
+	credentialNameMap := make(map[string]uint)
+	for _, c := range credentials {
+		credentialNameMap[c.Name] = c.ID
+	}
+
+	// 从第2行开始处理数据（第1行是标题）
+	for i, row := range rows {
+		rowNum := i + 1
+		if i == 0 {
+			// 跳过标题行
+			continue
+		}
+
+		// 检查行是否为空
+		if len(row) < 4 {
+			continue
+		}
+
+		// 解析Excel行数据
+		// 列顺序: 主机名称 | 分组编码 | SSH用户名 | IP地址 | SSH端口 | 凭证名称 | 标签 | 备注
+		name := strings.TrimSpace(row[0])
+		groupCode := strings.TrimSpace(row[1])
+		sshUser := strings.TrimSpace(row[2])
+		ip := strings.TrimSpace(row[3])
+		port := 22
+		if len(row) > 4 && row[4] != "" {
+			p, err := strconv.Atoi(strings.TrimSpace(row[4]))
+			if err == nil {
+				port = p
+			}
+		}
+		credentialName := ""
+		if len(row) > 5 {
+			credentialName = strings.TrimSpace(row[5])
+		}
+		tags := ""
+		if len(row) > 6 {
+			tags = strings.TrimSpace(row[6])
+		}
+		description := ""
+		if len(row) > 7 {
+			description = strings.TrimSpace(row[7])
+		}
+
+		// 验证必填字段
+		if name == "" || sshUser == "" || ip == "" {
+			result.FailedCount++
+			result.FailedRows = append(result.FailedRows, rowNum)
+			result.Errors = append(result.Errors, fmt.Sprintf("第%d行: 缺少必填字段", rowNum))
+			continue
+		}
+
+		// 验证IP格式
+		hostReq := &HostRequest{
+			Name:        name,
+			Type:        hostType,
+			SSHUser:     sshUser,
+			IP:          ip,
+			Port:        port,
+			Tags:        tags,
+			Description: description,
+		}
+
+		// 如果有默认分组ID，使用默认分组
+		if defaultGroupID > 0 {
+			hostReq.GroupID = defaultGroupID
+		}
+
+		// 如果Excel中指定了分组编码，查找分组ID
+		if groupCode != "" {
+			if groupID, ok := groupCodeMap[groupCode]; ok {
+				hostReq.GroupID = groupID
+			} else {
+				result.FailedCount++
+				result.FailedRows = append(result.FailedRows, rowNum)
+				result.Errors = append(result.Errors, fmt.Sprintf("第%d行: 分组编码'%s'不存在", rowNum, groupCode))
+				continue
+			}
+		}
+
+		// 查找凭证ID
+		if credentialName != "" {
+			if credentialID, ok := credentialNameMap[credentialName]; ok {
+				hostReq.CredentialID = credentialID
+			} else {
+				result.FailedCount++
+				result.FailedRows = append(result.FailedRows, rowNum)
+				result.Errors = append(result.Errors, fmt.Sprintf("第%d行: 凭证名称'%s'不存在", rowNum, credentialName))
+				continue
+			}
+		}
+
+		// 创建主机
+		host := hostReq.ToModel()
+		if err := uc.hostRepo.CreateOrUpdate(ctx, host); err != nil {
+			result.FailedCount++
+			result.FailedRows = append(result.FailedRows, rowNum)
+			result.Errors = append(result.Errors, fmt.Sprintf("第%d行: %s", rowNum, err.Error()))
+		} else {
+			result.SuccessCount++
+		}
+	}
+
+	return result, nil
+}
+

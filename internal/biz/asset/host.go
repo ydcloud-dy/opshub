@@ -9,80 +9,93 @@ import (
 // Host 主机模型
 type Host struct {
 	gorm.Model
-	Name         string        `gorm:"type:varchar(100);not null;comment:主机名称" json:"name"`
-	GroupID      uint          `gorm:"column:group_id;comment:分组ID" json:"groupId"`
-	Group        *AssetGroup   `gorm:"-" json:"group,omitempty"`
-	SSHUser      string        `gorm:"type:varchar(50);not null;comment:SSH用户名" json:"sshUser"`
-	IP           string        `gorm:"type:varchar(50);not null;comment:IP地址" json:"ip"`
-	Port         int           `gorm:"type:int;default:22;comment:SSH端口" json:"port"`
-	CredentialID uint          `gorm:"column:credential_id;comment:凭证ID" json:"credentialId"`
-	Credential   *Credential   `gorm:"-" json:"credential,omitempty"`
-	Tags         string        `gorm:"type:varchar(500);comment:主机标签(逗号分隔)" json:"tags"`
-	Description  string        `gorm:"type:varchar(500);comment:备注" json:"description"`
-	Status       int           `gorm:"type:tinyint;default:1;comment:状态 1:在线 0:离线 -1:未知" json:"status"`
-	LastSeen     *time.Time    `gorm:"column:last_seen;comment:最后连接时间" json:"lastSeen,omitempty"`
-	OS           string        `gorm:"type:varchar(100);comment:操作系统" json:"os"`
-	Kernel       string        `gorm:"type:varchar(100);comment:内核版本" json:"kernel"`
-	Arch         string        `gorm:"type:varchar(50);comment:架构" json:"arch"`
+	Name             string        `gorm:"type:varchar(100);not null;comment:主机名称" json:"name"`
+	GroupID          uint          `gorm:"column:group_id;comment:分组ID" json:"groupId"`
+	Group            *AssetGroup   `gorm:"-" json:"group,omitempty"`
+	Type             string        `gorm:"type:varchar(20);not null;default:'self';comment:主机类型 self:自建 cloud:云主机" json:"type"`
+	CloudProvider    string        `gorm:"type:varchar(50);comment:云厂商 aliyun/tencent/aws" json:"cloudProvider,omitempty"`
+	CloudInstanceID  string        `gorm:"type:varchar(100);comment:云实例ID" json:"cloudInstanceId,omitempty"`
+	CloudAccountID   uint          `gorm:"column:cloud_account_id;comment:云账号ID" json:"cloudAccountId,omitempty"`
+	SSHUser          string        `gorm:"type:varchar(50);not null;comment:SSH用户名" json:"sshUser"`
+	IP               string        `gorm:"type:varchar(50);not null;comment:IP地址" json:"ip"`
+	Port             int           `gorm:"type:int;default:22;comment:SSH端口" json:"port"`
+	CredentialID     uint          `gorm:"column:credential_id;comment:凭证ID" json:"credentialId"`
+	Credential       *Credential   `gorm:"-" json:"credential,omitempty"`
+	Tags             string        `gorm:"type:varchar(500);comment:主机标签(逗号分隔)" json:"tags"`
+	Description      string        `gorm:"type:varchar(500);comment:备注" json:"description"`
+	Status           int           `gorm:"type:tinyint;default:1;comment:状态 1:在线 0:离线 -1:未知" json:"status"`
+	LastSeen         *time.Time    `gorm:"column:last_seen;comment:最后连接时间" json:"lastSeen,omitempty"`
+	OS               string        `gorm:"type:varchar(100);comment:操作系统" json:"os"`
+	Kernel           string        `gorm:"type:varchar(100);comment:内核版本" json:"kernel"`
+	Arch             string        `gorm:"type:varchar(50);comment:架构" json:"arch"`
 	// 扩展信息字段（JSON存储）
-	CPUInfo      string        `gorm:"type:text;comment:CPU信息JSON" json:"-"`
-	CPUCores     int           `gorm:"type:int;comment:CPU核心数" json:"cpuCores"`
-	CPUUsage     float64       `gorm:"type:float;comment:CPU使用率" json:"cpuUsage"`
-	MemoryTotal  uint64        `gorm:"type:bigint;comment:内存总容量(字节)" json:"memoryTotal"`
-	MemoryUsed   uint64        `gorm:"type:bigint;comment:已用内存(字节)" json:"memoryUsed"`
-	MemoryUsage  float64       `gorm:"type:float;comment:内存使用率" json:"memoryUsage"`
-	DiskTotal    uint64        `gorm:"type:bigint;comment:磁盘总容量(字节)" json:"diskTotal"`
-	DiskUsed     uint64        `gorm:"type:bigint;comment:已用磁盘(字节)" json:"diskUsed"`
-	DiskUsage    float64       `gorm:"type:float;comment:磁盘使用率" json:"diskUsage"`
-	Uptime       string        `gorm:"type:varchar(100);comment:运行时间" json:"uptime"`
-	Hostname     string        `gorm:"type:varchar(100);comment:主机名" json:"hostname"`
+	CPUInfo          string        `gorm:"type:text;comment:CPU信息JSON" json:"-"`
+	CPUCores         int           `gorm:"type:int;comment:CPU核心数" json:"cpuCores"`
+	CPUUsage         float64       `gorm:"type:float;comment:CPU使用率" json:"cpuUsage"`
+	MemoryTotal      uint64        `gorm:"type:bigint;comment:内存总容量(字节)" json:"memoryTotal"`
+	MemoryUsed       uint64        `gorm:"type:bigint;comment:已用内存(字节)" json:"memoryUsed"`
+	MemoryUsage      float64       `gorm:"type:float;comment:内存使用率" json:"memoryUsage"`
+	DiskTotal        uint64        `gorm:"type:bigint;comment:磁盘总容量(字节)" json:"diskTotal"`
+	DiskUsed         uint64        `gorm:"type:bigint;comment:已用磁盘(字节)" json:"diskUsed"`
+	DiskUsage        float64       `gorm:"type:float;comment:磁盘使用率" json:"diskUsage"`
+	Uptime           string        `gorm:"type:varchar(100);comment:运行时间" json:"uptime"`
+	Hostname         string        `gorm:"type:varchar(100);comment:主机名" json:"hostname"`
 }
 
 // HostRequest 主机请求
 type HostRequest struct {
-	ID           uint   `json:"id"`
-	Name         string `json:"name" binding:"required,min=2,max=100"`
-	GroupID      uint   `json:"groupId"`
-	SSHUser      string `json:"sshUser" binding:"required"`
-	IP           string `json:"ip" binding:"required,ip"`
-	Port         int    `json:"port" binding:"required,min=1,max=65535"`
-	CredentialID uint   `json:"credentialId"`
-	Tags         string `json:"tags"`
-	Description  string `json:"description"`
+	ID            uint   `json:"id"`
+	Name          string `json:"name" binding:"required,min=2,max=100"`
+	GroupID       uint   `json:"groupId"`
+	Type          string `json:"type" binding:"required,oneof=self cloud"`
+	CloudProvider string `json:"cloudProvider,omitempty"`
+	CloudInstanceID string `json:"cloudInstanceId,omitempty"`
+	CloudAccountID  uint   `json:"cloudAccountId,omitempty"`
+	SSHUser       string `json:"sshUser" binding:"required"`
+	IP            string `json:"ip" binding:"required,ip"`
+	Port          int    `json:"port" binding:"required,min=1,max=65535"`
+	CredentialID  uint   `json:"credentialId"`
+	Tags          string `json:"tags"`
+	Description   string `json:"description"`
 }
 
 // HostInfoVO 主机信息VO
 type HostInfoVO struct {
-	ID           uint           `json:"id"`
-	Name         string         `json:"name"`
-	GroupName    string         `json:"groupName"`
-	GroupID      uint           `json:"groupId"`
-	SSHUser      string         `json:"sshUser"`
-	IP           string         `json:"ip"`
-	Port         int            `json:"port"`
-	CredentialID uint           `json:"credentialId"`
-	Credential   *CredentialVO `json:"credential,omitempty"`
-	Tags         []string       `json:"tags"`
-	Description  string         `json:"description"`
-	Status       int            `json:"status"`
-	StatusText   string         `json:"statusText"`
-	LastSeen     string         `json:"lastSeen,omitempty"`
-	OS           string         `json:"os"`
-	Kernel       string         `json:"kernel"`
-	Arch         string         `json:"arch"`
-	CreateTime   string         `json:"createTime"`
-	UpdateTime   string         `json:"updateTime"`
+	ID               uint           `json:"id"`
+	Name             string         `json:"name"`
+	GroupName        string         `json:"groupName"`
+	GroupID          uint           `json:"groupId"`
+	Type             string         `json:"type"`
+	TypeText         string         `json:"typeText"`
+	CloudProvider    string         `json:"cloudProvider,omitempty"`
+	CloudProviderText string        `json:"cloudProviderText,omitempty"`
+	CloudInstanceID  string         `json:"cloudInstanceId,omitempty"`
+	SSHUser          string         `json:"sshUser"`
+	IP               string         `json:"ip"`
+	Port             int            `json:"port"`
+	CredentialID     uint           `json:"credentialId"`
+	Credential       *CredentialVO  `json:"credential,omitempty"`
+	Tags             []string       `json:"tags"`
+	Description      string         `json:"description"`
+	Status           int            `json:"status"`
+	StatusText       string         `json:"statusText"`
+	LastSeen         string         `json:"lastSeen,omitempty"`
+	OS               string         `json:"os"`
+	Kernel           string         `json:"kernel"`
+	Arch             string         `json:"arch"`
+	CreateTime       string         `json:"createTime"`
+	UpdateTime       string         `json:"updateTime"`
 	// 扩展信息
-	CPUCores     int     `json:"cpuCores"`
-	CPUUsage     float64 `json:"cpuUsage"`
-	MemoryTotal  uint64  `json:"memoryTotal"`
-	MemoryUsed   uint64  `json:"memoryUsed"`
-	MemoryUsage  float64 `json:"memoryUsage"`
-	DiskTotal    uint64  `json:"diskTotal"`
-	DiskUsed     uint64  `json:"diskUsed"`
-	DiskUsage    float64 `json:"diskUsage"`
-	Uptime       string  `json:"uptime"`
-	Hostname     string  `json:"hostname"`
+	CPUCores         int     `json:"cpuCores"`
+	CPUUsage         float64 `json:"cpuUsage"`
+	MemoryTotal      uint64  `json:"memoryTotal"`
+	MemoryUsed       uint64  `json:"memoryUsed"`
+	MemoryUsage      float64 `json:"memoryUsage"`
+	DiskTotal        uint64  `json:"diskTotal"`
+	DiskUsed         uint64  `json:"diskUsed"`
+	DiskUsage        float64 `json:"diskUsage"`
+	Uptime           string  `json:"uptime"`
+	Hostname         string  `json:"hostname"`
 }
 
 // HostListVO 主机列表VO（用于分组下的主机列表）
@@ -99,15 +112,19 @@ type HostListVO struct {
 // ToModel 转换为模型
 func (req *HostRequest) ToModel() *Host {
 	return &Host{
-		Name:         req.Name,
-		GroupID:      req.GroupID,
-		SSHUser:      req.SSHUser,
-		IP:           req.IP,
-		Port:         req.Port,
-		CredentialID: req.CredentialID,
-		Tags:         req.Tags,
-		Description:  req.Description,
-		Status:       -1, // 初始状态未知
+		Name:            req.Name,
+		GroupID:         req.GroupID,
+		Type:            req.Type,
+		CloudProvider:   req.CloudProvider,
+		CloudInstanceID: req.CloudInstanceID,
+		CloudAccountID:  req.CloudAccountID,
+		SSHUser:         req.SSHUser,
+		IP:              req.IP,
+		Port:            req.Port,
+		CredentialID:    req.CredentialID,
+		Tags:            req.Tags,
+		Description:     req.Description,
+		Status:          -1, // 初始状态未知
 	}
 }
 
@@ -179,11 +196,11 @@ type CloudAccountRequest struct {
 	ID          uint   `json:"id"`
 	Name        string `json:"name" binding:"required,min=2,max=100"`
 	Provider    string `json:"provider" binding:"required,oneof=aliyun tencent aws huawei"`
-	AccessKey   string `json:"accessKey" binding:"required"`
-	SecretKey   string `json:"secretKey" binding:"required"`
+	AccessKey   string `json:"accessKey"`
+	SecretKey   string `json:"secretKey"`
 	Region      string `json:"region"`
 	Description string `json:"description"`
-	Status      int    `json:"status" binding:"required"`
+	Status      int    `json:"status"`
 }
 
 // CloudAccountVO 云平台账号VO
@@ -218,4 +235,20 @@ type CloudImportRequest struct {
 	Region      string   `json:"region"`
 	GroupID     uint     `json:"groupId"`
 	InstanceIDs []string `json:"instanceIds"` // 要导入的实例ID列表
+}
+
+// CloudInstanceVO 云主机实例VO（用于前端展示）
+type CloudInstanceVO struct {
+	InstanceID string `json:"instanceId"`
+	Name       string `json:"name"`
+	PublicIP   string `json:"publicIp"`
+	PrivateIP  string `json:"privateIp"`
+	OS         string `json:"os"`
+	Status     string `json:"status"`
+}
+
+// CloudRegionVO 云区域VO
+type CloudRegionVO struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
 }

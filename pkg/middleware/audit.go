@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"bytes"
-	"database/sql"
 	"encoding/json"
 	"io"
 	"strings"
@@ -109,8 +108,6 @@ func shouldSkipLog(path string) bool {
 		}
 	}
 
-	// 跳过查询类操作（GET请求通常不记录，除非是特定路径）
-	// 只记录修改操作：POST, PUT, DELETE, PATCH
 	return false
 }
 
@@ -140,10 +137,11 @@ func getUserInfo(c *gin.Context) (uint, string, string) {
 
 // getOperationInfo 根据路径和请求方法获取操作信息
 func getOperationInfo(path string, method string) (module, action, description string) {
-	// 根据路径前缀确定模块
+	// 根据路径前缀确定模块（按照菜单结构）
 	switch {
+	// 系统管理 - 用户管理
 	case strings.HasPrefix(path, "/api/v1/users"):
-		module = "用户管理"
+		module = "系统管理"
 		switch method {
 		case "POST":
 			action = "创建"
@@ -158,8 +156,9 @@ func getOperationInfo(path string, method string) (module, action, description s
 			action = "查询"
 			description = "查询用户列表"
 		}
+	// 系统管理 - 角色管理
 	case strings.HasPrefix(path, "/api/v1/roles"):
-		module = "角色管理"
+		module = "系统管理"
 		switch method {
 		case "POST":
 			action = "创建"
@@ -174,8 +173,9 @@ func getOperationInfo(path string, method string) (module, action, description s
 			action = "查询"
 			description = "查询角色列表"
 		}
+	// 系统管理 - 部门管理
 	case strings.HasPrefix(path, "/api/v1/departments"):
-		module = "部门管理"
+		module = "系统管理"
 		switch method {
 		case "POST":
 			action = "创建"
@@ -190,8 +190,9 @@ func getOperationInfo(path string, method string) (module, action, description s
 			action = "查询"
 			description = "查询部门树"
 		}
+	// 系统管理 - 菜单管理
 	case strings.HasPrefix(path, "/api/v1/menus"):
-		module = "菜单管理"
+		module = "系统管理"
 		switch method {
 		case "POST":
 			action = "创建"
@@ -206,8 +207,9 @@ func getOperationInfo(path string, method string) (module, action, description s
 			action = "查询"
 			description = "查询菜单树"
 		}
+	// 系统管理 - 岗位管理
 	case strings.HasPrefix(path, "/api/v1/positions"):
-		module = "岗位管理"
+		module = "系统管理"
 		switch method {
 		case "POST":
 			action = "创建"
@@ -222,18 +224,62 @@ func getOperationInfo(path string, method string) (module, action, description s
 			action = "查询"
 			description = "查询岗位列表"
 		}
+	// 个人信息
+	case path == "/api/v1/profile" || strings.HasPrefix(path, "/api/v1/profile"):
+		module = "个人信息"
+		switch method {
+		case "PUT":
+			action = "更新"
+			if strings.Contains(path, "/password") {
+				description = "修改密码"
+			} else if strings.Contains(path, "/avatar") {
+				description = "更新头像"
+			} else {
+				description = "更新个人信息"
+			}
+		default:
+			action = "查询"
+			description = "查询个人信息"
+		}
+	// 操作审计
+	case strings.HasPrefix(path, "/api/v1/audit"):
+		module = "操作审计"
+		switch {
+		case strings.Contains(path, "/operation-logs"):
+			description = "操作日志管理"
+		case strings.Contains(path, "/login-logs"):
+			description = "登录日志管理"
+		case strings.Contains(path, "/data-logs"):
+			description = "数据日志管理"
+		default:
+			description = "操作审计"
+		}
+		action = getActionFromMethod(method)
+	// 容器管理
 	case strings.HasPrefix(path, "/api/v1/plugins/kubernetes"):
-		module = "Kubernetes管理"
-		action = "操作"
+		module = "容器管理"
+		action = getActionFromMethod(method)
 		description = getK8sOperationDescription(path, method)
-	case strings.HasPrefix(path, "/api/v1/plugins/asset"):
+	// 任务中心
+	case strings.HasPrefix(path, "/api/v1/plugins/task") || strings.HasPrefix(path, "/api/v1/plugins/jobs") || strings.HasPrefix(path, "/api/v1/plugins/templates") || strings.HasPrefix(path, "/api/v1/plugins/ansible"):
+		module = "任务中心"
+		action = getActionFromMethod(method)
+		description = getTaskOperationDescription(path, method)
+	// 监控中心
+	case strings.HasPrefix(path, "/api/v1/plugins/monitor"):
+		module = "监控中心"
+		action = getActionFromMethod(method)
+		description = getMonitorOperationDescription(path, method)
+	// 资产管理
+	case strings.HasPrefix(path, "/api/v1/hosts") || strings.HasPrefix(path, "/api/v1/asset") || strings.HasPrefix(path, "/api/v1/terminal") || strings.HasPrefix(path, "/api/v1/cloud-accounts") || strings.HasPrefix(path, "/api/v1/credentials"):
 		module = "资产管理"
-		action = "操作"
-		description = "资产管理操作"
-	case strings.HasPrefix(path, "/api/v1/plugins/task"):
-		module = "任务管理"
-		action = "操作"
-		description = "任务管理操作"
+		action = getActionFromMethod(method)
+		description = getAssetOperationDescription(path, method)
+	// 登录接口
+	case path == "/api/v1/public/login":
+		module = "系统管理"
+		action = "登录"
+		description = "用户登录"
 	default:
 		module = "系统"
 		action = method
@@ -241,6 +287,22 @@ func getOperationInfo(path string, method string) (module, action, description s
 	}
 
 	return module, action, description
+}
+
+// getActionFromMethod 根据请求方法获取操作类型
+func getActionFromMethod(method string) string {
+	switch method {
+	case "GET":
+		return "查询"
+	case "POST":
+		return "创建"
+	case "PUT", "PATCH":
+		return "更新"
+	case "DELETE":
+		return "删除"
+	default:
+		return method
+	}
 }
 
 // getK8sOperationDescription 获取K8s操作描述
@@ -266,13 +328,61 @@ func getK8sOperationDescription(path string, method string) string {
 	if strings.Contains(path, "/pv") || strings.Contains(path, "/pvc") || strings.Contains(path, "/storage") {
 		return "存储管理操作"
 	}
+	if strings.Contains(path, "/namespaces") {
+		return "命名空间管理"
+	}
+	if strings.Contains(path, "/nodes") {
+		return "节点管理"
+	}
 	if strings.Contains(path, "/terminal") {
 		return "终端操作"
 	}
 	if strings.Contains(path, "/files") {
 		return "文件操作"
 	}
-	return "Kubernetes操作"
+	if strings.Contains(path, "/network") {
+		return "网络管理操作"
+	}
+	if strings.Contains(path, "/access") {
+		return "访问控制管理"
+	}
+	return "容器管理操作"
+}
+
+// getMonitorOperationDescription 获取监控中心操作描述
+func getMonitorOperationDescription(path string, method string) string {
+	if strings.Contains(path, "/domains") {
+		return "域名监控操作"
+	}
+	if strings.Contains(path, "/trouble") {
+		return "故障处理操作"
+	}
+	return "监控中心操作"
+}
+
+// getTaskOperationDescription 获取任务操作描述
+func getTaskOperationDescription(path string, method string) string {
+	if strings.Contains(path, "/ansible") {
+		return "Ansible任务操作"
+	}
+	if strings.Contains(path, "/jobs") {
+		return "任务管理操作"
+	}
+	return "任务中心操作"
+}
+
+// getAssetOperationDescription 获取资产操作描述
+func getAssetOperationDescription(path string, method string) string {
+	if strings.Contains(path, "/hosts") {
+		return "主机管理操作"
+	}
+	if strings.Contains(path, "/terminal") {
+		return "终端操作"
+	}
+	if strings.Contains(path, "/asset") {
+		return "资产管理操作"
+	}
+	return "资产管理操作"
 }
 
 // getRequestParams 获取请求参数
@@ -327,12 +437,6 @@ func (w *responseWriter) WriteHeader(code int) {
 	w.ResponseWriter.WriteHeader(code)
 }
 
-// WriteStatus implements the gin.ResponseWriter interface for SQL NULL handling
-func (w *responseWriter) WriteStatus(code int) {
-	w.status = code
-	w.ResponseWriter.WriteHeader(code)
-}
-
 // Write implements the io.Writer interface
 func (w *responseWriter) Write(data []byte) (int, error) {
 	return w.ResponseWriter.Write(data)
@@ -341,19 +445,4 @@ func (w *responseWriter) Write(data []byte) (int, error) {
 // WriteString implements the gin.ResponseWriter interface
 func (w *responseWriter) WriteString(str string) (int, error) {
 	return w.ResponseWriter.WriteString(str)
-}
-
-// implement the sql.NullString type compatibility
-var _ interface {
-	WriteHeader(int)
-} = &responseWriter{}
-
-// NullString is a type that can be null or a string
-type NullString struct {
-	sql.NullString
-}
-
-// Scan implements the sql.Scanner interface
-func (ns *NullString) Scan(value interface{}) error {
-	return ns.NullString.Scan(value)
 }

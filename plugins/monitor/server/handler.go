@@ -10,20 +10,23 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/ydcloud-dy/opshub/plugins/monitor/model"
 	"github.com/ydcloud-dy/opshub/plugins/monitor/repository"
+	"github.com/ydcloud-dy/opshub/plugins/monitor/service"
 	"gorm.io/gorm"
 )
 
 // Handler 域名监控处理器
 type Handler struct {
-	db         *gorm.DB
-	repo       *repository.DomainMonitorRepository
+	db           *gorm.DB
+	repo         *repository.DomainMonitorRepository
+	alertService *service.AlertService
 }
 
 // NewHandler 创建处理器
 func NewHandler(db *gorm.DB) *Handler {
 	return &Handler{
-		db:   db,
-		repo: repository.NewDomainMonitorRepository(db),
+		db:           db,
+		repo:         repository.NewDomainMonitorRepository(db),
+		alertService: service.NewAlertService(),
 	}
 }
 
@@ -129,6 +132,28 @@ func (h *Handler) CreateDomain(c *gin.Context) {
 			"error":   err.Error(),
 		})
 		return
+	}
+
+	// 创建成功后立即执行一次域名检查
+	result, err := h.performCheck(&req)
+	if err != nil {
+		// 即使检查失败，记录也已创建，只是保持unknown状态
+		// 可以选择记录日志或直接忽略
+	} else {
+		// 更新检查结果
+		req.Status = result.Status
+		req.ResponseTime = result.ResponseTime
+		req.SSLValid = result.SSLValid
+		req.SSLExpiry = result.SSLExpiry
+		checkTime := time.Now()
+		req.LastCheck = &checkTime
+
+		// 计算下次检查时间
+		nextCheck := checkTime.Add(time.Duration(req.CheckInterval) * time.Second)
+		req.NextCheck = &nextCheck
+
+		// 保存更新后的状态
+		h.repo.Update(&req)
 	}
 
 	c.JSON(200, gin.H{
@@ -305,6 +330,9 @@ func (h *Handler) CheckDomain(c *gin.Context) {
 		return
 	}
 
+	// 检查并发送告警
+	go h.checkAndSendAlert(monitor, result)
+
 	c.JSON(200, gin.H{
 		"code":    0,
 		"message": "检查完成",
@@ -416,4 +444,145 @@ func (h *Handler) performCheck(monitor *model.DomainMonitor) (*CheckResult, erro
 	}
 
 	return result, nil
+}
+
+// checkAndSendAlert 检查并发送告警
+func (h *Handler) checkAndSendAlert(monitor *model.DomainMonitor, result *CheckResult) {
+	// 如果未启用告警，直接返回
+	if !monitor.EnableAlert {
+		return
+	}
+
+	// 检查告警频率控制
+	if h.shouldSuppressAlert(monitor.ID, result.Status) {
+		return
+	}
+
+	// 检查各种告警条件
+	alerts := h.checkAlertConditions(monitor, result)
+
+	// 如果有告警，发送通知
+	if len(alerts) > 0 {
+		for _, alert := range alerts {
+			h.sendAlert(monitor, alert)
+		}
+	}
+}
+
+// checkAlertConditions 检查告警条件
+func (h *Handler) checkAlertConditions(monitor *model.DomainMonitor, result *CheckResult) []service.AlertMessage {
+	var alerts []service.AlertMessage
+	now := time.Now()
+
+	// 1. 域名无法访问告警
+	if result.Status == "abnormal" && result.ResponseTime == 0 {
+		alerts = append(alerts, service.AlertMessage{
+			AlertType: "domain_down",
+			Domain:    monitor.Domain,
+			Status:    result.Status,
+			Message:   "域名无法访问或响应超时",
+			Timestamp: now.Format("2006-01-02 15:04:05"),
+		})
+	}
+
+	// 2. 响应时间过高告警
+	if monitor.ResponseThreshold != nil && result.ResponseTime > *monitor.ResponseThreshold {
+		alerts = append(alerts, service.AlertMessage{
+			AlertType:    "high_response_time",
+			Domain:       monitor.Domain,
+			Status:       result.Status,
+			Message:      fmt.Sprintf("响应时间 %dms 超过阈值 %dms", result.ResponseTime, *monitor.ResponseThreshold),
+			ResponseTime: result.ResponseTime,
+			Timestamp:    now.Format("2006-01-02 15:04:05"),
+		})
+	}
+
+	// 3. SSL证书即将过期告警
+	if monitor.EnableSSL && result.SSLExpiry != nil {
+		daysUntilExpiry := int(time.Until(*result.SSLExpiry).Hours() / 24)
+		if monitor.SSLExpiryDays != nil && daysUntilExpiry <= *monitor.SSLExpiryDays && daysUntilExpiry > 0 {
+			alerts = append(alerts, service.AlertMessage{
+				AlertType: "ssl_expiring",
+				Domain:    monitor.Domain,
+				Status:    result.Status,
+				Message:   fmt.Sprintf("SSL证书将在 %d 天后过期", daysUntilExpiry),
+				SSLExpiry: result.SSLExpiry.Format("2006-01-02 15:04:05"),
+				Timestamp: now.Format("2006-01-02 15:04:05"),
+			})
+		}
+	}
+
+	// 4. SSL证书已过期告警
+	if monitor.EnableSSL && result.SSLExpiry != nil && result.SSLExpiry.Before(now) {
+		alerts = append(alerts, service.AlertMessage{
+			AlertType: "ssl_expired",
+			Domain:    monitor.Domain,
+			Status:    result.Status,
+			Message:   "SSL证书已过期",
+			SSLExpiry: result.SSLExpiry.Format("2006-01-02 15:04:05"),
+			Timestamp: now.Format("2006-01-02 15:04:05"),
+		})
+	}
+
+	// 5. SSL证书无效告警
+	if monitor.EnableSSL && !result.SSLValid {
+		alerts = append(alerts, service.AlertMessage{
+			AlertType: "ssl_invalid",
+			Domain:    monitor.Domain,
+			Status:    result.Status,
+			Message:   "SSL证书无效或无法验证",
+			Timestamp: now.Format("2006-01-02 15:04:05"),
+		})
+	}
+
+	return alerts
+}
+
+// sendAlert 发送告警
+func (h *Handler) sendAlert(monitor *model.DomainMonitor, alert service.AlertMessage) {
+	// TODO: 从数据库获取告警通道配置和接收人
+	// 目前使用模拟数据
+
+	// 记录告警日志
+	h.logAlert(monitor.ID, alert, "pending", "", "")
+
+	// 发送告警（这里暂时注释掉，等配置功能完成后再启用）
+	// config := service.AlertChannelConfig{
+	// 	// 从数据库或配置文件读取
+	// }
+	// receivers := []string{"admin@example.com"}
+	// err := h.alertService.SendAlert(alert, config, receivers)
+	// if err != nil {
+	// 	h.logAlert(monitor.ID, alert, "failed", "", err.Error())
+	// } else {
+	// 	h.logAlert(monitor.ID, alert, "success", "", "")
+	// }
+}
+
+// logAlert 记录告警日志
+func (h *Handler) logAlert(domainMonitorID uint, alert service.AlertMessage, status, channel, errorMsg string) {
+	alertLog := &model.AlertLog{
+		DomainMonitorID: domainMonitorID,
+		Domain:          alert.Domain,
+		AlertType:       alert.AlertType,
+		Status:          status,
+		Message:         alert.Message,
+		ChannelType:     channel,
+		ErrorMsg:        errorMsg,
+		SentAt:          time.Now(),
+	}
+
+	h.db.Create(alertLog)
+}
+
+// shouldSuppressAlert 检查是否应该抑制告警（告警频率控制）
+func (h *Handler) shouldSuppressAlert(domainMonitorID uint, status string) bool {
+	// 查询最近的告警日志
+	var recentAlertCount int64
+	h.db.Model(&model.AlertLog{}).
+		Where("domain_monitor_id = ? AND alert_type = ? AND status = ? AND sent_at > ?",
+			domainMonitorID, "domain_down", status, time.Now().Add(-10*time.Minute)).
+		Count(&recentAlertCount)
+
+	return recentAlertCount > 0
 }
