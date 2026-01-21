@@ -8964,10 +8964,14 @@ func (h *ResourceHandler) PodShellWebSocket(c *gin.Context) {
 		// 获取集群名称
 		var cluster models.Cluster
 		clusterName := ""
-		h.db.First(&cluster, clusterID)
-		clusterName = cluster.Alias
-		if clusterName == "" {
-			clusterName = cluster.Name
+		if err := h.db.First(&cluster, clusterID).Error; err == nil {
+			clusterName = cluster.Alias
+			if clusterName == "" {
+				clusterName = cluster.Name
+			}
+		} else {
+			log.Printf("⚠️ 查询集群信息失败: %v, clusterID=%d", err, clusterID)
+			clusterName = fmt.Sprintf("Cluster-%d", clusterID)
 		}
 
 		// 保存会话记录到数据库（所有会话都记录）

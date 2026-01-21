@@ -237,6 +237,7 @@ import {
 } from '@element-plus/icons-vue'
 import { getGroupTree } from '@/api/assetGroup'
 import { getHostList } from '@/api/host'
+import { executeTask } from '@/api/task'
 
 // 脚本类型
 const scriptType = ref('Shell')
@@ -410,15 +411,41 @@ const handleExecute = async () => {
   }
 
   executing.value = true
+  const hostIds = selectedHosts.value.map((h) => h.id)
   addLog(`开始执行任务，目标主机: ${selectedHosts.value.length} 台`, 'info')
 
   try {
-    await new Promise((resolve) => setTimeout(resolve, 2000))
-    addLog('任务执行成功', 'success')
-    ElMessage.success('任务执行成功')
+    const response = await executeTask({
+      hostIds,
+      scriptType: scriptType.value,
+      content: scriptContent.value,
+    })
+
+    // 处理执行结果
+    response.results.forEach((result) => {
+      if (result.status === 'success') {
+        addLog(
+          `✓ ${result.hostName} (${result.hostIp}) 执行成功\n${result.output}`,
+          'success'
+        )
+      } else {
+        addLog(
+          `✗ ${result.hostName} (${result.hostIp}) 执行失败: ${result.error}\n${result.output || ''}`,
+          'error'
+        )
+      }
+    })
+
+    // 检查是否全部成功
+    const allSuccess = response.results.every((r) => r.status === 'success')
+    if (allSuccess) {
+      ElMessage.success('任务执行成功')
+    } else {
+      ElMessage.warning('部分任务执行失败，请查看执行记录')
+    }
   } catch (error: any) {
-    addLog('任务执行失败: ' + error.message, 'error')
-    ElMessage.error('任务执行失败')
+    addLog('任务执行失败: ' + (error.message || error), 'error')
+    ElMessage.error('任务执行失败: ' + (error.message || error))
   } finally {
     executing.value = false
   }
@@ -555,13 +582,18 @@ onMounted(() => {
 }
 
 .execute-button {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #000;
+  color: #fff;
   border: none;
   padding: 12px 40px;
   font-size: 16px;
 
   &:hover {
-    background: linear-gradient(135deg, #7e8ef5 0%, #8d5cb8 100%);
+    background: #333;
+  }
+
+  &:active {
+    background: #1a1a1a;
   }
 }
 

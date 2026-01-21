@@ -1,5 +1,32 @@
 import request from '@/utils/request'
 
+// ==================== 任务执行 ====================
+
+export interface ExecuteTaskRequest {
+  hostIds: number[]
+  scriptType: string // Shell, Python
+  content: string
+  name?: string
+}
+
+export interface HostExecutionResult {
+  hostId: number
+  hostName: string
+  hostIp: string
+  status: string // success, failed
+  output: string
+  error?: string
+}
+
+export interface ExecuteTaskResponse {
+  taskId: number
+  results: HostExecutionResult[]
+}
+
+export const executeTask = (data: ExecuteTaskRequest) => {
+  return request.post<any, ExecuteTaskResponse>('/api/v1/plugins/task/execute', data)
+}
+
 // ==================== 任务作业 ====================
 
 export interface JobTask {
