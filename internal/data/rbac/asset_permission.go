@@ -161,15 +161,12 @@ func (r *assetPermissionRepo) GetByRoleID(ctx context.Context, roleID uint) ([]*
 			r.code AS role_code,
 			p.asset_group_id,
 			g.name AS asset_group_name,
-			p.host_id,
-			h.name AS host_name,
-			h.ip AS host_ip,
+			p.host_ids,
 			p.permissions,
 			p.created_at
 		`).
 		Joins("LEFT JOIN sys_role AS r ON p.role_id = r.id").
 		Joins("LEFT JOIN asset_group AS g ON p.asset_group_id = g.id").
-		Joins("LEFT JOIN hosts AS h ON p.host_id = h.id").
 		Where("p.role_id = ? AND p.deleted_at IS NULL", roleID).
 		Order("p.created_at DESC").
 		Find(&permissions).Error
@@ -190,15 +187,12 @@ func (r *assetPermissionRepo) GetByAssetGroupID(ctx context.Context, assetGroupI
 			r.code AS role_code,
 			p.asset_group_id,
 			g.name AS asset_group_name,
-			p.host_id,
-			h.name AS host_name,
-			h.ip AS host_ip,
+			p.host_ids,
 			p.permissions,
 			p.created_at
 		`).
 		Joins("LEFT JOIN sys_role AS r ON p.role_id = r.id").
 		Joins("LEFT JOIN asset_group AS g ON p.asset_group_id = g.id").
-		Joins("LEFT JOIN hosts AS h ON p.host_id = h.id").
 		Where("p.asset_group_id = ? AND p.deleted_at IS NULL", assetGroupID).
 		Order("p.created_at DESC").
 		Find(&permissions).Error
@@ -220,15 +214,12 @@ func (r *assetPermissionRepo) List(ctx context.Context, page, pageSize int, role
 			r.code AS role_code,
 			p.asset_group_id,
 			g.name AS asset_group_name,
-			p.host_id,
-			h.name AS host_name,
-			h.ip AS host_ip,
+			p.host_ids,
 			p.permissions,
 			p.created_at
 		`).
 		Joins("LEFT JOIN sys_role AS r ON p.role_id = r.id").
 		Joins("LEFT JOIN asset_group AS g ON p.asset_group_id = g.id").
-		Joins("LEFT JOIN hosts AS h ON p.host_id = h.id").
 		Where("p.deleted_at IS NULL")
 
 	if roleID != nil {
@@ -285,14 +276,14 @@ func (r *assetPermissionRepo) CheckHostPermission(ctx context.Context, userID, h
 	}
 
 	// 检查用户的角色是否有权限访问该主机
-	// 1. 检查是否有整个分组的权限（host_id IS NULL）
-	// 2. 检查是否有特定主机的权限（host_id = hostID）
+	// 1. 检查是否有整个分组的权限（host_ids 为空或 NULL）
+	// 2. 检查是否有特定主机的权限（host_ids 包含该主机ID）
 	var permCount int64
 	err = r.db.WithContext(ctx).
 		Table("sys_role_asset_permission AS p").
 		Joins("JOIN sys_user_role AS ur ON p.role_id = ur.role_id").
-		Where("ur.user_id = ? AND p.asset_group_id = ?", userID, groupID).
-		Where("p.host_id IS NULL OR p.host_id = ?", hostID).
+		Where("ur.user_id = ? AND p.asset_group_id = ? AND p.deleted_at IS NULL", userID, groupID).
+		Where("JSON_LENGTH(COALESCE(p.host_ids, JSON_ARRAY())) = 0 OR JSON_CONTAINS(p.host_ids, ?)", hostID).
 		Count(&permCount).Error
 
 	if err != nil {
@@ -327,20 +318,23 @@ func (r *assetPermissionRepo) GetUserAccessibleHostIDs(ctx context.Context, user
 	}
 
 	// 获取用户有权限的主机ID列表
-	// 1. 直接授权的主机（host_id IS NOT NULL）
-	// 2. 通过资产分组授权的所有主机（host_id IS NULL）
+	// 1. 如果 host_ids 为空，表示有整个分组的权限
+	// 2. 如果 host_ids 包含主机ID，表示有特定主机的权限
 	var hostIDs []uint
 
-	// 查询直接授权的主机和通过分组授权的主机
+	// 通过原生SQL查询，处理 JSON 字段
 	err = r.db.WithContext(ctx).Raw(`
 		SELECT DISTINCT h.id
 		FROM hosts AS h
-		JOIN sys_role_asset_permission AS p ON (
-			p.asset_group_id = h.group_id
-			AND (p.host_id IS NULL OR p.host_id = h.id)
-		)
+		JOIN sys_role_asset_permission AS p ON p.asset_group_id = h.group_id
 		JOIN sys_user_role AS ur ON p.role_id = ur.role_id
-		WHERE ur.user_id = ? AND h.deleted_at IS NULL
+		WHERE ur.user_id = ?
+		AND h.deleted_at IS NULL
+		AND p.deleted_at IS NULL
+		AND (
+			JSON_LENGTH(COALESCE(p.host_ids, JSON_ARRAY())) = 0
+			OR JSON_CONTAINS(p.host_ids, h.id)
+		)
 	`, userID).Scan(&hostIDs).Error
 
 	return hostIDs, err
@@ -378,12 +372,13 @@ func (r *assetPermissionRepo) CheckHostOperationPermission(ctx context.Context, 
 	}
 
 	// 检查用户的角色是否有该操作权限
+	// host_ids 为空表示有整个分组的权限，host_ids 包含该主机表示有特定主机的权限
 	var permCount int64
 	err = r.db.WithContext(ctx).
 		Table("sys_role_asset_permission AS p").
 		Joins("JOIN sys_user_role AS ur ON p.role_id = ur.role_id").
-		Where("ur.user_id = ? AND p.asset_group_id = ?", userID, groupID).
-		Where("(p.host_id IS NULL OR p.host_id = ?) AND (p.permissions & ?) > 0", hostID, operation).
+		Where("ur.user_id = ? AND p.asset_group_id = ? AND p.deleted_at IS NULL", userID, groupID).
+		Where("(JSON_LENGTH(COALESCE(p.host_ids, JSON_ARRAY())) = 0 OR JSON_CONTAINS(p.host_ids, ?)) AND (p.permissions & ?) > 0", hostID, operation).
 		Count(&permCount).Error
 
 	if err != nil {
@@ -430,7 +425,8 @@ func (r *assetPermissionRepo) GetUserHostPermissions(ctx context.Context, userID
 		SELECT COALESCE(BIT_OR(p.permissions), 0) as permissions
 		FROM sys_role_asset_permission AS p
 		JOIN sys_user_role AS ur ON p.role_id = ur.role_id
-		WHERE ur.user_id = ? AND p.asset_group_id = ? AND (p.host_id IS NULL OR p.host_id = ?)
+		WHERE ur.user_id = ? AND p.asset_group_id = ? AND p.deleted_at IS NULL
+		AND (JSON_LENGTH(COALESCE(p.host_ids, JSON_ARRAY())) = 0 OR JSON_CONTAINS(p.host_ids, ?))
 	`, userID, groupID, hostID).Scan(&permissions).Error
 
 	return permissions, err
