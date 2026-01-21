@@ -290,7 +290,7 @@ func (r *assetPermissionRepo) CheckHostPermission(ctx context.Context, userID, h
 		Table("sys_role_asset_permission AS p").
 		Joins("JOIN sys_user_role AS ur ON p.role_id = ur.role_id").
 		Where("ur.user_id = ? AND p.asset_group_id = ? AND p.deleted_at IS NULL", userID, groupID).
-		Where("JSON_LENGTH(COALESCE(p.host_ids, JSON_ARRAY())) = 0 OR JSON_CONTAINS(p.host_ids, ?)", hostID).
+		Where("JSON_LENGTH(COALESCE(p.host_ids, JSON_ARRAY())) = 0 OR JSON_CONTAINS(p.host_ids, CAST(? AS JSON))", hostID).
 		Count(&permCount).Error
 
 	if err != nil {
@@ -340,7 +340,7 @@ func (r *assetPermissionRepo) GetUserAccessibleHostIDs(ctx context.Context, user
 		AND p.deleted_at IS NULL
 		AND (
 			JSON_LENGTH(COALESCE(p.host_ids, JSON_ARRAY())) = 0
-			OR JSON_CONTAINS(p.host_ids, h.id)
+			OR JSON_CONTAINS(p.host_ids, CAST(h.id AS JSON))
 		)
 	`, userID).Scan(&hostIDs).Error
 
@@ -385,7 +385,7 @@ func (r *assetPermissionRepo) CheckHostOperationPermission(ctx context.Context, 
 		Table("sys_role_asset_permission AS p").
 		Joins("JOIN sys_user_role AS ur ON p.role_id = ur.role_id").
 		Where("ur.user_id = ? AND p.asset_group_id = ? AND p.deleted_at IS NULL", userID, groupID).
-		Where("(JSON_LENGTH(COALESCE(p.host_ids, JSON_ARRAY())) = 0 OR JSON_CONTAINS(p.host_ids, ?)) AND (p.permissions & ?) > 0", hostID, operation).
+		Where("(JSON_LENGTH(COALESCE(p.host_ids, JSON_ARRAY())) = 0 OR JSON_CONTAINS(p.host_ids, CAST(? AS JSON))) AND (p.permissions & ?) > 0", hostID, operation).
 		Count(&permCount).Error
 
 	if err != nil {
@@ -433,7 +433,7 @@ func (r *assetPermissionRepo) GetUserHostPermissions(ctx context.Context, userID
 		FROM sys_role_asset_permission AS p
 		JOIN sys_user_role AS ur ON p.role_id = ur.role_id
 		WHERE ur.user_id = ? AND p.asset_group_id = ? AND p.deleted_at IS NULL
-		AND (JSON_LENGTH(COALESCE(p.host_ids, JSON_ARRAY())) = 0 OR JSON_CONTAINS(p.host_ids, ?))
+		AND (JSON_LENGTH(COALESCE(p.host_ids, JSON_ARRAY())) = 0 OR JSON_CONTAINS(p.host_ids, CAST(? AS JSON)))
 	`, userID, groupID, hostID).Scan(&permissions).Error
 
 	return permissions, err
