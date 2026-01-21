@@ -10,7 +10,7 @@ opshub
 *.log
 # Test binary, built with `go test -c`
 *.test
-
+data/terminal-recordings/*.cast
 # Output of the go coverage tool
 *.out
 
