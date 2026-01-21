@@ -86,12 +86,14 @@
       <el-form :model="templateForm" label-width="100px">
         <el-form-item label="模板类型" required>
           <el-select v-model="templateForm.type" placeholder="请选择模板类型" style="width: 100%;">
-            <el-option label="系统信息" value="system" />
-            <el-option label="部署" value="deploy" />
-            <el-option label="监控" value="monitor" />
-            <el-option label="备份" value="backup" />
+            <el-option
+              v-for="type in templateTypes"
+              :key="type.value"
+              :label="type.label"
+              :value="type.value"
+            />
           </el-select>
-          <el-link type="primary" style="margin-left: 8px;">添加类型</el-link>
+          <el-link type="primary" style="margin-left: 8px;" @click="showAddTypeDialog = true">添加类型</el-link>
         </el-form-item>
 
         <el-form-item label="模板名称" required>
@@ -199,6 +201,27 @@
         <el-button type="primary" @click="handleSaveParameter">确定</el-button>
       </template>
     </el-dialog>
+
+    <!-- 添加类型对话框 -->
+    <el-dialog
+      v-model="showAddTypeDialog"
+      title="添加模板类型"
+      width="500px"
+      destroy-on-close
+    >
+      <el-form :model="newTypeForm" label-width="100px">
+        <el-form-item label="类型名称" required>
+          <el-input v-model="newTypeForm.label" placeholder="请输入类型名称" />
+        </el-form-item>
+        <el-form-item label="类型值" required>
+          <el-input v-model="newTypeForm.value" placeholder="请输入类型值（英文）" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showAddTypeDialog = false">取消</el-button>
+        <el-button type="primary" @click="handleAddType">确定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -229,6 +252,14 @@ const pagination = ref({
 
 // 加载状态
 const loading = ref(false)
+
+// 模板类型列表
+const templateTypes = ref([
+  { label: '系统信息', value: 'system' },
+  { label: '部署', value: 'deploy' },
+  { label: '监控', value: 'monitor' },
+  { label: '备份', value: 'backup' },
+])
 
 // 模板列表
 const templates = ref([
@@ -263,6 +294,13 @@ const paramForm = ref({
   required: false,
   defaultValue: '',
   helpText: '',
+})
+
+// 添加类型对话框
+const showAddTypeDialog = ref(false)
+const newTypeForm = ref({
+  label: '',
+  value: '',
 })
 
 // 加载模板列表
@@ -335,12 +373,54 @@ const handleSaveTemplate = async () => {
 
   try {
     // TODO: 调用API保存模板
-    ElMessage.success(isEdit.value ? '编辑成功' : '创建成功')
+    if (isEdit.value) {
+      // 编辑模式：更新列表中的模板
+      const index = templates.value.findIndex(t => t.id === templateForm.value.id)
+      if (index !== -1) {
+        templates.value[index] = { ...templateForm.value }
+      }
+      ElMessage.success('编辑成功')
+    } else {
+      // 新建模式：添加到列表
+      const newTemplate = {
+        ...templateForm.value,
+        id: Date.now(), // 临时ID
+        description: templateForm.value.remark || '',
+      }
+      templates.value.unshift(newTemplate)
+      pagination.value.total = templates.value.length
+      ElMessage.success('创建成功')
+    }
     showTemplateDialog.value = false
-    loadTemplates()
   } catch (error: any) {
     ElMessage.error(error.message || '保存失败')
   }
+}
+
+// 添加类型
+const handleAddType = () => {
+  if (!newTypeForm.value.label) {
+    ElMessage.warning('请输入类型名称')
+    return
+  }
+  if (!newTypeForm.value.value) {
+    ElMessage.warning('请输入类型值')
+    return
+  }
+
+  // 检查是否已存在
+  const exists = templateTypes.value.some(
+    (t) => t.value === newTypeForm.value.value
+  )
+  if (exists) {
+    ElMessage.warning('该类型值已存在')
+    return
+  }
+
+  templateTypes.value.push({ ...newTypeForm.value })
+  showAddTypeDialog.value = false
+  newTypeForm.value = { label: '', value: '' }
+  ElMessage.success('添加类型成功')
 }
 
 // 移除参数

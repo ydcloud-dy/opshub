@@ -42,6 +42,7 @@
               ref="uploadRef"
               class="upload-area"
               drag
+              multiple
               :auto-upload="false"
               :on-change="handleFileChange"
               :file-list="fileList"
@@ -273,9 +274,6 @@ const handleFileChange = (file: any, files: UploadUserFile[]) => {
 // 移除文件
 const removeFile = (index: number) => {
   fileList.value.splice(index, 1)
-  if (uploadRef.value) {
-    uploadRef.value.clearFiles()
-  }
 }
 
 // 格式化文件大小
@@ -309,6 +307,8 @@ const loadHostList = async () => {
     // 根据API返回格式调整
     if (Array.isArray(response)) {
       allHosts.value = response
+    } else if (response.list && Array.isArray(response.list)) {
+      allHosts.value = response.list
     } else if (response.data && Array.isArray(response.data)) {
       allHosts.value = response.data
     } else {

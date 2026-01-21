@@ -566,11 +566,11 @@ const handleEditClick = async (row: any) => {
     if ((detail.permissions & 16) > 0) editFormData.permissions.push(16)
     if ((detail.permissions & 32) > 0) editFormData.permissions.push(32)
 
-    // 设置主机选择类型
-    editHostSelectionType.value = detail.isAllHosts ? 'all' : 'specific'
+    // 设置主机选择类型：如果hostIds为空或长度为0，则为全部主机，否则为指定主机
+    editHostSelectionType.value = (!detail.hostIds || detail.hostIds.length === 0) ? 'all' : 'specific'
 
     // 加载主机列表
-    if (!detail.isAllHosts) {
+    if (editHostSelectionType.value === 'specific') {
       await loadEditHosts(detail.assetGroupId)
     }
 

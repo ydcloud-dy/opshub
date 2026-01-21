@@ -258,11 +258,18 @@ const tempSelectedHosts = ref<any[]>([])
 const hostGroups = ref<any[]>([])
 const allHosts = ref<any[]>([])
 const hostsLoading = ref(false)
+const selectedGroupId = ref<number | null>(null)
 
 // 过滤后的主机列表
 const filteredHosts = computed(() => {
   let hosts = allHosts.value
 
+  // 根据选中的分组过滤
+  if (selectedGroupId.value !== null) {
+    hosts = hosts.filter((host) => host.groupId === selectedGroupId.value)
+  }
+
+  // 根据搜索关键词过滤
   if (hostSearchKeyword.value) {
     const keyword = hostSearchKeyword.value.toLowerCase()
     hosts = hosts.filter(
@@ -316,6 +323,8 @@ const loadHostList = async () => {
     const response = await getHostList(params)
     if (Array.isArray(response)) {
       allHosts.value = response
+    } else if (response.list && Array.isArray(response.list)) {
+      allHosts.value = response.list
     } else if (response.data && Array.isArray(response.data)) {
       allHosts.value = response.data
     } else {
@@ -331,6 +340,7 @@ const loadHostList = async () => {
 
 // 分组点击
 const handleGroupClick = (data: any) => {
+  selectedGroupId.value = data.id
   console.log('选中分组:', data)
 }
 

@@ -23,30 +23,14 @@ func (r *assetPermissionRepo) CreateBatch(ctx context.Context, roleID, assetGrou
 		return err
 	}
 
-	// 如果hostIDs为空，表示授权整个资产分组
-	if len(hostIDs) == 0 {
-		permission := &rbac.SysRoleAssetPermission{
-			RoleID:       roleID,
-			AssetGroupID: assetGroupID,
-			HostID:       nil,
-			Permissions: rbac.PermissionView, // 默认权限
-		}
-		return r.db.WithContext(ctx).Create(permission).Error
+	// 创建单条记录，支持多个主机ID，默认权限为查看
+	permission := &rbac.SysRoleAssetPermission{
+		RoleID:       roleID,
+		AssetGroupID: assetGroupID,
+		HostIDs:      hostIDs, // 直接存储主机ID数组
+		Permissions: rbac.PermissionView, // 默认权限
 	}
-
-	// 批量创建主机权限
-	permissions := make([]*rbac.SysRoleAssetPermission, 0, len(hostIDs))
-	for _, hostID := range hostIDs {
-		hID := hostID
-		permissions = append(permissions, &rbac.SysRoleAssetPermission{
-			RoleID:       roleID,
-			AssetGroupID: assetGroupID,
-			HostID:       &hID,
-			Permissions: rbac.PermissionView, // 默认权限
-		})
-	}
-
-	return r.db.WithContext(ctx).Create(&permissions).Error
+	return r.db.WithContext(ctx).Create(permission).Error
 }
 
 // CreateBatchWithPermissions 批量创建资产权限（支持指定操作权限）
@@ -61,30 +45,15 @@ func (r *assetPermissionRepo) CreateBatchWithPermissions(ctx context.Context, ro
 		permissions = rbac.PermissionView
 	}
 
-	// 如果hostIDs为空，表示授权整个资产分组
-	if len(hostIDs) == 0 {
-		permission := &rbac.SysRoleAssetPermission{
-			RoleID:       roleID,
-			AssetGroupID: assetGroupID,
-			HostID:       nil,
-			Permissions: permissions,
-		}
-		return r.db.WithContext(ctx).Create(permission).Error
+	// 创建单条记录，支持多个主机ID
+	permission := &rbac.SysRoleAssetPermission{
+		RoleID:       roleID,
+		AssetGroupID: assetGroupID,
+		HostIDs:      hostIDs, // 直接存储主机ID数组
+		Permissions: permissions,
 	}
 
-	// 批量创建主机权限
-	perms := make([]*rbac.SysRoleAssetPermission, 0, len(hostIDs))
-	for _, hostID := range hostIDs {
-		hID := hostID
-		perms = append(perms, &rbac.SysRoleAssetPermission{
-			RoleID:       roleID,
-			AssetGroupID: assetGroupID,
-			HostID:       &hID,
-			Permissions: permissions,
-		})
-	}
-
-	return r.db.WithContext(ctx).Create(&perms).Error
+	return r.db.WithContext(ctx).Create(permission).Error
 }
 
 // DeleteByRoleAndGroup 删除指定角色对指定资产分组的所有权限
@@ -141,24 +110,8 @@ func (r *assetPermissionRepo) GetDetailByID(ctx context.Context, id uint) (*rbac
 		return nil, err
 	}
 
-	// 获取该权限相关的所有主机ID
-	var hostIDs []uint
-	if permission.HostID != nil {
-		// 如果是单个主机权限
-		hostIDs = []uint{*permission.HostID}
-	} else {
-		// 如果是分组权限，查询该分组下的所有主机
-		err := r.db.WithContext(ctx).
-			Table("hosts").
-			Select("id").
-			Where("group_id = ? AND deleted_at IS NULL", permission.AssetGroupID).
-			Pluck("id", &hostIDs).Error
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	isAllHosts := permission.HostID == nil
+	// 直接使用 HostIDs（已通过 Scan 方法处理了 JSON 转换）
+	hostIDs := []uint(permission.HostIDs)
 
 	return &rbac.AssetPermissionDetailVO{
 		ID:            permission.ID,
@@ -167,7 +120,6 @@ func (r *assetPermissionRepo) GetDetailByID(ctx context.Context, id uint) (*rbac
 		AssetGroupID:  permission.AssetGroupID,
 		AssetGroupName: group.Name,
 		HostIDs:       hostIDs,
-		IsAllHosts:    isAllHosts,
 		Permissions:   permission.Permissions,
 		CreatedAt:     permission.CreatedAt,
 	}, nil
@@ -185,30 +137,15 @@ func (r *assetPermissionRepo) UpdateAssetPermission(ctx context.Context, id uint
 		permissions = rbac.PermissionView
 	}
 
-	// 如果hostIDs为空，表示授权整个资产分组
-	if len(hostIDs) == 0 {
-		permission := &rbac.SysRoleAssetPermission{
-			RoleID:       roleID,
-			AssetGroupID: assetGroupID,
-			HostID:       nil,
-			Permissions: permissions,
-		}
-		return r.db.WithContext(ctx).Create(permission).Error
+	// 创建单条新记录，支持多个主机ID
+	permission := &rbac.SysRoleAssetPermission{
+		RoleID:       roleID,
+		AssetGroupID: assetGroupID,
+		HostIDs:      hostIDs, // 直接存储主机ID数组
+		Permissions: permissions,
 	}
 
-	// 批量创建新的主机权限
-	perms := make([]*rbac.SysRoleAssetPermission, 0, len(hostIDs))
-	for _, hostID := range hostIDs {
-		hID := hostID
-		perms = append(perms, &rbac.SysRoleAssetPermission{
-			RoleID:       roleID,
-			AssetGroupID: assetGroupID,
-			HostID:       &hID,
-			Permissions: permissions,
-		})
-	}
-
-	return r.db.WithContext(ctx).Create(&perms).Error
+	return r.db.WithContext(ctx).Create(permission).Error
 }
 
 // GetByRoleID 获取角色的所有资产权限
@@ -233,7 +170,7 @@ func (r *assetPermissionRepo) GetByRoleID(ctx context.Context, roleID uint) ([]*
 		Joins("LEFT JOIN sys_role AS r ON p.role_id = r.id").
 		Joins("LEFT JOIN asset_group AS g ON p.asset_group_id = g.id").
 		Joins("LEFT JOIN hosts AS h ON p.host_id = h.id").
-		Where("p.role_id = ?", roleID).
+		Where("p.role_id = ? AND p.deleted_at IS NULL", roleID).
 		Order("p.created_at DESC").
 		Find(&permissions).Error
 
@@ -262,7 +199,7 @@ func (r *assetPermissionRepo) GetByAssetGroupID(ctx context.Context, assetGroupI
 		Joins("LEFT JOIN sys_role AS r ON p.role_id = r.id").
 		Joins("LEFT JOIN asset_group AS g ON p.asset_group_id = g.id").
 		Joins("LEFT JOIN hosts AS h ON p.host_id = h.id").
-		Where("p.asset_group_id = ?", assetGroupID).
+		Where("p.asset_group_id = ? AND p.deleted_at IS NULL", assetGroupID).
 		Order("p.created_at DESC").
 		Find(&permissions).Error
 
@@ -291,7 +228,8 @@ func (r *assetPermissionRepo) List(ctx context.Context, page, pageSize int, role
 		`).
 		Joins("LEFT JOIN sys_role AS r ON p.role_id = r.id").
 		Joins("LEFT JOIN asset_group AS g ON p.asset_group_id = g.id").
-		Joins("LEFT JOIN hosts AS h ON p.host_id = h.id")
+		Joins("LEFT JOIN hosts AS h ON p.host_id = h.id").
+		Where("p.deleted_at IS NULL")
 
 	if roleID != nil {
 		query = query.Where("p.role_id = ?", *roleID)
