@@ -49,3 +49,10 @@ export const getAssetPermissionsByRole = (roleId: number) => {
 export const getAssetPermissionsByGroup = (assetGroupId: number) => {
   return request.get(`/api/v1/asset-permissions/group/${assetGroupId}`)
 }
+
+// 获取当前用户对指定主机的操作权限
+export const getUserHostPermissions = (hostId: number) => {
+  return request.get('/api/v1/asset-permissions/user/host', {
+    params: { hostId }
+  })
+}

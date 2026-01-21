@@ -133,6 +133,7 @@ func (s *HTTPServer) RegisterRoutes(r *gin.Engine) {
 			// 具体路由必须放在通用 /:id 路由之前
 			assetPermissions.GET("/role/:roleId", s.assetPermissionService.GetAssetPermissionsByRole)
 			assetPermissions.GET("/group/:assetGroupId", s.assetPermissionService.GetAssetPermissionsByGroup)
+			assetPermissions.GET("/user/host", s.assetPermissionService.GetUserHostPermissions)
 			// 通用 /:id 路由必须放在最后
 			assetPermissions.GET("/:id", s.assetPermissionService.GetAssetPermissionDetail)
 			assetPermissions.PUT("/:id", s.assetPermissionService.UpdateAssetPermission)

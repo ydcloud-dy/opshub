@@ -1327,6 +1327,7 @@ import {
 } from '@/api/host'
 import type { CloudInstanceVO, CloudRegionVO } from '@/api/host'
 import { PERMISSION, hasPermission } from '@/utils/permission'
+import { getUserHostPermissions } from '@/api/assetPermission'
 
 // 加载状态
 const groupLoading = ref(false)
@@ -1673,6 +1674,22 @@ const loadHostList = async () => {
     const res = await getHostList(params)
     hostList.value = res.list || []
     hostPagination.total = res.total || 0
+
+    // 加载每个主机的用户权限
+    if (hostList.value && hostList.value.length > 0) {
+      const permissionsMap = new Map<number, number>()
+      for (const host of hostList.value) {
+        try {
+          const permRes = await getUserHostPermissions(host.id)
+          if (permRes && permRes.permissions !== undefined) {
+            permissionsMap.set(host.id, permRes.permissions)
+          }
+        } catch (err) {
+          console.error(`获取主机 ${host.id} 的权限失败:`, err)
+        }
+      }
+      hostPermissions.value = permissionsMap
+    }
   } catch (error) {
     console.error('获取主机列表失败:', error)
     ElMessage.error('获取主机列表失败')

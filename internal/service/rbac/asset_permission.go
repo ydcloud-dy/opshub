@@ -207,3 +207,34 @@ func (s *AssetPermissionService) GetAssetPermissionsByGroup(c *gin.Context) {
 
 	response.Success(c, permissions)
 }
+
+// GetUserHostPermissions 获取当前用户对指定主机的所有操作权限
+func (s *AssetPermissionService) GetUserHostPermissions(c *gin.Context) {
+	hostIDStr := c.Query("hostId")
+	if hostIDStr == "" {
+		response.ErrorCode(c, http.StatusBadRequest, "主机ID不能为空")
+		return
+	}
+
+	hostID, err := strconv.ParseUint(hostIDStr, 10, 32)
+	if err != nil {
+		response.ErrorCode(c, http.StatusBadRequest, "无效的主机ID")
+		return
+	}
+
+	userID := c.GetUint("user_id")
+	if userID == 0 {
+		response.ErrorCode(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+
+	permissions, err := s.assetPermissionUseCase.GetUserHostPermissions(c.Request.Context(), userID, uint(hostID))
+	if err != nil {
+		response.ErrorCode(c, http.StatusInternalServerError, "查询失败: "+err.Error())
+		return
+	}
+
+	response.Success(c, gin.H{
+		"permissions": permissions,
+	})
+}
