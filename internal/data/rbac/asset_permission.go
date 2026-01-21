@@ -60,14 +60,17 @@ func (r *assetPermissionRepo) CreateBatchWithPermissions(ctx context.Context, ro
 
 // DeleteByRoleAndGroup 删除指定角色对指定资产分组的所有权限
 func (r *assetPermissionRepo) DeleteByRoleAndGroup(ctx context.Context, roleID, assetGroupID uint) error {
+	// 硬删除（不是软删除），确保记录完全移除
 	return r.db.WithContext(ctx).
 		Where("role_id = ? AND asset_group_id = ?", roleID, assetGroupID).
-		Delete(&rbac.SysRoleAssetPermission{}).Error
+		Unscoped().Delete(&rbac.SysRoleAssetPermission{}).Error
 }
 
 // Delete 删除单个权限
 func (r *assetPermissionRepo) Delete(ctx context.Context, id uint) error {
-	return r.db.WithContext(ctx).Delete(&rbac.SysRoleAssetPermission{}, id).Error
+	// 硬删除（不是软删除），确保记录完全移除
+	// 这样才能避免与唯一索引的冲突
+	return r.db.WithContext(ctx).Unscoped().Delete(&rbac.SysRoleAssetPermission{}, id).Error
 }
 
 // GetByID 根据ID获取权限详情

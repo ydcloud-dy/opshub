@@ -111,9 +111,7 @@ func (h *Handler) UpdateJobTask(c *gin.Context) {
 }
 
 func (h *Handler) DeleteJobTask(c *gin.Context) {
-	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
-	h.db.Delete(&model.JobTask{}, id)
-	response.SuccessWithMessage(c, "删除成功", nil)
+	response.ErrorCode(c, http.StatusForbidden, "删除任务记录功能已被禁用，如需删除请联系系统管理员")
 }
 
 // ==================== 任务模板 ====================
@@ -200,9 +198,7 @@ func (h *Handler) UpdateJobTemplate(c *gin.Context) {
 }
 
 func (h *Handler) DeleteJobTemplate(c *gin.Context) {
-	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
-	h.db.Delete(&model.JobTemplate{}, id)
-	response.SuccessWithMessage(c, "删除成功", nil)
+	response.ErrorCode(c, http.StatusForbidden, "删除模板功能已被禁用，如需删除请联系系统管理员")
 }
 
 // ==================== Ansible任务 ====================
@@ -287,9 +283,7 @@ func (h *Handler) UpdateAnsibleTask(c *gin.Context) {
 }
 
 func (h *Handler) DeleteAnsibleTask(c *gin.Context) {
-	id, _ := strconv.ParseUint(c.Param("id"), 10, 32)
-	h.db.Delete(&model.AnsibleTask{}, id)
-	response.SuccessWithMessage(c, "删除成功", nil)
+	response.ErrorCode(c, http.StatusForbidden, "删除Ansible任务功能已被禁用，如需删除请联系系统管理员")
 }
 
 // ==================== 任务执行 ====================
@@ -323,6 +317,12 @@ func (h *Handler) ExecuteTask(c *gin.Context) {
 	var req ExecuteTaskRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.ErrorCode(c, http.StatusBadRequest, "参数错误: "+err.Error())
+		return
+	}
+
+	// 安全检查：检查命令是否包含危险操作
+	if err := h.checkCommandSafety(req.Content); err != nil {
+		response.ErrorCode(c, http.StatusForbidden, err.Error())
 		return
 	}
 
@@ -378,6 +378,93 @@ func (h *Handler) ExecuteTask(c *gin.Context) {
 		TaskID:  jobTask.ID,
 		Results: results,
 	})
+}
+
+// checkCommandSafety 检查命令安全性
+func (h *Handler) checkCommandSafety(content string) error {
+	// 转换为小写以便不区分大小写检查
+	contentLower := strings.ToLower(content)
+
+	// 危险命令黑名单
+	dangerousPatterns := []struct {
+		pattern string
+		desc    string
+	}{
+		{"rm -rf", "递归删除命令"},
+		{"rm -fr", "递归删除命令"},
+		{"rm -r", "递归删除命令"},
+		{"rm -f", "强制删除命令"},
+		{"dd if=", "磁盘写入命令"},
+		{"dd of=/dev/", "写入磁盘设备"},
+		{"mkfs", "磁盘格式化命令"},
+		{"fdisk", "磁盘分区命令"},
+		{"parted", "磁盘分区命令"},
+		{"shutdown", "关机命令"},
+		{"reboot", "重启命令"},
+		{"halt", "停机命令"},
+		{"poweroff", "关机命令"},
+		{"init 0", "关机命令"},
+		{"init 6", "重启命令"},
+		{"kill -9", "强制终止进程"},
+		{"killall", "批量终止进程"},
+		{"pkill", "批量终止进程"},
+		{"> /dev/sd", "写入磁盘设备"},
+		{"> /dev/hd", "写入磁盘设备"},
+		{"> /dev/vd", "写入磁盘设备"},
+		{"> /dev/nvme", "写入磁盘设备"},
+		{"chmod 777", "危险的权限修改"},
+		{"chmod -r 777", "危险的权限修改"},
+		{"chmod 666", "危险的权限修改"},
+		{"chown -r", "递归修改文件所有者"},
+		{"iptables -f", "清空防火墙规则"},
+		{"systemctl stop", "停止系统服务"},
+		{"systemctl disable", "禁用系统服务"},
+		{"service stop", "停止系统服务"},
+		{"history -c", "清除命令历史"},
+		{"curl | bash", "执行远程脚本"},
+		{"curl | sh", "执行远程脚本"},
+		{"wget | bash", "执行远程脚本"},
+		{"wget | sh", "执行远程脚本"},
+		{"wget -o- | sh", "执行远程脚本"},
+		{":(){ :|:& };:", "fork炸弹"},
+		{"/dev/null >", "重定向到空设备"},
+		{"format", "格式化命令"},
+		{"mkfs.", "格式化文件系统"},
+		{"userdel", "删除用户"},
+		{"groupdel", "删除用户组"},
+		{"crontab -r", "删除定时任务"},
+		{"/etc/passwd", "修改系统密码文件"},
+		{"/etc/shadow", "修改系统影子文件"},
+		{"docker rm", "删除Docker容器"},
+		{"docker rmi", "删除Docker镜像"},
+		{"docker system prune", "清理Docker系统"},
+		{"kubectl delete", "删除Kubernetes资源"},
+		{"systemctl mask", "屏蔽系统服务"},
+		{"mv /etc/", "移动系统配置"},
+		{"mv /usr/", "移动系统目录"},
+		{"mv /var/", "移动系统目录"},
+	}
+
+	// 检查是否包含危险命令
+	for _, dp := range dangerousPatterns {
+		if strings.Contains(contentLower, dp.pattern) {
+			return fmt.Errorf("命令包含危险操作【%s】，已被系统拦截", dp.desc)
+		}
+	}
+
+	// 检查是否包含删除根目录或重要系统目录的操作
+	criticalPaths := []string{
+		"rm /", "rm /*", "rm -rf /", "rm -rf /*",
+		"rm /etc", "rm /usr", "rm /var", "rm /boot",
+		"rm /bin", "rm /sbin", "rm /lib",
+	}
+	for _, path := range criticalPaths {
+		if strings.Contains(contentLower, path) {
+			return fmt.Errorf("命令包含删除系统关键目录的操作，已被系统拦截")
+		}
+	}
+
+	return nil
 }
 
 // executeOnHost 在单个主机上执行任务
