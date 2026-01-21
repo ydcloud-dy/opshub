@@ -309,3 +309,78 @@ func (uc *PositionUseCase) AssignUsers(ctx context.Context, positionID uint, use
 func (uc *PositionUseCase) RemoveUser(ctx context.Context, positionID, userID uint) error {
 	return uc.positionRepo.RemoveUser(ctx, positionID, userID)
 }
+
+type AssetPermissionUseCase struct {
+	assetPermissionRepo AssetPermissionRepo
+}
+
+func NewAssetPermissionUseCase(assetPermissionRepo AssetPermissionRepo) *AssetPermissionUseCase {
+	return &AssetPermissionUseCase{
+		assetPermissionRepo: assetPermissionRepo,
+	}
+}
+
+// CreateBatch 批量创建资产权限
+func (uc *AssetPermissionUseCase) CreateBatch(ctx context.Context, roleID, assetGroupID uint, hostIDs []uint) error {
+	return uc.assetPermissionRepo.CreateBatch(ctx, roleID, assetGroupID, hostIDs)
+}
+
+// DeleteByRoleAndGroup 删除指定角色对指定资产分组的所有权限
+func (uc *AssetPermissionUseCase) DeleteByRoleAndGroup(ctx context.Context, roleID, assetGroupID uint) error {
+	return uc.assetPermissionRepo.DeleteByRoleAndGroup(ctx, roleID, assetGroupID)
+}
+
+// Delete 删除单个权限
+func (uc *AssetPermissionUseCase) Delete(ctx context.Context, id uint) error {
+	return uc.assetPermissionRepo.Delete(ctx, id)
+}
+
+// GetDetailByID 根据ID获取权限详情（用于编辑）
+func (uc *AssetPermissionUseCase) GetDetailByID(ctx context.Context, id uint) (*AssetPermissionDetailVO, error) {
+	return uc.assetPermissionRepo.GetDetailByID(ctx, id)
+}
+
+// UpdateAssetPermission 更新权限配置（支持修改角色、分组、主机、权限）
+func (uc *AssetPermissionUseCase) UpdateAssetPermission(ctx context.Context, id uint, roleID, assetGroupID uint, hostIDs []uint, permissions uint) error {
+	return uc.assetPermissionRepo.UpdateAssetPermission(ctx, id, roleID, assetGroupID, hostIDs, permissions)
+}
+
+// GetByRoleID 获取角色的所有资产权限
+func (uc *AssetPermissionUseCase) GetByRoleID(ctx context.Context, roleID uint) ([]*AssetPermissionInfo, error) {
+	return uc.assetPermissionRepo.GetByRoleID(ctx, roleID)
+}
+
+// GetByAssetGroupID 获取资产分组的所有权限配置
+func (uc *AssetPermissionUseCase) GetByAssetGroupID(ctx context.Context, assetGroupID uint) ([]*AssetPermissionInfo, error) {
+	return uc.assetPermissionRepo.GetByAssetGroupID(ctx, assetGroupID)
+}
+
+// List 分页查询权限列表
+func (uc *AssetPermissionUseCase) List(ctx context.Context, page, pageSize int, roleID, assetGroupID *uint) ([]*AssetPermissionInfo, int64, error) {
+	return uc.assetPermissionRepo.List(ctx, page, pageSize, roleID, assetGroupID)
+}
+
+// CheckHostPermission 检查用户是否有访问指定主机的权限
+func (uc *AssetPermissionUseCase) CheckHostPermission(ctx context.Context, userID, hostID uint) (bool, error) {
+	return uc.assetPermissionRepo.CheckHostPermission(ctx, userID, hostID)
+}
+
+// GetUserAccessibleHostIDs 获取用户有权限访问的所有主机ID列表
+func (uc *AssetPermissionUseCase) GetUserAccessibleHostIDs(ctx context.Context, userID uint) ([]uint, error) {
+	return uc.assetPermissionRepo.GetUserAccessibleHostIDs(ctx, userID)
+}
+
+// CreateBatchWithPermissions 批量创建资产权限（支持指定操作权限）
+func (uc *AssetPermissionUseCase) CreateBatchWithPermissions(ctx context.Context, roleID, assetGroupID uint, hostIDs []uint, permissions uint) error {
+	return uc.assetPermissionRepo.CreateBatchWithPermissions(ctx, roleID, assetGroupID, hostIDs, permissions)
+}
+
+// CheckHostOperationPermission 检查用户是否有对指定主机的特定操作权限
+func (uc *AssetPermissionUseCase) CheckHostOperationPermission(ctx context.Context, userID, hostID uint, operation uint) (bool, error) {
+	return uc.assetPermissionRepo.CheckHostOperationPermission(ctx, userID, hostID, operation)
+}
+
+// GetUserHostPermissions 获取用户对指定主机的所有操作权限
+func (uc *AssetPermissionUseCase) GetUserHostPermissions(ctx context.Context, userID, hostID uint) (uint, error) {
+	return uc.assetPermissionRepo.GetUserHostPermissions(ctx, userID, hostID)
+}

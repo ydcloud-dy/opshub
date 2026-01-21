@@ -77,16 +77,25 @@ func (r *roleRepo) AssignMenus(ctx context.Context, roleID uint, menuIDs []uint)
 			return err
 		}
 
-		// 添加新菜单
+		// 如果没有菜单ID，直接返回
+		if len(menuIDs) == 0 {
+			return nil
+		}
+
+		// 批量添加新菜单
+		roleMenus := make([]rbac.SysRoleMenu, 0, len(menuIDs))
 		for _, menuID := range menuIDs {
-			roleMenu := &rbac.SysRoleMenu{
+			roleMenus = append(roleMenus, rbac.SysRoleMenu{
 				RoleID: roleID,
 				MenuID: menuID,
-			}
-			if err := tx.Create(roleMenu).Error; err != nil {
-				return err
-			}
+			})
 		}
+
+		// 使用批量插入
+		if err := tx.Create(&roleMenus).Error; err != nil {
+			return err
+		}
+
 		return nil
 	})
 }

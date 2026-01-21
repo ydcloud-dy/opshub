@@ -219,8 +219,7 @@
           :data="menuTree"
           :props="{ label: 'name', children: 'children' }"
           show-checkbox
-          node-key="id"
-          :default-checked-keys="selectedMenuIds"
+          node-key="ID"
           :default-expanded-keys="expandedKeys"
           :check-strictly="false"
           class="permission-tree"
@@ -256,7 +255,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox, FormInstance, FormRules } from 'element-plus'
 import {
   Plus,
@@ -407,7 +406,7 @@ const handleAdd = () => {
 // 编辑角色
 const handleEdit = (row: any) => {
   Object.assign(roleForm, {
-    id: row.id,
+    id: row.ID || row.id,
     name: row.name,
     code: row.code,
     description: row.description || '',
@@ -427,7 +426,8 @@ const handleDelete = async (row: any) => {
     type: 'warning'
   }).then(async () => {
     try {
-      await deleteRole(row.id)
+      const roleId = row.ID || row.id
+      await deleteRole(roleId)
       ElMessage.success('删除成功')
       loadRoles()
     } catch (error: any) {
@@ -479,8 +479,9 @@ const handlePermission = async (row: any) => {
   // 加载菜单树
   await loadMenuTree()
 
-  // 加载角色已有权限
-  await loadRoleMenus(row.id)
+  // 加载角色已有权限（注意：后端返回的是大写ID）
+  const roleId = row.ID || row.id
+  await loadRoleMenus(roleId)
 }
 
 // 加载菜单树
@@ -490,8 +491,8 @@ const loadMenuTree = async () => {
     const res: any = await getMenuTree()
     menuTree.value = res || []
 
-    // 自动展开所有一级节点
-    expandedKeys.value = menuTree.value.map((item: any) => item.id)
+    // 自动展开所有一级节点（使用大写ID）
+    expandedKeys.value = menuTree.value.map((item: any) => item.ID || item.id).filter(id => id)
   } catch (error) {
     console.error('获取菜单树失败:', error)
     ElMessage.error('获取菜单树失败')
@@ -505,11 +506,29 @@ const loadRoleMenus = async (roleId: number) => {
   menuLoading.value = true
   try {
     const res: any = await getRoleMenus(roleId)
+    console.log('角色菜单数据:', res)
 
-    // 提取已分配的菜单ID（只设置叶子节点）
+    // 提取已分配的菜单ID
     const menus = res.menus || []
-    const leafMenuIds = getLeafMenuIds(menus)
-    selectedMenuIds.value = leafMenuIds
+    console.log('已分配的菜单:', menus)
+
+    // 获取所有菜单ID
+    const allMenuIds = menus.map((m: any) => m.ID || m.id).filter((id: number) => id && id > 0)
+    console.log('所有菜单IDs:', allMenuIds)
+
+    selectedMenuIds.value = allMenuIds
+
+    // 只设置叶子节点为选中状态，避免父节点被自动选中所有子节点
+    // 从menuTree中获取所有菜单，判断哪些是叶子节点
+    const leafMenuIds = getLeafMenuIdsFromTree(menuTree.value, allMenuIds)
+    console.log('叶子节点IDs:', leafMenuIds)
+
+    // 使用 nextTick 确保树形控件已渲染完成后再设置选中状态
+    await nextTick()
+    if (menuTreeRef.value) {
+      // 只设置叶子节点为选中状态，el-tree会自动处理父节点的半选状态
+      menuTreeRef.value.setCheckedKeys(leafMenuIds, false)
+    }
   } catch (error) {
     console.error('获取角色菜单失败:', error)
     ElMessage.error('获取角色菜单失败')
@@ -518,40 +537,71 @@ const loadRoleMenus = async (roleId: number) => {
   }
 }
 
-// 获取叶子节点ID（避免父节点被自动选中）
-const getLeafMenuIds = (menus: any[]): number[] => {
+// 从菜单树中获取叶子节点ID
+const getLeafMenuIdsFromTree = (tree: any[], authorizedIds: number[]): number[] => {
   const leafIds: number[] = []
-  const allMenuIds = new Set(menus.map((m: any) => m.id))
 
-  // 递归检查每个节点是否为叶子节点
-  const checkLeaf = (menu: any, allMenus: any[]) => {
-    const hasChildren = allMenus.some((m: any) => m.parentId === menu.id)
-    if (!hasChildren) {
-      leafIds.push(menu.id)
-    }
-  }
+  const traverse = (nodes: any[]) => {
+    nodes.forEach(node => {
+      const nodeId = node.ID || node.id
 
-  // 从菜单树中找出所有叶子节点
-  const flattenMenuTree = (tree: any[]): any[] => {
-    const result: any[] = []
-    const traverse = (nodes: any[]) => {
-      nodes.forEach((node: any) => {
-        result.push(node)
-        if (node.children && node.children.length > 0) {
+      // 如果当前节点在授权列表中
+      if (authorizedIds.includes(nodeId)) {
+        // 如果没有子节点，或者子节点为空数组，则是叶子节点
+        if (!node.children || node.children.length === 0) {
+          leafIds.push(nodeId)
+        } else {
+          // 有子节点，递归处理子节点
           traverse(node.children)
         }
-      })
-    }
-    traverse(tree)
-    return result
+      }
+    })
   }
 
+  traverse(tree)
+  return leafIds
+}
+
+// 获取叶子节点ID（避免父节点被自动选中）
+const getLeafMenuIds = (menus: any[]): number[] => {
+  if (!menus || menus.length === 0) return []
+
+  const menuIds = menus.map((m: any) => m.ID || m.id).filter(id => id)
+  const leafIds: number[] = []
+
+  // 从菜单树中找出所有节点
   const allMenusFlat = flattenMenuTree(menuTree.value)
-  menus.forEach((menu: any) => {
-    checkLeaf(menu, allMenusFlat)
+
+  // 判断每个已分配的菜单是否为叶子节点
+  menuIds.forEach((menuId: number) => {
+    // 检查这个菜单是否有子节点
+    const hasChildren = allMenusFlat.some((m: any) => {
+      const parentId = m.ParentID || m.parentId || m.parent_id
+      return parentId === menuId
+    })
+
+    // 如果没有子节点，就是叶子节点
+    if (!hasChildren) {
+      leafIds.push(menuId)
+    }
   })
 
   return leafIds
+}
+
+// 扁平化菜单树
+const flattenMenuTree = (tree: any[]): any[] => {
+  const result: any[] = []
+  const traverse = (nodes: any[]) => {
+    nodes.forEach((node: any) => {
+      result.push(node)
+      if (node.children && node.children.length > 0) {
+        traverse(node.children)
+      }
+    })
+  }
+  traverse(tree)
+  return result
 }
 
 // 提交授权
@@ -563,12 +613,25 @@ const handlePermissionSubmit = async () => {
     // 获取选中的节点（包括半选中的父节点）
     const checkedKeys = menuTreeRef.value.getCheckedKeys()
     const halfCheckedKeys = menuTreeRef.value.getHalfCheckedKeys()
-    const allKeys = [...checkedKeys, ...halfCheckedKeys]
+    console.log('完全选中的节点:', checkedKeys)
+    console.log('半选中的节点:', halfCheckedKeys)
 
-    await assignRoleMenus(currentRole.value.id, allKeys)
+    const allKeys = [...checkedKeys, ...halfCheckedKeys]
+    console.log('合并后的节点:', allKeys)
+
+    // 过滤掉无效的ID（0或undefined）并去重
+    const validKeys = [...new Set(allKeys.filter((key: number) => key && key > 0))]
+    console.log('有效的节点:', validKeys)
+
+    // 注意：后端返回的是大写ID
+    const roleId = currentRole.value.ID || currentRole.value.id
+    console.log('提交授权 - 角色ID:', roleId, '菜单IDs:', validKeys)
+
+    await assignRoleMenus(roleId, validKeys)
     ElMessage.success('授权成功')
     permissionDialogVisible.value = false
   } catch (error: any) {
+    console.error('授权失败:', error)
     ElMessage.error(error.message || '授权失败')
   } finally {
     submitting.value = false
@@ -581,6 +644,11 @@ const handlePermissionDialogClose = () => {
   menuTree.value = []
   selectedMenuIds.value = []
   expandedKeys.value = []
+
+  // 清空树形控件的选中状态
+  if (menuTreeRef.value) {
+    menuTreeRef.value.setCheckedKeys([])
+  }
 }
 
 onMounted(() => {

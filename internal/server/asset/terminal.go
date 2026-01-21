@@ -370,6 +370,13 @@ func (s *HTTPServer) HandleSSHConnection(c *gin.Context) {
 	}
 	defer conn.Close()
 
+	// 设置读取超时，确保连接断开时能及时检测
+	conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
+	conn.SetPongHandler(func(string) error {
+		conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
+		return nil
+	})
+
 	// 创建SSH会话
 	session, err := s.terminalManager.CreateSession(c.Request.Context(), uint(hostId), uid, uname, uint16(cols), uint16(rows))
 	if err != nil {
@@ -377,7 +384,16 @@ func (s *HTTPServer) HandleSSHConnection(c *gin.Context) {
 		conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("连接失败: %s\r\n", err.Error())))
 		return
 	}
-	defer s.terminalManager.CloseSession(session.ID)
+
+	// 确保会话被关闭 - 使用显式调用而不是 defer
+	sessionClosed := false
+	closeSession := func() {
+		if !sessionClosed {
+			sessionClosed = true
+			s.terminalManager.CloseSession(session.ID)
+		}
+	}
+	defer closeSession()
 
 	appLogger.Info("SSH会话创建成功", zap.String("sessionID", session.ID), zap.Int("hostId", hostId))
 
@@ -427,9 +443,19 @@ func (s *HTTPServer) HandleSSHConnection(c *gin.Context) {
 
 	// 处理来自WebSocket的消息并发送到SSH
 	for {
+		// 每次读取前更新超时时间
+		conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
+
 		messageType, data, err := conn.ReadMessage()
 		if err != nil {
-			appLogger.Info("WebSocket连接关闭", zap.String("sessionID", session.ID))
+			appLogger.Info("WebSocket连接关闭", zap.String("sessionID", session.ID), zap.Error(err))
+			// 立即关闭SSH连接，让所有阻塞的Read操作返回
+			if session.SSHSession != nil {
+				session.SSHSession.Close()
+			}
+			if session.SSHClient != nil {
+				session.SSHClient.Close()
+			}
 			break
 		}
 

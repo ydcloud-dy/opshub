@@ -11,11 +11,13 @@ import (
 
 type MenuService struct {
 	menuUseCase *rbac.MenuUseCase
+	roleUseCase *rbac.RoleUseCase
 }
 
-func NewMenuService(menuUseCase *rbac.MenuUseCase) *MenuService {
+func NewMenuService(menuUseCase *rbac.MenuUseCase, roleUseCase *rbac.RoleUseCase) *MenuService {
 	return &MenuService{
 		menuUseCase: menuUseCase,
+		roleUseCase: roleUseCase,
 	}
 }
 
@@ -141,8 +143,32 @@ func (s *MenuService) GetUserMenu(c *gin.Context) {
 		return
 	}
 
-	// 暂时返回所有菜单树，后续可以根据用户角色过滤
-	tree, err := s.menuUseCase.GetTree(c.Request.Context())
+	// 获取用户的角色
+	roles, err := s.roleUseCase.GetByUserID(c.Request.Context(), userID)
+	if err != nil {
+		response.ErrorCode(c, http.StatusInternalServerError, "查询角色失败: "+err.Error())
+		return
+	}
+
+	// 检查是否是超级管理员（admin角色）
+	isSuperAdmin := false
+	for _, role := range roles {
+		if role.Code == "admin" {
+			isSuperAdmin = true
+			break
+		}
+	}
+
+	var tree []*rbac.SysMenu
+
+	// 如果是超级管理员，返回所有菜单
+	if isSuperAdmin {
+		tree, err = s.menuUseCase.GetTree(c.Request.Context())
+	} else {
+		// 普通用户根据角色权限获取菜单
+		tree, err = s.menuUseCase.GetByUserID(c.Request.Context(), userID)
+	}
+
 	if err != nil {
 		response.ErrorCode(c, http.StatusInternalServerError, "查询失败: "+err.Error())
 		return

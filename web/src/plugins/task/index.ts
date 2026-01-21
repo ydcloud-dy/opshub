@@ -3,11 +3,11 @@ import { pluginManager } from '../manager'
 
 /**
  * Task 任务中心插件
- * 提供任务作业、任务模板和Ansible任务管理功能
+ * 提供执行任务、模板管理和文件分发功能
  */
 class TaskPlugin implements Plugin {
   name = 'task'
-  description = '任务中心插件，提供任务作业、任务模板和Ansible任务管理功能'
+  description = '任务中心插件，提供执行任务、模板管理和文件分发功能'
   version = '1.0.0'
   author = 'OpsHub Team'
 
@@ -41,15 +41,15 @@ class TaskPlugin implements Plugin {
         parentPath: '',
       },
       {
-        name: '任务作业',
-        path: '/task/jobs',
-        icon: 'List',
+        name: '执行任务',
+        path: '/task/execute',
+        icon: 'VideoPlay',
         sort: 1,
         hidden: false,
         parentPath: parentPath,
       },
       {
-        name: '任务模板',
+        name: '模板管理',
         path: '/task/templates',
         icon: 'Document',
         sort: 2,
@@ -57,9 +57,9 @@ class TaskPlugin implements Plugin {
         parentPath: parentPath,
       },
       {
-        name: 'Ansible任务',
-        path: '/task/ansible',
-        icon: 'Setting',
+        name: '文件分发',
+        path: '/task/file-distribution',
+        icon: 'FolderOpened',
         sort: 3,
         hidden: false,
         parentPath: parentPath,
@@ -79,22 +79,22 @@ class TaskPlugin implements Plugin {
         meta: { title: '任务中心' },
         children: [
           {
-            path: 'jobs',
-            name: 'TaskJobs',
-            component: () => import('@/views/task/Jobs.vue'),
-            meta: { title: '任务作业' },
+            path: 'execute',
+            name: 'TaskExecute',
+            component: () => import('@/views/task/Execute.vue'),
+            meta: { title: '执行任务' },
           },
           {
             path: 'templates',
             name: 'TaskTemplates',
             component: () => import('@/views/task/Templates.vue'),
-            meta: { title: '任务模板' },
+            meta: { title: '模板管理' },
           },
           {
-            path: 'ansible',
-            name: 'TaskAnsible',
-            component: () => import('@/views/task/Ansible.vue'),
-            meta: { title: 'Ansible任务' },
+            path: 'file-distribution',
+            name: 'TaskFileDistribution',
+            component: () => import('@/views/task/FileDistribution.vue'),
+            meta: { title: '文件分发' },
           },
         ],
       },

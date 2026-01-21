@@ -29,7 +29,7 @@ func (p *Plugin) Name() string {
 
 // Description 返回插件描述
 func (p *Plugin) Description() string {
-	return "任务中心插件 - 支持任务作业、任务模板和Ansible任务管理"
+	return "任务中心插件 - 支持执行任务、模板管理和文件分发"
 }
 
 // Version 返回插件版本
@@ -79,21 +79,21 @@ func (p *Plugin) RegisterRoutes(router *gin.RouterGroup, db *gorm.DB) {
 func (p *Plugin) GetMenus() []plugin.MenuConfig {
 	return []plugin.MenuConfig{
 		{
-			Name: "任务作业",
-			Path: "/task/jobs",
-			Icon: "Tickets",
+			Name: "执行任务",
+			Path: "/task/execute",
+			Icon: "VideoPlay",
 			Sort: 50,
 		},
 		{
-			Name: "任务模板",
+			Name: "模板管理",
 			Path: "/task/templates",
 			Icon: "Document",
 			Sort: 51,
 		},
 		{
-			Name: "Ansible任务",
-			Path: "/task/ansible",
-			Icon: "Setting",
+			Name: "文件分发",
+			Path: "/task/file-distribution",
+			Icon: "FolderOpened",
 			Sort: 52,
 		},
 	}

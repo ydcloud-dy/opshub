@@ -33,7 +33,7 @@ type SysRole struct {
 	Sort        int          `gorm:"type:int;default:0;comment:排序" json:"sort"`
 	Status      int          `gorm:"type:tinyint;default:1;comment:状态 1:启用 0:禁用" json:"status"`
 	Users       []SysUser    `gorm:"many2many:sys_user_role;joinForeignKey:RoleID;joinReferences:UserID" json:"-"`
-	Menus       []SysMenu    `gorm:"many2many:sys_role_menus" json:"menus,omitempty"`
+	Menus       []SysMenu    `gorm:"many2many:sys_role_menu;joinForeignKey:RoleID;joinReferences:MenuID" json:"menus,omitempty"`
 }
 
 // SysDepartment 部门表

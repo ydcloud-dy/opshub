@@ -80,7 +80,7 @@ func (r *hostRepo) GetByID(ctx context.Context, id uint) (*asset.Host, error) {
 }
 
 // List 列表查询
-func (r *hostRepo) List(ctx context.Context, page, pageSize int, keyword string, groupIDs []uint) ([]*asset.Host, int64, error) {
+func (r *hostRepo) List(ctx context.Context, page, pageSize int, keyword string, groupIDs []uint, accessibleHostIDs []uint) ([]*asset.Host, int64, error) {
 	var hosts []*asset.Host
 	var total int64
 
@@ -93,6 +93,17 @@ func (r *hostRepo) List(ctx context.Context, page, pageSize int, keyword string,
 	// 添加分组ID筛选（支持多个分组ID）
 	if len(groupIDs) > 0 {
 		query = query.Where("group_id IN ?", groupIDs)
+	}
+
+	// 添加可访问主机ID筛选
+	// 如果 accessibleHostIDs 为空切片（非nil），表示用户没有任何权限，应该返回空列表
+	// 如果 accessibleHostIDs 为nil，表示不进行权限筛选（管理员或未启用权限控制）
+	if accessibleHostIDs != nil {
+		if len(accessibleHostIDs) == 0 {
+			// 用户没有任何主机访问权限，返回空列表
+			return []*asset.Host{}, 0, nil
+		}
+		query = query.Where("id IN ?", accessibleHostIDs)
 	}
 
 	err := query.Order("id DESC").Count(&total).Error

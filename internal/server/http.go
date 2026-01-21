@@ -14,6 +14,7 @@ import (
 	assetserver "github.com/ydcloud-dy/opshub/internal/server/asset"
 	auditserver "github.com/ydcloud-dy/opshub/internal/server/audit"
 	"github.com/ydcloud-dy/opshub/internal/server/rbac"
+	rbacdata "github.com/ydcloud-dy/opshub/internal/data/rbac"
 	"github.com/ydcloud-dy/opshub/internal/service"
 	appLogger "github.com/ydcloud-dy/opshub/pkg/logger"
 	"github.com/ydcloud-dy/opshub/pkg/middleware"
@@ -109,10 +110,10 @@ func (s *HTTPServer) registerRoutes(router *gin.Engine, jwtSecret string) {
 	router.Static("/uploads", "./web/public/uploads")
 
 	// 创建 RBAC 服务
-	userService, roleService, departmentService, menuService, positionService, captchaService, authMiddleware := rbac.NewRBACServices(s.db, jwtSecret)
+	userService, roleService, departmentService, menuService, positionService, captchaService, assetPermissionService, authMiddleware := rbac.NewRBACServices(s.db, jwtSecret)
 
 	// RBAC 路由
-	rbacServer := rbac.NewHTTPServer(userService, roleService, departmentService, menuService, positionService, captchaService, authMiddleware)
+	rbacServer := rbac.NewHTTPServer(userService, roleService, departmentService, menuService, positionService, captchaService, assetPermissionService, authMiddleware)
 	rbacServer.RegisterRoutes(router)
 
 	// 创建 Audit 服务
@@ -121,8 +122,12 @@ func (s *HTTPServer) registerRoutes(router *gin.Engine, jwtSecret string) {
 	// 创建 Asset 服务
 	assetGroupService, hostService, terminalManager := assetserver.NewAssetServices(s.db)
 
+	// 设置authMiddleware的assetPermissionRepo
+	assetPermissionRepo := rbacdata.NewAssetPermissionRepo(s.db)
+	authMiddleware.SetAssetPermissionRepo(assetPermissionRepo)
+
 	// Asset 路由
-	assetServer := assetserver.NewHTTPServer(assetGroupService, hostService, terminalManager, s.db)
+	assetServer := assetserver.NewHTTPServer(assetGroupService, hostService, terminalManager, s.db, authMiddleware)
 
 	// API v1 - 需要认证的接口
 	v1 := router.Group("/api/v1")

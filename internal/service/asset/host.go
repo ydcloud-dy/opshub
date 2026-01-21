@@ -10,20 +10,24 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/xuri/excelize/v2"
 	"github.com/ydcloud-dy/opshub/internal/biz/asset"
+	"github.com/ydcloud-dy/opshub/internal/biz/rbac"
+	rbacService "github.com/ydcloud-dy/opshub/internal/service/rbac"
 	"github.com/ydcloud-dy/opshub/pkg/response"
 )
 
 type HostService struct {
-	hostUseCase       *asset.HostUseCase
-	credentialUseCase *asset.CredentialUseCase
-	cloudUseCase      *asset.CloudAccountUseCase
+	hostUseCase              *asset.HostUseCase
+	credentialUseCase        *asset.CredentialUseCase
+	cloudUseCase             *asset.CloudAccountUseCase
+	assetPermissionUseCase   *rbac.AssetPermissionUseCase
 }
 
-func NewHostService(hostUseCase *asset.HostUseCase, credentialUseCase *asset.CredentialUseCase, cloudUseCase *asset.CloudAccountUseCase) *HostService {
+func NewHostService(hostUseCase *asset.HostUseCase, credentialUseCase *asset.CredentialUseCase, cloudUseCase *asset.CloudAccountUseCase, assetPermissionUseCase *rbac.AssetPermissionUseCase) *HostService {
 	return &HostService{
-		hostUseCase:       hostUseCase,
-		credentialUseCase: credentialUseCase,
-		cloudUseCase:      cloudUseCase,
+		hostUseCase:            hostUseCase,
+		credentialUseCase:      credentialUseCase,
+		cloudUseCase:           cloudUseCase,
+		assetPermissionUseCase: assetPermissionUseCase,
 	}
 }
 
@@ -168,7 +172,21 @@ func (s *HostService) ListHosts(c *gin.Context) {
 		}
 	}
 
-	hosts, total, err := s.hostUseCase.List(c.Request.Context(), page, pageSize, keyword, groupID)
+	// 获取用户ID并检查权限
+	var accessibleHostIDs []uint
+	userID := rbacService.GetUserID(c)
+	if userID > 0 {
+		// 获取用户可访问的主机ID列表
+		hostIDs, err := s.assetPermissionUseCase.GetUserAccessibleHostIDs(c.Request.Context(), userID)
+		if err == nil {
+			accessibleHostIDs = hostIDs
+		} else {
+			// 如果获取权限出错，返回空列表以保证安全
+			accessibleHostIDs = []uint{}
+		}
+	}
+
+	hosts, total, err := s.hostUseCase.List(c.Request.Context(), page, pageSize, keyword, groupID, accessibleHostIDs)
 	if err != nil {
 		response.ErrorCode(c, http.StatusInternalServerError, "查询失败: "+err.Error())
 		return

@@ -324,42 +324,22 @@
               <template #default="{ row }">
                 <div class="action-buttons">
                   <el-tooltip content="采集信息" placement="top">
-                    <el-button
-                      v-if="hasHostPermission(row.id, PERMISSION.COLLECT)"
-                      link
-                      class="action-btn action-refresh"
-                      @click="handleCollectHost(row)"
-                    >
+                    <el-button link class="action-btn action-refresh" @click="handleCollectHost(row)">
                       <el-icon><Refresh /></el-icon>
                     </el-button>
                   </el-tooltip>
                   <el-tooltip content="文件管理" placement="top">
-                    <el-button
-                      v-if="hasHostPermission(row.id, PERMISSION.FILE)"
-                      link
-                      class="action-btn action-files"
-                      @click="handleFileManager(row)"
-                    >
+                    <el-button link class="action-btn action-files" @click="handleFileManager(row)">
                       <el-icon><Folder /></el-icon>
                     </el-button>
                   </el-tooltip>
                   <el-tooltip content="编辑" placement="top">
-                    <el-button
-                      v-if="hasHostPermission(row.id, PERMISSION.EDIT)"
-                      link
-                      class="action-btn action-edit"
-                      @click="handleEditHost(row)"
-                    >
+                    <el-button link class="action-btn action-edit" @click="handleEditHost(row)">
                       <el-icon><Edit /></el-icon>
                     </el-button>
                   </el-tooltip>
                   <el-tooltip content="删除" placement="top">
-                    <el-button
-                      v-if="hasHostPermission(row.id, PERMISSION.DELETE)"
-                      link
-                      class="action-btn action-delete"
-                      @click="handleDeleteHost(row)"
-                    >
+                    <el-button link class="action-btn action-delete" @click="handleDeleteHost(row)">
                       <el-icon><Delete /></el-icon>
                     </el-button>
                   </el-tooltip>
@@ -2464,12 +2444,6 @@ const handleGroupDialogClose = () => {
 }
 
 // 格式化字节数
-
-// 检查用户对主机的权限
-const hasHostPermission = (hostId: number, permission: number): boolean => {
-  const userPermissions = hostPermissions.value.get(hostId) || 0
-  return hasPermission(userPermissions, permission)
-}
 const formatBytes = (bytes: number): string => {
   if (bytes === 0) return '0 B'
   const k = 1024

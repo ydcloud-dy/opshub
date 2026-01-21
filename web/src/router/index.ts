@@ -108,6 +108,12 @@ const router = createRouter({
           meta: { title: '业务分组' }
         },
         {
+          path: 'asset/permissions',
+          name: 'AssetPermissions',
+          component: () => import('@/views/asset/AssetPermission.vue'),
+          meta: { title: '权限配置' }
+        },
+        {
           path: 'profile',
           name: 'Profile',
           component: () => import('@/views/Profile.vue'),

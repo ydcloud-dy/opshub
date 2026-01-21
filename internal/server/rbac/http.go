@@ -11,13 +11,14 @@ import (
 )
 
 type HTTPServer struct {
-	userService       *rbacService.UserService
-	roleService       *rbacService.RoleService
-	departmentService *rbacService.DepartmentService
-	menuService       *rbacService.MenuService
-	positionService   *rbacService.PositionService
-	captchaService    *rbacService.CaptchaService
-	authMiddleware    *rbacService.AuthMiddleware
+	userService            *rbacService.UserService
+	roleService            *rbacService.RoleService
+	departmentService      *rbacService.DepartmentService
+	menuService            *rbacService.MenuService
+	positionService        *rbacService.PositionService
+	captchaService         *rbacService.CaptchaService
+	assetPermissionService *rbacService.AssetPermissionService
+	authMiddleware         *rbacService.AuthMiddleware
 }
 
 func NewHTTPServer(
@@ -27,16 +28,18 @@ func NewHTTPServer(
 	menuService *rbacService.MenuService,
 	positionService *rbacService.PositionService,
 	captchaService *rbacService.CaptchaService,
+	assetPermissionService *rbacService.AssetPermissionService,
 	authMiddleware *rbacService.AuthMiddleware,
 ) *HTTPServer {
 	return &HTTPServer{
-		userService:       userService,
-		roleService:       roleService,
-		departmentService: departmentService,
-		menuService:       menuService,
-		positionService:   positionService,
-		captchaService:    captchaService,
-		authMiddleware:    authMiddleware,
+		userService:            userService,
+		roleService:            roleService,
+		departmentService:      departmentService,
+		menuService:            menuService,
+		positionService:        positionService,
+		captchaService:         captchaService,
+		assetPermissionService: assetPermissionService,
+		authMiddleware:         authMiddleware,
 	}
 }
 
@@ -121,6 +124,22 @@ func (s *HTTPServer) RegisterRoutes(r *gin.Engine) {
 			positions.POST("/:id/users", s.positionService.AssignUsersToPosition)
 			positions.DELETE("/:id/users/:userId", s.positionService.RemoveUserFromPosition)
 		}
+
+		// 资产权限管理
+		assetPermissions := auth.Group("/asset-permissions")
+		{
+			assetPermissions.GET("", s.assetPermissionService.ListAssetPermissions)
+			assetPermissions.POST("", s.assetPermissionService.CreateAssetPermission)
+			// 具体路由必须放在通用 /:id 路由之前
+			assetPermissions.GET("/role/:roleId", s.assetPermissionService.GetAssetPermissionsByRole)
+			assetPermissions.GET("/group/:assetGroupId", s.assetPermissionService.GetAssetPermissionsByGroup)
+			// 通用 /:id 路由必须放在最后
+			assetPermissions.GET("/:id", s.assetPermissionService.GetAssetPermissionDetail)
+			assetPermissions.PUT("/:id", s.assetPermissionService.UpdateAssetPermission)
+			assetPermissions.DELETE("/:id", s.assetPermissionService.DeleteAssetPermission)
+			// 删除分组权限用空路径（没有 :id）
+			assetPermissions.DELETE("", s.assetPermissionService.DeleteAssetPermissionByRoleAndGroup)
+		}
 	}
 }
 
@@ -132,6 +151,7 @@ func NewRBACServices(db *gorm.DB, jwtSecret string) (
 	*rbacService.MenuService,
 	*rbacService.PositionService,
 	*rbacService.CaptchaService,
+	*rbacService.AssetPermissionService,
 	*rbacService.AuthMiddleware,
 ) {
 	// 初始化Repository
@@ -140,6 +160,7 @@ func NewRBACServices(db *gorm.DB, jwtSecret string) (
 	deptRepo := rbacdata.NewDepartmentRepo(db)
 	menuRepo := rbacdata.NewMenuRepo(db)
 	positionRepo := rbacdata.NewPositionRepo(db)
+	assetPermissionRepo := rbacdata.NewAssetPermissionRepo(db)
 
 	// 初始化Audit Repository
 	loginLogRepo := auditdata.NewLoginLogRepo(db)
@@ -150,6 +171,7 @@ func NewRBACServices(db *gorm.DB, jwtSecret string) (
 	deptUseCase := rbacbiz.NewDepartmentUseCase(deptRepo)
 	menuUseCase := rbacbiz.NewMenuUseCase(menuRepo)
 	positionUseCase := rbacbiz.NewPositionUseCase(positionRepo)
+	assetPermissionUseCase := rbacbiz.NewAssetPermissionUseCase(assetPermissionRepo)
 
 	// 初始化Audit UseCase
 	loginLogUseCase := auditbiz.NewLoginLogUseCase(loginLogRepo)
@@ -159,9 +181,10 @@ func NewRBACServices(db *gorm.DB, jwtSecret string) (
 	userService := rbacService.NewUserService(userUseCase, authService)
 	roleService := rbacService.NewRoleService(roleUseCase)
 	departmentService := rbacService.NewDepartmentService(deptUseCase)
-	menuService := rbacService.NewMenuService(menuUseCase)
+	menuService := rbacService.NewMenuService(menuUseCase, roleUseCase)
 	positionService := rbacService.NewPositionService(positionUseCase)
 	captchaService := rbacService.NewCaptchaService()
+	assetPermissionService := rbacService.NewAssetPermissionService(assetPermissionUseCase)
 	authMiddleware := rbacService.NewAuthMiddleware(authService)
 
 	// 设置验证码服务到用户服务
@@ -170,5 +193,5 @@ func NewRBACServices(db *gorm.DB, jwtSecret string) (
 	// 设置登录日志用例到用户服务
 	userService.SetLoginLogUseCase(loginLogUseCase)
 
-	return userService, roleService, departmentService, menuService, positionService, captchaService, authMiddleware
+	return userService, roleService, departmentService, menuService, positionService, captchaService, assetPermissionService, authMiddleware
 }

@@ -89,9 +89,10 @@ func (r *menuRepo) buildTree(menus []*rbac.SysMenu, parentID uint) []*rbac.SysMe
 func (r *menuRepo) GetByUserID(ctx context.Context, userID uint) ([]*rbac.SysMenu, error) {
 	var menus []*rbac.SysMenu
 	err := r.db.WithContext(ctx).
-		Joins("JOIN sys_role_menus ON sys_role_menus.menu_id = sys_menu.id").
-		Joins("JOIN sys_user_roles ON sys_user_roles.role_id = sys_role_menus.role_id").
-		Where("sys_user_roles.user_id = ? AND sys_menu.status = 1", userID).
+		Joins("JOIN sys_role_menu ON sys_role_menu.menu_id = sys_menu.id").
+		Joins("JOIN sys_user_role ON sys_user_role.role_id = sys_role_menu.role_id").
+		Where("sys_user_role.user_id = ? AND sys_menu.status = 1 AND sys_menu.visible = 1", userID).
+		Distinct().
 		Order("sys_menu.sort ASC").
 		Find(&menus).Error
 

@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	assetbiz "github.com/ydcloud-dy/opshub/internal/biz/asset"
+	"github.com/ydcloud-dy/opshub/pkg/response"
 	"gorm.io/gorm"
 )
 
@@ -50,7 +51,7 @@ func (h *TerminalAuditHandler) ListTerminalSessions(c *gin.Context) {
 	// 统计总数
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询失败"})
+		response.ErrorCode(c, http.StatusInternalServerError, "查询失败")
 		return
 	}
 
@@ -60,7 +61,7 @@ func (h *TerminalAuditHandler) ListTerminalSessions(c *gin.Context) {
 		Offset((page - 1) * pageSize).
 		Limit(pageSize).
 		Find(&sessions).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询失败"})
+		response.ErrorCode(c, http.StatusInternalServerError, "查询失败")
 		return
 	}
 
@@ -86,7 +87,7 @@ func (h *TerminalAuditHandler) ListTerminalSessions(c *gin.Context) {
 		list = append(list, info)
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	response.Success(c, gin.H{
 		"total": total,
 		"list":  list,
 	})
@@ -97,7 +98,7 @@ func (h *TerminalAuditHandler) PlayTerminalSession(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的会话ID"})
+		response.ErrorCode(c, http.StatusBadRequest, "无效的会话ID")
 		return
 	}
 
@@ -105,9 +106,9 @@ func (h *TerminalAuditHandler) PlayTerminalSession(c *gin.Context) {
 	var session assetbiz.TerminalSession
 	if err := h.db.First(&session, id).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusNotFound, gin.H{"error": "会话不存在"})
+			response.ErrorCode(c, http.StatusNotFound, "会话不存在")
 		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "查询失败"})
+			response.ErrorCode(c, http.StatusInternalServerError, "查询失败")
 		}
 		return
 	}
@@ -115,7 +116,7 @@ func (h *TerminalAuditHandler) PlayTerminalSession(c *gin.Context) {
 	// 读取录制文件
 	content, err := os.ReadFile(session.RecordingPath)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "读取录制文件失败"})
+		response.ErrorCode(c, http.StatusInternalServerError, "读取录制文件失败")
 		return
 	}
 
@@ -129,7 +130,7 @@ func (h *TerminalAuditHandler) DeleteTerminalSession(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的会话ID"})
+		response.ErrorCode(c, http.StatusBadRequest, "无效的会话ID")
 		return
 	}
 
@@ -137,9 +138,9 @@ func (h *TerminalAuditHandler) DeleteTerminalSession(c *gin.Context) {
 	var session assetbiz.TerminalSession
 	if err := h.db.First(&session, id).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusNotFound, gin.H{"error": "会话不存在"})
+			response.ErrorCode(c, http.StatusNotFound, "会话不存在")
 		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "查询失败"})
+			response.ErrorCode(c, http.StatusInternalServerError, "查询失败")
 		}
 		return
 	}
@@ -152,11 +153,11 @@ func (h *TerminalAuditHandler) DeleteTerminalSession(c *gin.Context) {
 
 	// 删除数据库记录
 	if err := h.db.Delete(&session).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "删除失败"})
+		response.ErrorCode(c, http.StatusInternalServerError, "删除失败")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "删除成功"})
+	response.SuccessWithMessage(c, "删除成功", nil)
 }
 
 // formatDuration 格式化时长

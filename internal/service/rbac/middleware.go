@@ -2,9 +2,11 @@ package rbac
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/ydcloud-dy/opshub/internal/biz/rbac"
 	"github.com/ydcloud-dy/opshub/pkg/response"
 )
 
@@ -35,13 +37,19 @@ func GetUsername(c *gin.Context) string {
 
 // AuthMiddleware JWT认证中间件
 type AuthMiddleware struct {
-	authService *AuthService
+	authService        *AuthService
+	assetPermissionRepo rbac.AssetPermissionRepo
 }
 
 func NewAuthMiddleware(authService *AuthService) *AuthMiddleware {
 	return &AuthMiddleware{
 		authService: authService,
 	}
+}
+
+// SetAssetPermissionRepo 设置资产权限仓储
+func (m *AuthMiddleware) SetAssetPermissionRepo(repo rbac.AssetPermissionRepo) {
+	m.assetPermissionRepo = repo
 }
 
 // AuthRequired JWT认证
@@ -112,6 +120,62 @@ func (m *AuthMiddleware) RequireAdmin() gin.HandlerFunc {
 
 		if !hasAdminRole {
 			response.ErrorCode(c, http.StatusForbidden, "权限不足：此操作仅限管理员执行")
+			c.Abort()
+			return
+		}
+
+		c.Next()
+	}
+}
+
+// RequireHostPermission 检查主机操作权限的中间件
+func (m *AuthMiddleware) RequireHostPermission(operation uint) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if m.assetPermissionRepo == nil {
+			response.ErrorCode(c, http.StatusInternalServerError, "权限检查未初始化")
+			c.Abort()
+			return
+		}
+
+		// 获取用户ID
+		userID := GetUserID(c)
+		if userID == 0 {
+			response.ErrorCode(c, http.StatusUnauthorized, "未登录")
+			c.Abort()
+			return
+		}
+
+		// 获取主机ID
+		hostIDStr := c.Param("id")
+		if hostIDStr == "" {
+			// 对于创建操作，暂不检查具体权限（创建权限通过分组权限检查）
+			c.Next()
+			return
+		}
+
+		hostID, err := strconv.ParseUint(hostIDStr, 10, 32)
+		if err != nil {
+			response.ErrorCode(c, http.StatusBadRequest, "无效的主机ID")
+			c.Abort()
+			return
+		}
+
+		// 检查权限
+		hasPermission, err := m.assetPermissionRepo.CheckHostOperationPermission(
+			c.Request.Context(),
+			userID,
+			uint(hostID),
+			operation,
+		)
+
+		if err != nil {
+			response.ErrorCode(c, http.StatusInternalServerError, "权限检查失败")
+			c.Abort()
+			return
+		}
+
+		if !hasPermission {
+			response.ErrorCode(c, http.StatusForbidden, "权限不足")
 			c.Abort()
 			return
 		}

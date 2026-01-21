@@ -6,6 +6,9 @@ const request = axios.create({
   timeout: 60000 // 60秒超时
 })
 
+// Token过期跳转标志，防止重复跳转
+let isRedirecting = false
+
 // 请求拦截器
 request.interceptors.request.use(
   (config) => {
@@ -28,12 +31,44 @@ request.interceptors.response.use(
       return response.data
     }
 
+    // text类型响应直接返回（用于.cast文件等）
+    if (response.config.responseType === 'text') {
+      return response.data
+    }
+
     const res = response.data
     // 检查业务状态码
     if (res.code !== 0 && res.code !== 200) {
+      const url = response.config.url || ''
+
+      // 检查是否是Token过期错误
+      if (res.message && (
+        res.message.includes('Token无效') ||
+        res.message.includes('Token已过期') ||
+        res.message.includes('token无效') ||
+        res.message.includes('token已过期') ||
+        res.message.includes('未登录') ||
+        res.message.includes('登录已过期')
+      )) {
+        // 避免重复跳转
+        if (!isRedirecting) {
+          isRedirecting = true
+          ElMessage.error('登录已过期，请重新登录')
+          localStorage.removeItem('token')
+          // 延迟跳转，让用户看到提示
+          setTimeout(() => {
+            window.location.href = '/login'
+          }, 1000)
+        }
+        return Promise.reject({
+          code: res.code,
+          message: res.message || '请求失败',
+          response: response
+        })
+      }
+
       // 只在非登录接口的情况下自动显示错误消息
       // 登录接口和验证码接口的错误由调用方处理,避免重复提示
-      const url = response.config.url || ''
       if (!url.includes('/login') && !url.includes('/captcha')) {
         ElMessage.error(res.message || '请求失败')
       }
@@ -54,11 +89,14 @@ request.interceptors.response.use(
     // 401 - 未登录，跳转到登录页
     if (status === 401) {
       // 只在非登录请求时自动跳转到登录页
-      if (!url.includes('/login')) {
-        ElMessage.error('未登录或登录已过期')
+      if (!url.includes('/login') && !isRedirecting) {
+        isRedirecting = true
+        ElMessage.error('登录已过期，请重新登录')
         localStorage.removeItem('token')
-        window.location.href = '/login'
-      } else {
+        setTimeout(() => {
+          window.location.href = '/login'
+        }, 1000)
+      } else if (url.includes('/login')) {
         // 登录接口的401错误,返回错误信息给调用方处理
         const errorMsg = error.response?.data?.message || '用户名或密码错误'
         return Promise.reject(new Error(errorMsg))

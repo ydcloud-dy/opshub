@@ -5,6 +5,9 @@ import (
 	assetService "github.com/ydcloud-dy/opshub/internal/service/asset"
 	assetdata "github.com/ydcloud-dy/opshub/internal/data/asset"
 	assetbiz "github.com/ydcloud-dy/opshub/internal/biz/asset"
+	rbacService "github.com/ydcloud-dy/opshub/internal/service/rbac"
+	rbacdata "github.com/ydcloud-dy/opshub/internal/data/rbac"
+	rbacbiz "github.com/ydcloud-dy/opshub/internal/biz/rbac"
 	"gorm.io/gorm"
 )
 
@@ -13,6 +16,7 @@ type HTTPServer struct {
 	hostService          *assetService.HostService
 	terminalManager      *TerminalManager
 	terminalAuditHandler *TerminalAuditHandler
+	authMiddleware       *rbacService.AuthMiddleware
 }
 
 func NewHTTPServer(
@@ -20,12 +24,14 @@ func NewHTTPServer(
 	hostService *assetService.HostService,
 	terminalManager *TerminalManager,
 	db *gorm.DB,
+	authMiddleware *rbacService.AuthMiddleware,
 ) *HTTPServer {
 	return &HTTPServer{
 		assetGroupService:    assetGroupService,
 		hostService:          hostService,
 		terminalManager:      terminalManager,
 		terminalAuditHandler: NewTerminalAuditHandler(db),
+		authMiddleware:       authMiddleware,
 	}
 }
 
@@ -49,17 +55,44 @@ func (s *HTTPServer) RegisterRoutes(r *gin.RouterGroup) {
 		hosts.POST("/import", s.hostService.ImportFromExcel)
 		hosts.POST("/batch-collect", s.hostService.BatchCollectHostInfo)
 		hosts.POST("/batch-delete", s.hostService.BatchDeleteHosts)
-		hosts.GET("/:id", s.hostService.GetHost)
-		hosts.POST("", s.hostService.CreateHost)
-		hosts.PUT("/:id", s.hostService.UpdateHost)
-		hosts.DELETE("/:id", s.hostService.DeleteHost)
-		hosts.POST("/:id/collect", s.hostService.CollectHostInfo)
+
+		// 查看权限 - 查看主机详情
+		hosts.GET("/:id",
+			s.authMiddleware.RequireHostPermission(rbacbiz.PermissionView),
+			s.hostService.GetHost)
+
+		// 编辑权限 - 创建、修改主机配置
+		hosts.POST("",
+			s.authMiddleware.RequireHostPermission(rbacbiz.PermissionEdit),
+			s.hostService.CreateHost)
+		hosts.PUT("/:id",
+			s.authMiddleware.RequireHostPermission(rbacbiz.PermissionEdit),
+			s.hostService.UpdateHost)
+
+		// 删除权限 - 删除主机
+		hosts.DELETE("/:id",
+			s.authMiddleware.RequireHostPermission(rbacbiz.PermissionDelete),
+			s.hostService.DeleteHost)
+
+		// 采集权限 - 采集主机信息
+		hosts.POST("/:id/collect",
+			s.authMiddleware.RequireHostPermission(rbacbiz.PermissionCollect),
+			s.hostService.CollectHostInfo)
 		hosts.POST("/:id/test", s.hostService.TestHostConnection)
-		// 文件管理
-		hosts.GET("/:id/files", s.hostService.ListHostFiles)
-		hosts.POST("/:id/files/upload", s.hostService.UploadHostFile)
-		hosts.GET("/:id/files/download", s.hostService.DownloadHostFile)
-		hosts.DELETE("/:id/files", s.hostService.DeleteHostFile)
+
+		// 文件管理权限 - 文件上传、下载、删除
+		hosts.GET("/:id/files",
+			s.authMiddleware.RequireHostPermission(rbacbiz.PermissionFile),
+			s.hostService.ListHostFiles)
+		hosts.POST("/:id/files/upload",
+			s.authMiddleware.RequireHostPermission(rbacbiz.PermissionFile),
+			s.hostService.UploadHostFile)
+		hosts.GET("/:id/files/download",
+			s.authMiddleware.RequireHostPermission(rbacbiz.PermissionFile),
+			s.hostService.DownloadHostFile)
+		hosts.DELETE("/:id/files",
+			s.authMiddleware.RequireHostPermission(rbacbiz.PermissionFile),
+			s.hostService.DeleteHostFile)
 	}
 
 	// 凭证管理
@@ -87,10 +120,12 @@ func (s *HTTPServer) RegisterRoutes(r *gin.RouterGroup) {
 		cloudAccounts.POST("/import", s.hostService.ImportFromCloud)
 	}
 
-	// SSH终端
+	// SSH终端 - 终端权限
 	terminal := r.Group("/asset/terminal")
 	{
-		terminal.GET("/:id", s.HandleSSHConnection)
+		terminal.GET("/:id",
+			s.authMiddleware.RequireHostPermission(rbacbiz.PermissionTerminal),
+			s.HandleSSHConnection)
 		terminal.POST("/:id/resize", s.ResizeTerminal)
 	}
 
@@ -114,16 +149,18 @@ func NewAssetServices(db *gorm.DB) (
 	hostRepo := assetdata.NewHostRepo(db)
 	credentialRepo := assetdata.NewCredentialRepo(db)
 	cloudAccountRepo := assetdata.NewCloudAccountRepo(db)
+	assetPermissionRepo := rbacdata.NewAssetPermissionRepo(db)
 
 	// 初始化UseCase
 	assetGroupUseCase := assetbiz.NewAssetGroupUseCase(assetGroupRepo)
 	credentialUseCase := assetbiz.NewCredentialUseCase(credentialRepo, hostRepo)
 	cloudAccountUseCase := assetbiz.NewCloudAccountUseCase(cloudAccountRepo)
 	hostUseCase := assetbiz.NewHostUseCase(hostRepo, credentialRepo, assetGroupRepo, cloudAccountRepo)
+	assetPermissionUseCase := rbacbiz.NewAssetPermissionUseCase(assetPermissionRepo)
 
 	// 初始化Service
 	assetGroupService := assetService.NewAssetGroupService(assetGroupUseCase)
-	hostService := assetService.NewHostService(hostUseCase, credentialUseCase, cloudAccountUseCase)
+	hostService := assetService.NewHostService(hostUseCase, credentialUseCase, cloudAccountUseCase, assetPermissionUseCase)
 
 	// 初始化TerminalManager
 	terminalManager := NewTerminalManager(hostUseCase, db)

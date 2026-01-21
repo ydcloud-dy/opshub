@@ -55,7 +55,7 @@
             </div>
             <div class="user-details">
               <div class="user-name">{{ userStore.userInfo?.realName || userStore.userInfo?.username }}</div>
-              <div class="user-role">{{ userStore.userInfo?.realName ? '管理员' : '普通用户' }}</div>
+              <div class="user-role">{{ userRoleDisplay }}</div>
             </div>
             <el-icon class="dropdown-icon"><ArrowDown /></el-icon>
           </div>
@@ -161,6 +161,22 @@ const avatarUrl = computed(() => {
 })
 
 const currentRoute = computed(() => route)
+
+// 获取用户角色显示名称
+const userRoleDisplay = computed(() => {
+  const roles = userStore.userInfo?.roles || []
+  if (roles.length === 0) return '普通用户'
+
+  // 如果有多个角色，显示第一个角色的名称
+  // 优先显示 admin 角色
+  const adminRole = roles.find((r: any) => r.code === 'admin')
+  if (adminRole) {
+    return adminRole.name || '管理员'
+  }
+
+  return roles[0]?.name || '普通用户'
+})
+
 const menuList = ref<any[]>([])
 
 // 图标映射
@@ -194,8 +210,8 @@ const getIcon = (iconName: string) => {
   return iconMap[iconName] || Menu
 }
 
-// 从插件管理器构建菜单（只包含已启用的插件）
-const buildPluginMenus = async () => {
+// 从插件管理器构建菜单（只包含已启用的插件，并根据权限过滤）
+const buildPluginMenus = async (authorizedPaths: Set<string>) => {
   const pluginMenus: any[] = []
   const allPlugins = pluginManager.getAll() // 获取所有注册的插件
 
@@ -236,6 +252,7 @@ const buildPluginMenus = async () => {
   console.log('=== 开始构建插件菜单 ===')
   console.log('所有插件数量:', allPlugins.length)
   console.log('已启用的插件数量:', enabledPluginNames.size)
+  console.log('授权的路径数量:', authorizedPaths.size)
 
   allPlugins.forEach(plugin => {
     // 只处理已启用的插件
@@ -248,7 +265,15 @@ const buildPluginMenus = async () => {
     if (plugin.getMenus) {
       const menus = plugin.getMenus()
       console.log(`  - 菜单数量: ${menus.length}`)
+
       menus.forEach(menu => {
+        // 权限过滤：只显示用户有权限的菜单
+        // authorizedPaths为空表示是超级管理员，显示所有菜单
+        if (authorizedPaths.size > 0 && !authorizedPaths.has(menu.path)) {
+          console.log(`  - 跳过无权限的菜单: ${menu.name} (${menu.path})`)
+          return
+        }
+
         // 优先使用自定义排序，如果没有则使用默认排序
         const sort = customSort.get(menu.path) ?? menu.sort
 
@@ -263,7 +288,7 @@ const buildPluginMenus = async () => {
           // 不设置 children 属性，让 buildMenuTree 根据实际子菜单动态设置
         })
 
-        console.log(`  - 菜单: ${menu.name}, sort: ${sort} (自定义: ${customSort.has(menu.path)})`)
+        console.log(`  - 菜单: ${menu.name}, sort: ${sort}`)
       })
     } else {
       console.log(`  - 插件没有提供 getMenus 方法`)
@@ -419,22 +444,49 @@ const loadMenu = async () => {
     // 清空现有菜单,避免重复
     menuList.value = []
 
-    // 1. 获取系统菜单
-    let systemMenus: any[] = []
-    try {
-      systemMenus = await getUserMenu() || []
-      console.log('[Layout] 系统菜单:', systemMenus)
-    } catch (error) {
-      console.log('[Layout] 获取系统菜单失败，仅显示插件菜单:', error)
+    // 1. 获取系统菜单（后端已根据用户权限过滤）
+    const systemMenus = await getUserMenu() || []
+    console.log('[Layout] 系统菜单(后端过滤):', systemMenus)
+
+    // 2. 从系统菜单中提取所有授权的路径（用于插件菜单权限过滤）
+    const pluginPathPrefixes = ['/kubernetes', '/monitor', '/task']
+    const extractPaths = (menus: any[]): Set<string> => {
+      const paths = new Set<string>()
+      const traverse = (items: any[]) => {
+        items.forEach(item => {
+          if (item.path) {
+            paths.add(item.path)
+          }
+          if (item.children && item.children.length > 0) {
+            traverse(item.children)
+          }
+        })
+      }
+      traverse(menus)
+      return paths
     }
 
-    // 2. 获取插件菜单（现在是异步的）
-    const pluginMenus = await buildPluginMenus()
-    console.log('[Layout] 插件菜单:', pluginMenus)
+    const allAuthorizedPaths = extractPaths(systemMenus)
+    console.log('[Layout] 所有授权的路径(含插件):', Array.from(allAuthorizedPaths))
 
-    // 3. 展平系统菜单树(因为系统菜单可能是嵌套结构)
+    // 3. 获取插件菜单（根据授权路径过滤）
+    const pluginMenus = await buildPluginMenus(allAuthorizedPaths)
+    console.log('[Layout] 插件菜单(权限过滤后):', pluginMenus)
+
+    // 4. 展平系统菜单树并过滤掉插件路径的菜单
+    // （这些菜单仅用于授权，实际显示由插件管理器提供）
     const flattenMenus = (menus: any[], result: any[] = []) => {
       menus.forEach(menu => {
+        // 跳过插件路径的菜单
+        if (menu.path && pluginPathPrefixes.some(prefix => menu.path.startsWith(prefix))) {
+          console.log(`[Layout] 跳过数据库中的插件菜单: ${menu.name} (${menu.path})`)
+          // 仍然需要处理子菜单（如果有的话）
+          if (menu.children && menu.children.length > 0) {
+            flattenMenus(menu.children, result)
+          }
+          return
+        }
+
         // 移除children属性，避免旧的children数据干扰
         const { children, ...menuWithoutChildren } = menu
         result.push(menuWithoutChildren)
@@ -446,13 +498,13 @@ const loadMenu = async () => {
     }
 
     const flatSystemMenus = flattenMenus(systemMenus)
-    console.log('[Layout] 展平后的系统菜单数:', flatSystemMenus.length)
+    console.log('[Layout] 展平后的系统菜单数(已过滤插件):', flatSystemMenus.length)
 
-    // 4. 合并所有菜单
+    // 5. 合并所有菜单
     const allMenus = [...flatSystemMenus, ...pluginMenus]
     console.log('[Layout] 合并后的所有菜单数:', allMenus.length)
 
-    // 5. 构建菜单树
+    // 6. 构建菜单树
     menuList.value = buildMenuTree(allMenus)
     console.log('[Layout] 最终菜单树:', menuList.value)
   } catch (error) {
