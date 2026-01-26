@@ -736,6 +736,28 @@ VALUES
   (2, 10), (2, 15), (2, 16), (2, 17), (2, 19), (2, 27), (2, 34), (2, 65),
   (2, 23), (2, 24), (2, 25), (2, 36), (2, 42), (2, 61);
 
+-- ============================================================
+-- 11. 插件状态表
+-- ============================================================
+
+-- 插件状态表（用于记录插件启用/禁用状态）
+CREATE TABLE IF NOT EXISTS `plugin_states` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `name` varchar(100) NOT NULL COMMENT '插件名称',
+  `enabled` tinyint(1) NOT NULL DEFAULT 0 COMMENT '是否启用 1:启用 0:禁用',
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_name` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 默认启用所有内置插件
+INSERT INTO `plugin_states` (`name`, `enabled`, `created_at`, `updated_at`)
+VALUES
+  ('kubernetes', 1, NOW(), NOW()),
+  ('monitor', 1, NOW(), NOW()),
+  ('task', 1, NOW(), NOW());
+
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- 创建默认的admin用户

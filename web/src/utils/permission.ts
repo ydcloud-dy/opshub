@@ -6,6 +6,7 @@ export const PERMISSION = {
   TERMINAL: 1 << 3, // 8 - 终端
   FILE: 1 << 4,     // 16 - 文件管理
   COLLECT: 1 << 5,  // 32 - 采集信息
+  ALL: 0x3F,        // 63 - 所有权限
 } as const
 
 /**

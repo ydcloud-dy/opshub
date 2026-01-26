@@ -1332,6 +1332,16 @@ import {
 import type { CloudInstanceVO, CloudRegionVO } from '@/api/host'
 import { PERMISSION, hasPermission } from '@/utils/permission'
 import { getUserHostPermissions } from '@/api/assetPermission'
+import { useUserStore } from '@/stores/user'
+
+// 用户状态
+const userStore = useUserStore()
+
+// 检查当前用户是否是管理员
+const isAdmin = computed(() => {
+  const roles = userStore.userInfo?.roles || []
+  return roles.some((r: any) => r.code === 'admin')
+})
 
 // 加载状态
 const groupLoading = ref(false)
@@ -1680,7 +1690,18 @@ const loadHostList = async () => {
     hostPagination.total = res.total || 0
 
     // 加载每个主机的用户权限
-    if (hostList.value && hostList.value.length > 0) {
+    // 管理员默认拥有所有权限
+    if (isAdmin.value) {
+      userHasEditPermission.value = true
+      // 为管理员设置所有主机的完整权限
+      if (hostList.value && hostList.value.length > 0) {
+        const permissionsMap = new Map<number, number>()
+        for (const host of hostList.value) {
+          permissionsMap.set(host.id, PERMISSION.ALL)
+        }
+        hostPermissions.value = permissionsMap
+      }
+    } else if (hostList.value && hostList.value.length > 0) {
       const permissionsMap = new Map<number, number>()
       let hasEditPerm = false
       for (const host of hostList.value) {
