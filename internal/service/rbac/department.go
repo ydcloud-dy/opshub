@@ -29,7 +29,7 @@ func NewDepartmentService(deptUseCase *rbac.DepartmentUseCase) *DepartmentServic
 // @Param body body rbac.DepartmentRequest true "部门信息"
 // @Success 200 {object} response.Response "创建成功"
 // @Failure 400 {object} response.Response "参数错误"
-// @Router /departments [post]
+// @Router /api/v1/departments [post]
 func (s *DepartmentService) CreateDepartment(c *gin.Context) {
 	var req rbac.DepartmentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -57,7 +57,7 @@ func (s *DepartmentService) CreateDepartment(c *gin.Context) {
 // @Param body body rbac.DepartmentRequest true "部门信息"
 // @Success 200 {object} response.Response "更新成功"
 // @Failure 400 {object} response.Response "参数错误"
-// @Router /departments/{id} [put]
+// @Router /api/v1/departments/{id} [put]
 func (s *DepartmentService) UpdateDepartment(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
@@ -92,7 +92,7 @@ func (s *DepartmentService) UpdateDepartment(c *gin.Context) {
 // @Param id path int true "部门ID"
 // @Success 200 {object} response.Response "删除成功"
 // @Failure 400 {object} response.Response "参数错误"
-// @Router /departments/{id} [delete]
+// @Router /api/v1/departments/{id} [delete]
 func (s *DepartmentService) DeleteDepartment(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
@@ -119,7 +119,7 @@ func (s *DepartmentService) DeleteDepartment(c *gin.Context) {
 // @Param id path int true "部门ID"
 // @Success 200 {object} response.Response "获取成功"
 // @Failure 404 {object} response.Response "部门不存在"
-// @Router /departments/{id} [get]
+// @Router /api/v1/departments/{id} [get]
 func (s *DepartmentService) GetDepartment(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
@@ -145,7 +145,7 @@ func (s *DepartmentService) GetDepartment(c *gin.Context) {
 // @Produce json
 // @Security Bearer
 // @Success 200 {object} response.Response "获取成功"
-// @Router /departments/tree [get]
+// @Router /api/v1/departments/tree [get]
 func (s *DepartmentService) GetDepartmentTree(c *gin.Context) {
 	tree, err := s.deptUseCase.GetTree(c.Request.Context())
 	if err != nil {
@@ -170,7 +170,7 @@ func (s *DepartmentService) GetDepartmentTree(c *gin.Context) {
 // @Produce json
 // @Security Bearer
 // @Success 200 {object} response.Response "获取成功"
-// @Router /departments/parent-options [get]
+// @Router /api/v1/departments/parent-options [get]
 func (s *DepartmentService) GetParentOptions(c *gin.Context) {
 	options, err := s.deptUseCase.GetParentOptions(c.Request.Context())
 	if err != nil {

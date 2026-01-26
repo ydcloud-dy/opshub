@@ -186,8 +186,8 @@ func (h *ClusterHandler) DeleteCluster(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param id path int true "集群ID"
-// @Success 200 {object} Response
-// @Router /api/v1/kubernetes/clusters/{id} [get]
+// @Success 200 {object} map[string]interface{} "成功"
+// @Router /plugins/kubernetes/clusters/{id} [get]
 func (h *ClusterHandler) GetCluster(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
@@ -221,8 +221,8 @@ func (h *ClusterHandler) GetCluster(c *gin.Context) {
 // @Tags Kubernetes/Cluster
 // @Accept json
 // @Produce json
-// @Success 200 {object} Response
-// @Router /api/v1/kubernetes/clusters [get]
+// @Success 200 {object} map[string]interface{} "成功"
+// @Router /plugins/kubernetes/clusters [get]
 func (h *ClusterHandler) ListClusters(c *gin.Context) {
 	clusters, err := h.clusterService.ListClusters(c.Request.Context())
 	if err != nil {
@@ -247,8 +247,8 @@ func (h *ClusterHandler) ListClusters(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param id path int true "集群ID"
-// @Success 200 {object} Response
-// @Router /api/v1/kubernetes/clusters/{id}/test [post]
+// @Success 200 {object} map[string]interface{} "成功"
+// @Router /plugins/kubernetes/clusters/{id}/test [post]
 func (h *ClusterHandler) TestClusterConnection(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
@@ -290,8 +290,8 @@ func (h *ClusterHandler) TestClusterConnection(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param id path int true "集群ID"
-// @Success 200 {object} Response
-// @Router /api/v1/plugins/kubernetes/clusters/{id}/config [get]
+// @Success 200 {object} map[string]interface{} "成功"
+// @Router /plugins/kubernetes/clusters/{id}/config [get]
 func (h *ClusterHandler) GetClusterConfig(c *gin.Context) {
 	// 检查是否为管理员
 	if !RequireAdmin(c, h.db) {
@@ -330,8 +330,8 @@ func (h *ClusterHandler) GetClusterConfig(c *gin.Context) {
 // @Tags Kubernetes/Cluster
 // @Accept json
 // @Produce json
-// @Success 200 {object} Response
-// @Router /api/v1/plugins/kubernetes/clusters/kubeconfig [post]
+// @Success 200 {object} map[string]interface{} "成功"
+// @Router /plugins/kubernetes/clusters/kubeconfig [post]
 func (h *ClusterHandler) GenerateKubeConfig(c *gin.Context) {
 	var req service.GenerateKubeConfigRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -392,8 +392,8 @@ func (h *ClusterHandler) GenerateKubeConfig(c *gin.Context) {
 // @Tags Kubernetes/Cluster
 // @Accept json
 // @Produce json
-// @Success 200 {object} Response
-// @Router /api/v1/plugins/kubernetes/clusters/kubeconfig [delete]
+// @Success 200 {object} map[string]interface{} "成功"
+// @Router /plugins/kubernetes/clusters/kubeconfig [delete]
 func (h *ClusterHandler) RevokeKubeConfig(c *gin.Context) {
 	var req service.GenerateKubeConfigRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -452,8 +452,8 @@ func (h *ClusterHandler) RevokeKubeConfig(c *gin.Context) {
 // @Tags Kubernetes/Cluster
 // @Accept json
 // @Produce json
-// @Success 200 {object} Response
-// @Router /api/v1/plugins/kubernetes/clusters/kubeconfig/revoke [delete]
+// @Success 200 {object} map[string]interface{} "成功"
+// @Router /plugins/kubernetes/clusters/kubeconfig/revoke [delete]
 func (h *ClusterHandler) RevokeCredentialFully(c *gin.Context) {
 	var req struct {
 		ClusterID      uint   `json:"clusterId" binding:"required"`
@@ -496,7 +496,7 @@ func (h *ClusterHandler) RevokeCredentialFully(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Success 200 {object} map[string]interface{}
-// @Router /api/v1/plugins/kubernetes/clusters/kubeconfig/sa [post]
+// @Router /plugins/kubernetes/clusters/kubeconfig/sa [post]
 func (h *ClusterHandler) GetServiceAccountKubeConfig(c *gin.Context) {
 	var req struct {
 		ClusterID      uint   `json:"clusterId" binding:"required"`
@@ -566,7 +566,7 @@ func (h *ClusterHandler) GetServiceAccountKubeConfig(c *gin.Context) {
 // @Produce json
 // @Param clusterId query int true "集群ID"
 // @Success 200 {object} map[string]interface{}
-// @Router /api/v1/kubernetes/clusters/kubeconfig/existing [get]
+// @Router /plugins/kubernetes/clusters/kubeconfig/existing [get]
 func (h *ClusterHandler) GetExistingKubeConfig(c *gin.Context) {
 	clusterIdStr := c.Query("clusterId")
 	if clusterIdStr == "" {
@@ -647,8 +647,8 @@ func (h *ClusterHandler) GetExistingKubeConfig(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param id path int true "集群ID"
-// @Success 200 {object} Response
-// @Router /api/v1/plugins/kubernetes/clusters/{id}/sync [post]
+// @Success 200 {object} map[string]interface{} "成功"
+// @Router /plugins/kubernetes/clusters/{id}/sync [post]
 func (h *ClusterHandler) SyncClusterStatus(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
@@ -678,8 +678,8 @@ func (h *ClusterHandler) SyncClusterStatus(c *gin.Context) {
 // @Tags Kubernetes/Cluster
 // @Accept json
 // @Produce json
-// @Success 200 {object} Response
-// @Router /api/v1/plugins/kubernetes/clusters/sync-all [post]
+// @Success 200 {object} map[string]interface{} "成功"
+// @Router /plugins/kubernetes/clusters/sync-all [post]
 func (h *ClusterHandler) SyncAllClustersStatus(c *gin.Context) {
 	// 异步同步所有集群状态
 	go func() {

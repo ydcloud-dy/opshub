@@ -51,7 +51,7 @@ func toPositionListResponse(position *rbac.SysPosition) PositionListResponse {
 // @Param body body rbac.SysPosition true "岗位信息"
 // @Success 200 {object} response.Response "创建成功"
 // @Failure 400 {object} response.Response "参数错误"
-// @Router /positions [post]
+// @Router /api/v1/positions [post]
 func (s *PositionService) CreatePosition(c *gin.Context) {
 	var req rbac.SysPosition
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -78,7 +78,7 @@ func (s *PositionService) CreatePosition(c *gin.Context) {
 // @Param body body rbac.SysPosition true "岗位信息"
 // @Success 200 {object} response.Response "更新成功"
 // @Failure 400 {object} response.Response "参数错误"
-// @Router /positions/{id} [put]
+// @Router /api/v1/positions/{id} [put]
 func (s *PositionService) UpdatePosition(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
@@ -112,7 +112,7 @@ func (s *PositionService) UpdatePosition(c *gin.Context) {
 // @Param id path int true "岗位ID"
 // @Success 200 {object} response.Response "删除成功"
 // @Failure 400 {object} response.Response "参数错误"
-// @Router /positions/{id} [delete]
+// @Router /api/v1/positions/{id} [delete]
 func (s *PositionService) DeletePosition(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
@@ -139,7 +139,7 @@ func (s *PositionService) DeletePosition(c *gin.Context) {
 // @Param id path int true "岗位ID"
 // @Success 200 {object} response.Response "获取成功"
 // @Failure 404 {object} response.Response "岗位不存在"
-// @Router /positions/{id} [get]
+// @Router /api/v1/positions/{id} [get]
 func (s *PositionService) GetPosition(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
@@ -169,7 +169,7 @@ func (s *PositionService) GetPosition(c *gin.Context) {
 // @Param postCode query string false "岗位编码"
 // @Param postName query string false "岗位名称"
 // @Success 200 {object} response.Response "获取成功"
-// @Router /positions [get]
+// @Router /api/v1/positions [get]
 func (s *PositionService) ListPositions(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
@@ -206,7 +206,7 @@ func (s *PositionService) ListPositions(c *gin.Context) {
 // @Param page query int false "页码" default(1)
 // @Param pageSize query int false "每页数量" default(10)
 // @Success 200 {object} response.Response "获取成功"
-// @Router /positions/{id}/users [get]
+// @Router /api/v1/positions/{id}/users [get]
 func (s *PositionService) GetPositionUsers(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
@@ -248,7 +248,7 @@ type AssignUsersToPositionRequest struct {
 // @Param body body AssignUsersToPositionRequest true "用户IDs"
 // @Success 200 {object} response.Response "分配成功"
 // @Failure 400 {object} response.Response "参数错误"
-// @Router /positions/{id}/users [post]
+// @Router /api/v1/positions/{id}/users [post]
 func (s *PositionService) AssignUsersToPosition(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
@@ -282,7 +282,7 @@ func (s *PositionService) AssignUsersToPosition(c *gin.Context) {
 // @Param userId path int true "用户ID"
 // @Success 200 {object} response.Response "移除成功"
 // @Failure 400 {object} response.Response "参数错误"
-// @Router /positions/{id}/users/{userId} [delete]
+// @Router /api/v1/positions/{id}/users/{userId} [delete]
 func (s *PositionService) RemoveUserFromPosition(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)

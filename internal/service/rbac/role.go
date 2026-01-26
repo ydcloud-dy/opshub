@@ -29,7 +29,7 @@ func NewRoleService(roleUseCase *rbac.RoleUseCase) *RoleService {
 // @Param body body rbac.SysRole true "角色信息"
 // @Success 200 {object} response.Response "创建成功"
 // @Failure 400 {object} response.Response "参数错误"
-// @Router /roles [post]
+// @Router /api/v1/roles [post]
 func (s *RoleService) CreateRole(c *gin.Context) {
 	var req rbac.SysRole
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -56,7 +56,7 @@ func (s *RoleService) CreateRole(c *gin.Context) {
 // @Param body body rbac.SysRole true "角色信息"
 // @Success 200 {object} response.Response "更新成功"
 // @Failure 400 {object} response.Response "参数错误"
-// @Router /roles/{id} [put]
+// @Router /api/v1/roles/{id} [put]
 func (s *RoleService) UpdateRole(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
@@ -90,7 +90,7 @@ func (s *RoleService) UpdateRole(c *gin.Context) {
 // @Param id path int true "角色ID"
 // @Success 200 {object} response.Response "删除成功"
 // @Failure 400 {object} response.Response "参数错误"
-// @Router /roles/{id} [delete]
+// @Router /api/v1/roles/{id} [delete]
 func (s *RoleService) DeleteRole(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
@@ -117,7 +117,7 @@ func (s *RoleService) DeleteRole(c *gin.Context) {
 // @Param id path int true "角色ID"
 // @Success 200 {object} response.Response "获取成功"
 // @Failure 404 {object} response.Response "角色不存在"
-// @Router /roles/{id} [get]
+// @Router /api/v1/roles/{id} [get]
 func (s *RoleService) GetRole(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
@@ -146,7 +146,7 @@ func (s *RoleService) GetRole(c *gin.Context) {
 // @Param pageSize query int false "每页数量" default(10)
 // @Param keyword query string false "搜索关键字"
 // @Success 200 {object} response.Response "获取成功"
-// @Router /roles [get]
+// @Router /api/v1/roles [get]
 func (s *RoleService) ListRoles(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
@@ -174,7 +174,7 @@ func (s *RoleService) ListRoles(c *gin.Context) {
 // @Produce json
 // @Security Bearer
 // @Success 200 {object} response.Response "获取成功"
-// @Router /roles/all [get]
+// @Router /api/v1/roles/all [get]
 func (s *RoleService) GetAllRoles(c *gin.Context) {
 	roles, err := s.roleUseCase.GetAll(c.Request.Context())
 	if err != nil {
@@ -201,7 +201,7 @@ type AssignRoleMenusRequest struct {
 // @Param body body AssignRoleMenusRequest true "菜单IDs"
 // @Success 200 {object} response.Response "分配成功"
 // @Failure 400 {object} response.Response "参数错误"
-// @Router /roles/{id}/menus [post]
+// @Router /api/v1/roles/{id}/menus [post]
 func (s *RoleService) AssignRoleMenus(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)

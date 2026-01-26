@@ -32,7 +32,7 @@ func NewMenuService(menuUseCase *rbac.MenuUseCase, roleUseCase *rbac.RoleUseCase
 // @Success 200 {object} response.Response "创建成功"
 // @Failure 400 {object} response.Response "参数错误"
 // @Failure 409 {object} response.Response "菜单编码已存在"
-// @Router /menus [post]
+// @Router /api/v1/menus [post]
 func (s *MenuService) CreateMenu(c *gin.Context) {
 	var req rbac.SysMenu
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -83,7 +83,7 @@ func containsMiddle(s, substr string) bool {
 // @Success 200 {object} response.Response "更新成功"
 // @Failure 400 {object} response.Response "参数错误"
 // @Failure 409 {object} response.Response "菜单编码已存在"
-// @Router /menus/{id} [put]
+// @Router /api/v1/menus/{id} [put]
 func (s *MenuService) UpdateMenu(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
@@ -122,7 +122,7 @@ func (s *MenuService) UpdateMenu(c *gin.Context) {
 // @Param id path int true "菜单ID"
 // @Success 200 {object} response.Response "删除成功"
 // @Failure 400 {object} response.Response "参数错误"
-// @Router /menus/{id} [delete]
+// @Router /api/v1/menus/{id} [delete]
 func (s *MenuService) DeleteMenu(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
@@ -149,7 +149,7 @@ func (s *MenuService) DeleteMenu(c *gin.Context) {
 // @Param id path int true "菜单ID"
 // @Success 200 {object} response.Response "获取成功"
 // @Failure 404 {object} response.Response "菜单不存在"
-// @Router /menus/{id} [get]
+// @Router /api/v1/menus/{id} [get]
 func (s *MenuService) GetMenu(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
@@ -175,7 +175,7 @@ func (s *MenuService) GetMenu(c *gin.Context) {
 // @Produce json
 // @Security Bearer
 // @Success 200 {object} response.Response "获取成功"
-// @Router /menus/tree [get]
+// @Router /api/v1/menus/tree [get]
 func (s *MenuService) GetMenuTree(c *gin.Context) {
 	tree, err := s.menuUseCase.GetTree(c.Request.Context())
 	if err != nil {
@@ -195,7 +195,7 @@ func (s *MenuService) GetMenuTree(c *gin.Context) {
 // @Security Bearer
 // @Success 200 {object} response.Response "获取成功"
 // @Failure 401 {object} response.Response "未登录"
-// @Router /menus/user [get]
+// @Router /api/v1/menus/user [get]
 func (s *MenuService) GetUserMenu(c *gin.Context) {
 	userID := GetUserID(c)
 	if userID == 0 {

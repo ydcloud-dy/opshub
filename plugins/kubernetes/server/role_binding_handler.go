@@ -40,8 +40,8 @@ type BindUserToRoleRequest struct {
 // @Accept json
 // @Produce json
 // @Param body body BindUserToRoleRequest true "绑定信息"
-// @Success 200 {object} Response
-// @Router /api/v1/plugins/kubernetes/role-bindings/bind [post]
+// @Success 200 {object} map[string]interface{} "成功"
+// @Router /plugins/kubernetes/role-bindings/bind [post]
 func (h *RoleBindingHandler) BindUserToRole(c *gin.Context) {
 	// 检查是否为管理员
 	if !RequireAdmin(c, h.db) {
@@ -116,8 +116,8 @@ type UnbindUserFromRoleRequest struct {
 // @Accept json
 // @Produce json
 // @Param body body UnbindUserFromRoleRequest true "解绑信息"
-// @Success 200 {object} Response
-// @Router /api/v1/plugins/kubernetes/role-bindings/unbind [delete]
+// @Success 200 {object} map[string]interface{} "成功"
+// @Router /plugins/kubernetes/role-bindings/unbind [delete]
 func (h *RoleBindingHandler) UnbindUserFromRole(c *gin.Context) {
 	// 检查是否为管理员
 	if !RequireAdmin(c, h.db) {
@@ -165,8 +165,8 @@ func (h *RoleBindingHandler) UnbindUserFromRole(c *gin.Context) {
 // @Param clusterId query int true "集群ID"
 // @Param roleName query string true "角色名称"
 // @Param roleNamespace query string false "角色命名空间"
-// @Success 200 {object} Response
-// @Router /api/v1/plugins/kubernetes/role-bindings/users [get]
+// @Success 200 {object} map[string]interface{} "成功"
+// @Router /plugins/kubernetes/role-bindings/users [get]
 func (h *RoleBindingHandler) GetRoleBoundUsers(c *gin.Context) {
 	clusterIdStr := c.Query("clusterId")
 	roleName := c.Query("roleName")
@@ -227,8 +227,8 @@ type GetAvailableUsersRequest struct {
 // @Param keyword query string false "搜索关键词"
 // @Param page query int true "页码"
 // @Param pageSize query int true "每页数量"
-// @Success 200 {object} Response
-// @Router /api/v1/plugins/kubernetes/role-bindings/available-users [get]
+// @Success 200 {object} map[string]interface{} "成功"
+// @Router /plugins/kubernetes/role-bindings/available-users [get]
 func (h *RoleBindingHandler) GetAvailableUsers(c *gin.Context) {
 	var req GetAvailableUsersRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
@@ -271,8 +271,8 @@ func (h *RoleBindingHandler) GetAvailableUsers(c *gin.Context) {
 // @Produce json
 // @Param clusterId query int true "集群ID"
 // @Param userId query int true "用户ID"
-// @Success 200 {object} Response
-// @Router /api/v1/plugins/kubernetes/role-bindings/user-roles [get]
+// @Success 200 {object} map[string]interface{} "成功"
+// @Router /plugins/kubernetes/role-bindings/user-roles [get]
 func (h *RoleBindingHandler) GetUserClusterRoles(c *gin.Context) {
 	clusterIdStr := c.Query("clusterId")
 	userIdStr := c.Query("userId")
@@ -331,8 +331,8 @@ func (h *RoleBindingHandler) GetUserClusterRoles(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param clusterId query int true "集群ID"
-// @Success 200 {object} Response
-// @Router /api/v1/plugins/kubernetes/role-bindings/credential-users [get]
+// @Success 200 {object} map[string]interface{} "成功"
+// @Router /plugins/kubernetes/role-bindings/credential-users [get]
 func (h *RoleBindingHandler) GetClusterCredentialUsers(c *gin.Context) {
 	clusterIdStr := c.Query("clusterId")
 
@@ -401,8 +401,8 @@ func (h *RoleBindingHandler) GetClusterCredentialUsers(c *gin.Context) {
 // @Produce json
 // @Param clusterId query int true "集群ID"
 // @Param userId query int false "用户ID（可选，不传则返回所有用户）"
-// @Success 200 {object} Response
-// @Router /api/v1/plugins/kubernetes/role-bindings/user-bindings [get]
+// @Success 200 {object} map[string]interface{} "成功"
+// @Router /plugins/kubernetes/role-bindings/user-bindings [get]
 func (h *RoleBindingHandler) GetUserRoleBindings(c *gin.Context) {
 	clusterIdStr := c.Query("clusterId")
 	userIdStr := c.Query("userId")

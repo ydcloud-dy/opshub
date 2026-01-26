@@ -31,7 +31,7 @@ type CaptchaResponse struct {
 // @Accept json
 // @Produce json
 // @Success 200 {object} response.Response{} "获取成功"
-// @Router /captcha [get]
+// @Router /api/v1/captcha [get]
 func (s *CaptchaService) GetCaptcha(c *gin.Context) {
 	// 生成验证码配置
 	driver := base64Captcha.NewDriverDigit(
@@ -74,7 +74,7 @@ type VerifyCaptchaRequest struct {
 // @Param body body VerifyCaptchaRequest true "验证码信息"
 // @Success 200 {object} response.Response{data=object} "验证成功"
 // @Failure 400 {object} response.Response "验证码错误"
-// @Router /captcha/verify [post]
+// @Router /api/v1/captcha/verify [post]
 func (s *CaptchaService) VerifyCaptcha(c *gin.Context) {
 	var req VerifyCaptchaRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

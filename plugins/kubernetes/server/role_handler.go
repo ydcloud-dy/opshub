@@ -36,8 +36,8 @@ func NewRoleHandler(db *gorm.DB) *RoleHandler {
 // @Accept json
 // @Produce json
 // @Param clusterId query int true "集群ID"
-// @Success 200 {object} Response
-// @Router /api/v1/plugins/kubernetes/roles/cluster [get]
+// @Success 200 {object} map[string]interface{} "成功"
+// @Router /plugins/kubernetes/roles/cluster [get]
 func (h *RoleHandler) ListClusterRoles(c *gin.Context) {
 	clusterIdStr := c.Query("clusterId")
 	if clusterIdStr == "" {
@@ -107,8 +107,8 @@ func (h *RoleHandler) ListClusterRoles(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param clusterId query int true "集群ID"
-// @Success 200 {object} Response
-// @Router /api/v1/plugins/kubernetes/roles/namespaces [get]
+// @Success 200 {object} map[string]interface{} "成功"
+// @Router /plugins/kubernetes/roles/namespaces [get]
 func (h *RoleHandler) ListNamespaces(c *gin.Context) {
 	clusterIdStr := c.Query("clusterId")
 	if clusterIdStr == "" {
@@ -185,8 +185,8 @@ func (h *RoleHandler) ListNamespaces(c *gin.Context) {
 // @Produce json
 // @Param clusterId query int true "集群ID"
 // @Param namespace query string true "命名空间"
-// @Success 200 {object} Response
-// @Router /api/v1/plugins/kubernetes/roles/namespace [get]
+// @Success 200 {object} map[string]interface{} "成功"
+// @Router /plugins/kubernetes/roles/namespace [get]
 func (h *RoleHandler) ListNamespaceRoles(c *gin.Context) {
 	clusterIdStr := c.Query("clusterId")
 	namespace := c.Query("namespace")
@@ -268,8 +268,8 @@ func (h *RoleHandler) ListNamespaceRoles(c *gin.Context) {
 // @Param clusterId query int true "集群ID"
 // @Param namespace path string true "命名空间"
 // @param name path string true "角色名"
-// @Success 200 {object} Response
-// @Router /api/v1/plugins/kubernetes/roles/{namespace}/{name} [get]
+// @Success 200 {object} map[string]interface{} "成功"
+// @Router /plugins/kubernetes/roles/{namespace}/{name} [get]
 func (h *RoleHandler) GetRoleDetail(c *gin.Context) {
 	clusterIdStr := c.Query("clusterId")
 	namespace := c.Param("namespace")
@@ -348,8 +348,8 @@ func (h *RoleHandler) GetRoleDetail(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param clusterId query int true "集群ID"
-// @Success 200 {object} Response
-// @Router /api/v1/plugins/kubernetes/roles/create-defaults [post]
+// @Success 200 {object} map[string]interface{} "成功"
+// @Router /plugins/kubernetes/roles/create-defaults [post]
 func (h *RoleHandler) CreateDefaultClusterRoles(c *gin.Context) {
 	startTime := time.Now()
 	clusterIdStr := c.Query("clusterId")
@@ -714,8 +714,8 @@ func getDefaultClusterRoles() []rbacv1.ClusterRole {
 // @Accept json
 // @Produce json
 // @Param clusterId query int true "集群ID"
-// @Success 200 {object} Response
-// @Router /api/v1/plugins/kubernetes/roles/create-defaults-namespace [post]
+// @Success 200 {object} map[string]interface{} "成功"
+// @Router /plugins/kubernetes/roles/create-defaults-namespace [post]
 func (h *RoleHandler) CreateDefaultNamespaceRoles(c *gin.Context) {
 	clusterIdStr := c.Query("clusterId")
 
@@ -1078,8 +1078,8 @@ func getDefaultNamespaceRoles() []rbacv1.ClusterRole {
 // @Param clusterId query int true "集群ID"
 // @Param namespace path string true "命名空间"
 // @param name path string true "角色名"
-// @Success 200 {object} Response
-// @Router /api/v1/plugins/kubernetes/roles/{namespace}/{name} [delete]
+// @Success 200 {object} map[string]interface{} "成功"
+// @Router /plugins/kubernetes/roles/{namespace}/{name} [delete]
 func (h *RoleHandler) DeleteRole(c *gin.Context) {
 	clusterIdStr := c.Query("clusterId")
 	namespace := c.Param("namespace")
@@ -1299,7 +1299,7 @@ type CreateRoleRule struct {
 // @Produce json
 // @Param clusterId path int true "集群ID"
 // @Param request body CreateRoleRequest true "角色信息"
-// @Success 200 {object} Response
+// @Success 200 {object} map[string]interface{} "成功"
 // @Router /api/v1/plugins/kubernetes/clusters/{clusterId}/roles [post]
 func (h *RoleHandler) CreateRole(c *gin.Context) {
 	clusterIdStr := c.Param("id")

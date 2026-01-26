@@ -1608,8 +1608,8 @@ func (h *ResourceHandler) ListEvents(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param clusterId query int true "集群ID"
-// @Success 200 {object} Response
-// @Router /api/v1/plugins/kubernetes/resources/api-groups [get]
+// @Success 200 {object} map[string]interface{} "成功"
+// @Router /plugins/kubernetes/resources/api-groups [get]
 func (h *ResourceHandler) GetAPIGroups(c *gin.Context) {
 	clusterIdStr := c.Query("clusterId")
 	if clusterIdStr == "" {
@@ -1693,8 +1693,8 @@ func (h *ResourceHandler) GetAPIGroups(c *gin.Context) {
 // @Produce json
 // @Param clusterId query int true "集群ID"
 // @Param apiGroups query string true "API组列表（逗号分隔）"
-// @Success 200 {object} Response
-// @Router /api/v1/plugins/kubernetes/resources/api-resources [get]
+// @Success 200 {object} map[string]interface{} "成功"
+// @Router /plugins/kubernetes/resources/api-resources [get]
 func (h *ResourceHandler) GetResourcesByAPIGroup(c *gin.Context) {
 	clusterIdStr := c.Query("clusterId")
 	if clusterIdStr == "" {

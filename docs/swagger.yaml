@@ -1,5 +1,78 @@
 basePath: /api/v1
 definitions:
+  asset.AssetGroupRequest:
+    properties:
+      code:
+        maxLength: 50
+        minLength: 2
+        type: string
+      description:
+        type: string
+      id:
+        type: integer
+      name:
+        maxLength: 100
+        minLength: 2
+        type: string
+      parentId:
+        type: integer
+      sort:
+        type: integer
+      status:
+        type: integer
+    required:
+    - code
+    - name
+    - status
+    type: object
+  asset.CloudAccountRequest:
+    properties:
+      accessKey:
+        type: string
+      description:
+        type: string
+      id:
+        type: integer
+      name:
+        maxLength: 100
+        minLength: 2
+        type: string
+      provider:
+        enum:
+        - aliyun
+        - tencent
+        - aws
+        - huawei
+        - jdcloud
+        type: string
+      region:
+        type: string
+      secretKey:
+        type: string
+      status:
+        type: integer
+    required:
+    - name
+    - provider
+    type: object
+  asset.CloudImportRequest:
+    properties:
+      accountId:
+        type: integer
+      accountName:
+        type: string
+      groupId:
+        type: integer
+      instanceIds:
+        description: 要导入的实例ID列表
+        items:
+          type: string
+        type: array
+      region:
+        type: string
+    required:
+    - accountId
+    type: object
   asset.CredentialRequest:
     properties:
       description:
@@ -187,6 +260,52 @@ definitions:
         description: 接收人ID
         type: integer
     type: object
+  model.AnsibleTask:
+    properties:
+      createdAt:
+        type: string
+      createdBy:
+        type: integer
+      deletedAt:
+        type: string
+      extraVars:
+        description: JSON
+        type: string
+      fork:
+        type: integer
+      id:
+        type: integer
+      inventory:
+        description: JSON字符串
+        type: string
+      lastRunResult:
+        description: JSON
+        type: string
+      lastRunTime:
+        type: string
+      name:
+        type: string
+      playbookContent:
+        type: string
+      playbookPath:
+        type: string
+      status:
+        description: pending, running, success, failed, cancelled
+        type: string
+      tags:
+        description: 逗号分隔
+        type: string
+      timeout:
+        description: 秒
+        type: integer
+      updatedAt:
+        type: string
+      verbose:
+        description: v, vv, vvv
+        type: string
+    required:
+    - name
+    type: object
   model.DomainMonitor:
     properties:
       alertConfigId:
@@ -235,6 +354,135 @@ definitions:
       updatedAt:
         type: string
     type: object
+  model.InspectionOptions:
+    properties:
+      checkCapacity:
+        type: boolean
+      checkCluster:
+        type: boolean
+      checkConfig:
+        type: boolean
+      checkEvents:
+        type: boolean
+      checkNetwork:
+        type: boolean
+      checkNodes:
+        type: boolean
+      checkSecurity:
+        type: boolean
+      checkStorage:
+        type: boolean
+      checkWorkloads:
+        type: boolean
+    type: object
+  model.JobTask:
+    properties:
+      createdAt:
+        type: string
+      createdBy:
+        type: integer
+      deletedAt:
+        type: string
+      errorMessage:
+        type: string
+      executeTime:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      parameters:
+        description: JSON
+        type: string
+      result:
+        description: JSON
+        type: string
+      status:
+        description: pending, running, success, failed
+        type: string
+      targetHosts:
+        description: JSON字符串
+        type: string
+      taskType:
+        description: manual, ansible, cron
+        type: string
+      templateId:
+        type: integer
+      updatedAt:
+        type: string
+    required:
+    - name
+    - taskType
+    type: object
+  model.JobTemplate:
+    properties:
+      category:
+        description: script, ansible, module
+        type: string
+      code:
+        type: string
+      content:
+        type: string
+      createdAt:
+        type: string
+      createdBy:
+        type: integer
+      deletedAt:
+        type: string
+      description:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      platform:
+        description: linux, windows
+        type: string
+      sort:
+        type: integer
+      status:
+        description: 0-禁用, 1-启用
+        type: integer
+      timeout:
+        description: 秒
+        type: integer
+      updatedAt:
+        type: string
+      variables:
+        description: JSON字符串
+        type: string
+    required:
+    - category
+    - code
+    - content
+    - name
+    type: object
+  rbac.AssetPermissionCreateReqWithPermissions:
+    properties:
+      assetGroupId:
+        type: integer
+      hostIds:
+        description: 空数组表示整个分组，非空表示指定主机
+        items:
+          type: integer
+        type: array
+      permissions:
+        type: integer
+      roleId:
+        type: integer
+    required:
+    - assetGroupId
+    - roleId
+    type: object
+  rbac.AssignRoleMenusRequest:
+    properties:
+      menuIds:
+        items:
+          type: integer
+        type: array
+    required:
+    - menuIds
+    type: object
   rbac.AssignUserPositionsRequest:
     properties:
       positionIds:
@@ -251,6 +499,15 @@ definitions:
     required:
     - roleIds
     type: object
+  rbac.AssignUsersToPositionRequest:
+    properties:
+      userIds:
+        items:
+          type: integer
+        type: array
+    required:
+    - userIds
+    type: object
   rbac.ChangePasswordRequest:
     properties:
       newPassword:
@@ -261,6 +518,31 @@ definitions:
     required:
     - newPassword
     - oldPassword
+    type: object
+  rbac.DepartmentRequest:
+    properties:
+      code:
+        maxLength: 50
+        minLength: 2
+        type: string
+      deptName:
+        maxLength: 50
+        minLength: 2
+        type: string
+      deptStatus:
+        type: integer
+      deptType:
+        type: integer
+      id:
+        type: integer
+      parentId:
+        type: integer
+      sort:
+        type: integer
+    required:
+    - code
+    - deptName
+    - deptStatus
     type: object
   rbac.LoginRequest:
     properties:
@@ -304,6 +586,12 @@ definitions:
         type: string
     required:
     - password
+    type: object
+  rbac.SysMenu:
+    type: object
+  rbac.SysPosition:
+    type: object
+  rbac.SysRole:
     type: object
   rbac.SysUser:
     type: object
@@ -378,13 +666,34 @@ definitions:
           type: string
         type: array
     type: object
-  server.Response:
+  server.ExecuteTaskRequest:
     properties:
-      code:
-        type: integer
-      data: {}
-      message:
+      content:
         type: string
+      hostIds:
+        items:
+          type: integer
+        type: array
+      name:
+        type: string
+      scriptType:
+        description: Shell, Python
+        type: string
+    required:
+    - content
+    - hostIds
+    - scriptType
+    type: object
+  server.StartInspectionRequest:
+    properties:
+      clusterIds:
+        items:
+          type: integer
+        type: array
+      options:
+        $ref: '#/definitions/model.InspectionOptions'
+    required:
+    - clusterIds
     type: object
   server.UnbindUserFromRoleRequest:
     properties:
@@ -401,6 +710,46 @@ definitions:
     - roleName
     - userId
     type: object
+  service.CreateClusterRequest:
+    properties:
+      alias:
+        type: string
+      apiEndpoint:
+        description: 移除 required，因为 KubeConfig 中已经包含
+        type: string
+      description:
+        type: string
+      kubeConfig:
+        type: string
+      name:
+        type: string
+      provider:
+        type: string
+      region:
+        type: string
+      userId:
+        type: integer
+    required:
+    - kubeConfig
+    - name
+    type: object
+  service.UpdateClusterRequest:
+    properties:
+      alias:
+        type: string
+      apiEndpoint:
+        type: string
+      description:
+        type: string
+      kubeConfig:
+        type: string
+      name:
+        type: string
+      provider:
+        type: string
+      region:
+        type: string
+    type: object
 host: localhost:8080
 info:
   contact:
@@ -415,746 +764,18 @@ info:
   title: OpsHub API
   version: "1.0"
 paths:
-  /api/v1/example:
-    get:
-      consumes:
-      - application/json
-      description: 这是一个示例接口
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            allOf:
-            - $ref: '#/definitions/response.Response'
-            - properties:
-                data:
-                  additionalProperties:
-                    type: string
-                  type: object
-              type: object
-      summary: 示例接口
-      tags:
-      - 示例
-  /api/v1/kubernetes/clusters:
-    get:
-      consumes:
-      - application/json
-      description: 获取所有 Kubernetes 集群
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/server.Response'
-      summary: 获取集群列表
-      tags:
-      - Kubernetes/Cluster
+  /api/v1/asset-groups:
     post:
       consumes:
       - application/json
-      description: 创建新的 Kubernetes 集群
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/server.Response'
-      summary: 创建集群
-      tags:
-      - Kubernetes/Cluster
-  /api/v1/kubernetes/clusters/{id}:
-    delete:
-      consumes:
-      - application/json
-      description: 删除 Kubernetes 集群
+      description: 创建新的资产分组
       parameters:
-      - description: 集群ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/server.Response'
-      summary: 删除集群
-      tags:
-      - Kubernetes/Cluster
-    get:
-      consumes:
-      - application/json
-      description: 获取 Kubernetes 集群详细信息
-      parameters:
-      - description: 集群ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/server.Response'
-      summary: 获取集群详情
-      tags:
-      - Kubernetes/Cluster
-    put:
-      consumes:
-      - application/json
-      description: 更新 Kubernetes 集群信息
-      parameters:
-      - description: 集群ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/server.Response'
-      summary: 更新集群
-      tags:
-      - Kubernetes/Cluster
-  /api/v1/kubernetes/clusters/{id}/test:
-    post:
-      consumes:
-      - application/json
-      description: 测试 Kubernetes 集群连接状态
-      parameters:
-      - description: 集群ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/server.Response'
-      summary: 测试集群连接
-      tags:
-      - Kubernetes/Cluster
-  /api/v1/kubernetes/clusters/kubeconfig/existing:
-    get:
-      consumes:
-      - application/json
-      description: 获取当前用户在指定集群的最新KubeConfig
-      parameters:
-      - description: 集群ID
-        in: query
-        name: clusterId
-        required: true
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            additionalProperties: true
-            type: object
-      summary: 获取用户现有的KubeConfig
-      tags:
-      - Kubernetes/Cluster
-  /api/v1/plugins/kubernetes/clusters/{clusterId}/roles:
-    post:
-      consumes:
-      - application/json
-      description: 创建集群角色或命名空间角色
-      parameters:
-      - description: 集群ID
-        in: path
-        name: clusterId
-        required: true
-        type: integer
-      - description: 角色信息
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/server.CreateRoleRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/server.Response'
-      summary: 创建角色
-      tags:
-      - Kubernetes/Role
-  /api/v1/plugins/kubernetes/clusters/{id}/config:
-    get:
-      consumes:
-      - application/json
-      description: 获取集群的 KubeConfig 配置（已解密）
-      parameters:
-      - description: 集群ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/server.Response'
-      summary: 获取集群凭证
-      tags:
-      - Kubernetes/Cluster
-  /api/v1/plugins/kubernetes/clusters/{id}/sync:
-    post:
-      consumes:
-      - application/json
-      description: 同步指定集群的状态信息（节点数、Pod数等）
-      parameters:
-      - description: 集群ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/server.Response'
-      summary: 同步集群状态
-      tags:
-      - Kubernetes/Cluster
-  /api/v1/plugins/kubernetes/clusters/kubeconfig:
-    delete:
-      consumes:
-      - application/json
-      description: 吊销用户的集群 KubeConfig 凭据
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/server.Response'
-      summary: 吊销 KubeConfig
-      tags:
-      - Kubernetes/Cluster
-    post:
-      consumes:
-      - application/json
-      description: 为当前用户生成集群的 KubeConfig 凭据
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/server.Response'
-      summary: 生成 KubeConfig
-      tags:
-      - Kubernetes/Cluster
-  /api/v1/plugins/kubernetes/clusters/kubeconfig/revoke:
-    delete:
-      consumes:
-      - application/json
-      description: 删除 ServiceAccount、所有相关 RoleBinding 和数据库记录
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/server.Response'
-      summary: 完全吊销凭据
-      tags:
-      - Kubernetes/Cluster
-  /api/v1/plugins/kubernetes/clusters/kubeconfig/sa:
-    post:
-      consumes:
-      - application/json
-      description: 为指定的ServiceAccount生成KubeConfig凭据
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            additionalProperties: true
-            type: object
-      summary: 根据ServiceAccount获取KubeConfig
-      tags:
-      - Kubernetes/Cluster
-  /api/v1/plugins/kubernetes/clusters/sync-all:
-    post:
-      consumes:
-      - application/json
-      description: 同步所有集群的状态信息（用于后台定时任务）
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/server.Response'
-      summary: 同步所有集群状态
-      tags:
-      - Kubernetes/Cluster
-  /api/v1/plugins/kubernetes/resources/api-groups:
-    get:
-      consumes:
-      - application/json
-      description: 获取Kubernetes集群所有可用的API组
-      parameters:
-      - description: 集群ID
-        in: query
-        name: clusterId
-        required: true
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/server.Response'
-      summary: 获取API组列表
-      tags:
-      - Kubernetes/Resources
-  /api/v1/plugins/kubernetes/resources/api-resources:
-    get:
-      consumes:
-      - application/json
-      description: 根据选定的API组列表获取所有这些组下的资源类型
-      parameters:
-      - description: 集群ID
-        in: query
-        name: clusterId
-        required: true
-        type: integer
-      - description: API组列表（逗号分隔）
-        in: query
-        name: apiGroups
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/server.Response'
-      summary: 根据API组获取资源列表
-      tags:
-      - Kubernetes/Resources
-  /api/v1/plugins/kubernetes/role-bindings/available-users:
-    get:
-      consumes:
-      - application/json
-      description: 获取系统中可以绑定的用户列表
-      parameters:
-      - description: 搜索关键词
-        in: query
-        name: keyword
-        type: string
-      - description: 页码
-        in: query
-        name: page
-        required: true
-        type: integer
-      - description: 每页数量
-        in: query
-        name: pageSize
-        required: true
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/server.Response'
-      summary: 获取可绑定的用户列表
-      tags:
-      - Kubernetes/RoleBinding
-  /api/v1/plugins/kubernetes/role-bindings/bind:
-    post:
-      consumes:
-      - application/json
-      description: 将平台用户绑定到指定的K8s角色
-      parameters:
-      - description: 绑定信息
+      - description: 分组信息
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/server.BindUserToRoleRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/server.Response'
-      summary: 绑定用户到K8s角色
-      tags:
-      - Kubernetes/RoleBinding
-  /api/v1/plugins/kubernetes/role-bindings/credential-users:
-    get:
-      consumes:
-      - application/json
-      description: 获取当前用户在指定集群的凭据用户（ServiceAccount）
-      parameters:
-      - description: 集群ID
-        in: query
-        name: clusterId
-        required: true
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/server.Response'
-      summary: 获取集群的凭据用户列表
-      tags:
-      - Kubernetes/RoleBinding
-  /api/v1/plugins/kubernetes/role-bindings/unbind:
-    delete:
-      consumes:
-      - application/json
-      description: 解除用户与K8s角色的绑定
-      parameters:
-      - description: 解绑信息
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/server.UnbindUserFromRoleRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/server.Response'
-      summary: 解绑用户K8s角色
-      tags:
-      - Kubernetes/RoleBinding
-  /api/v1/plugins/kubernetes/role-bindings/user-bindings:
-    get:
-      consumes:
-      - application/json
-      description: 获取指定集群中所有用户（或指定用户）的K8s角色绑定列表
-      parameters:
-      - description: 集群ID
-        in: query
-        name: clusterId
-        required: true
-        type: integer
-      - description: 用户ID（可选，不传则返回所有用户）
-        in: query
-        name: userId
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/server.Response'
-      summary: 获取用户的所有K8s角色绑定
-      tags:
-      - Kubernetes/RoleBinding
-  /api/v1/plugins/kubernetes/role-bindings/user-roles:
-    get:
-      consumes:
-      - application/json
-      description: 获取指定用户在指定集群的所有角色
-      parameters:
-      - description: 集群ID
-        in: query
-        name: clusterId
-        required: true
-        type: integer
-      - description: 用户ID
-        in: query
-        name: userId
-        required: true
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/server.Response'
-      summary: 获取用户在指定集群的角色列表
-      tags:
-      - Kubernetes/RoleBinding
-  /api/v1/plugins/kubernetes/role-bindings/users:
-    get:
-      consumes:
-      - application/json
-      description: 获取指定角色的所有绑定用户
-      parameters:
-      - description: 集群ID
-        in: query
-        name: clusterId
-        required: true
-        type: integer
-      - description: 角色名称
-        in: query
-        name: roleName
-        required: true
-        type: string
-      - description: 角色命名空间
-        in: query
-        name: roleNamespace
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/server.Response'
-      summary: 获取角色已绑定的用户列表
-      tags:
-      - Kubernetes/RoleBinding
-  /api/v1/plugins/kubernetes/roles/{namespace}/{name}:
-    delete:
-      consumes:
-      - application/json
-      description: 删除指定的角色
-      parameters:
-      - description: 集群ID
-        in: query
-        name: clusterId
-        required: true
-        type: integer
-      - description: 命名空间
-        in: path
-        name: namespace
-        required: true
-        type: string
-      - description: 角色名
-        in: path
-        name: name
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/server.Response'
-      summary: 删除角色
-      tags:
-      - Kubernetes/Role
-    get:
-      consumes:
-      - application/json
-      description: 获取角色的详细信息，包括权限规则
-      parameters:
-      - description: 集群ID
-        in: query
-        name: clusterId
-        required: true
-        type: integer
-      - description: 命名空间
-        in: path
-        name: namespace
-        required: true
-        type: string
-      - description: 角色名
-        in: path
-        name: name
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/server.Response'
-      summary: 获取角色详情
-      tags:
-      - Kubernetes/Role
-  /api/v1/plugins/kubernetes/roles/cluster:
-    get:
-      consumes:
-      - application/json
-      description: 获取所有 Kubernetes 集群级别的角色
-      parameters:
-      - description: 集群ID
-        in: query
-        name: clusterId
-        required: true
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/server.Response'
-      summary: 获取集群角色列表
-      tags:
-      - Kubernetes/Role
-  /api/v1/plugins/kubernetes/roles/create-defaults:
-    post:
-      consumes:
-      - application/json
-      description: 创建 OpsHub 平台使用的默认集群角色
-      parameters:
-      - description: 集群ID
-        in: query
-        name: clusterId
-        required: true
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/server.Response'
-      summary: 创建默认集群角色
-      tags:
-      - Kubernetes/Role
-  /api/v1/plugins/kubernetes/roles/create-defaults-namespace:
-    post:
-      consumes:
-      - application/json
-      description: 创建用于命名空间级别授权的 ClusterRole（通过 RoleBinding 在特定命名空间生效）
-      parameters:
-      - description: 集群ID
-        in: query
-        name: clusterId
-        required: true
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/server.Response'
-      summary: 创建默认命名空间角色
-      tags:
-      - Kubernetes/Role
-  /api/v1/plugins/kubernetes/roles/namespace:
-    get:
-      consumes:
-      - application/json
-      description: 获取指定命名空间的所有角色
-      parameters:
-      - description: 集群ID
-        in: query
-        name: clusterId
-        required: true
-        type: integer
-      - description: 命名空间
-        in: query
-        name: namespace
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/server.Response'
-      summary: 获取命名空间角色列表
-      tags:
-      - Kubernetes/Role
-  /api/v1/plugins/kubernetes/roles/namespaces:
-    get:
-      consumes:
-      - application/json
-      description: 获取所有命名空间
-      parameters:
-      - description: 集群ID
-        in: query
-        name: clusterId
-        required: true
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/server.Response'
-      summary: 获取命名空间列表
-      tags:
-      - Kubernetes/Role
-  /asset-hosts:
-    get:
-      consumes:
-      - application/json
-      description: 分页获取主机列表，支持搜索和按分组筛选
-      parameters:
-      - default: 1
-        description: 页码
-        in: query
-        name: page
-        type: integer
-      - default: 10
-        description: 每页数量
-        in: query
-        name: pageSize
-        type: integer
-      - description: 搜索关键字
-        in: query
-        name: keyword
-        type: string
-      - description: 分组ID
-        in: query
-        name: groupId
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 获取成功
-          schema:
-            $ref: '#/definitions/response.Response'
-      security:
-      - Bearer: []
-      summary: 获取主机列表
-      tags:
-      - 资产管理-主机
-    post:
-      consumes:
-      - application/json
-      description: 创建新的主机资源
-      parameters:
-      - description: 主机信息
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/asset.HostRequest'
+          $ref: '#/definitions/asset.AssetGroupRequest'
       produces:
       - application/json
       responses:
@@ -1162,18 +783,22 @@ paths:
           description: 创建成功
           schema:
             $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
       security:
       - Bearer: []
-      summary: 创建主机
+      summary: 创建资产分组
       tags:
-      - 资产管理-主机
-  /asset-hosts/{id}:
+      - 资产分组管理
+  /api/v1/asset-groups/{id}:
     delete:
       consumes:
       - application/json
-      description: 删除指定的主机资源
+      description: 删除指定的资产分组
       parameters:
-      - description: 主机ID
+      - description: 分组ID
         in: path
         name: id
         required: true
@@ -1185,17 +810,21 @@ paths:
           description: 删除成功
           schema:
             $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
       security:
       - Bearer: []
-      summary: 删除主机
+      summary: 删除资产分组
       tags:
-      - 资产管理-主机
+      - 资产分组管理
     get:
       consumes:
       - application/json
-      description: 获取单个主机的详细信息
+      description: 获取指定资产分组的详细信息
       parameters:
-      - description: 主机ID
+      - description: 分组ID
         in: path
         name: id
         required: true
@@ -1207,27 +836,31 @@ paths:
           description: 获取成功
           schema:
             $ref: '#/definitions/response.Response'
+        "404":
+          description: 分组不存在
+          schema:
+            $ref: '#/definitions/response.Response'
       security:
       - Bearer: []
-      summary: 获取主机详情
+      summary: 获取资产分组详情
       tags:
-      - 资产管理-主机
+      - 资产分组管理
     put:
       consumes:
       - application/json
-      description: 更新已有的主机信息
+      description: 更新指定的资产分组信息
       parameters:
-      - description: 主机ID
+      - description: 分组ID
         in: path
         name: id
         required: true
         type: integer
-      - description: 主机信息
+      - description: 分组信息
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/asset.HostRequest'
+          $ref: '#/definitions/asset.AssetGroupRequest'
       produces:
       - application/json
       responses:
@@ -1235,12 +868,572 @@ paths:
           description: 更新成功
           schema:
             $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
       security:
       - Bearer: []
-      summary: 更新主机信息
+      summary: 更新资产分组
       tags:
-      - 资产管理-主机
-  /audit/operation-logs:
+      - 资产分组管理
+  /api/v1/asset-groups/parent-options:
+    get:
+      consumes:
+      - application/json
+      description: 获取可选的父级资产分组列表
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取父级分组选项
+      tags:
+      - 资产分组管理
+  /api/v1/asset-groups/tree:
+    get:
+      consumes:
+      - application/json
+      description: 获取资产分组的树形结构数据
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取资产分组树
+      tags:
+      - 资产分组管理
+  /api/v1/asset-permissions:
+    delete:
+      consumes:
+      - application/json
+      description: 删除指定角色对指定资产分组的所有权限配置
+      parameters:
+      - description: 角色ID
+        in: query
+        name: roleId
+        required: true
+        type: integer
+      - description: 资产分组ID
+        in: query
+        name: assetGroupId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 按角色和分组删除权限
+      tags:
+      - 资产权限管理
+    get:
+      consumes:
+      - application/json
+      description: 分页获取资产权限列表
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: 每页数量
+        in: query
+        name: pageSize
+        type: integer
+      - description: 角色ID
+        in: query
+        name: roleId
+        type: integer
+      - description: 资产分组ID
+        in: query
+        name: assetGroupId
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取资产权限列表
+      tags:
+      - 资产权限管理
+    post:
+      consumes:
+      - application/json
+      description: 为角色创建资产访问权限
+      parameters:
+      - description: 权限信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/rbac.AssetPermissionCreateReqWithPermissions'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 创建成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 创建资产权限
+      tags:
+      - 资产权限管理
+  /api/v1/asset-permissions/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: 删除指定的资产权限配置
+      parameters:
+      - description: 权限ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 删除资产权限
+      tags:
+      - 资产权限管理
+    get:
+      consumes:
+      - application/json
+      description: 获取指定资产权限的详细信息
+      parameters:
+      - description: 权限ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取资产权限详情
+      tags:
+      - 资产权限管理
+    put:
+      consumes:
+      - application/json
+      description: 更新指定资产权限的配置
+      parameters:
+      - description: 权限ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 权限信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/rbac.AssetPermissionCreateReqWithPermissions'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 更新成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 更新资产权限
+      tags:
+      - 资产权限管理
+  /api/v1/asset-permissions/group/{assetGroupId}:
+    get:
+      consumes:
+      - application/json
+      description: 获取指定资产分组的所有权限配置
+      parameters:
+      - description: 资产分组ID
+        in: path
+        name: assetGroupId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取分组资产权限
+      tags:
+      - 资产权限管理
+  /api/v1/asset-permissions/role/{roleId}:
+    get:
+      consumes:
+      - application/json
+      description: 获取指定角色的所有资产权限配置
+      parameters:
+      - description: 角色ID
+        in: path
+        name: roleId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取角色资产权限
+      tags:
+      - 资产权限管理
+  /api/v1/asset-permissions/user/host:
+    get:
+      consumes:
+      - application/json
+      description: 获取当前登录用户对指定主机的操作权限
+      parameters:
+      - description: 主机ID
+        in: query
+        name: hostId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: 未授权
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取用户主机权限
+      tags:
+      - 资产权限管理
+  /api/v1/audit/data-logs:
+    get:
+      consumes:
+      - application/json
+      description: 分页获取数据变更日志，支持按用户名、表名、操作类型和时间范围筛选
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: 每页数量
+        in: query
+        name: pageSize
+        type: integer
+      - description: 用户名
+        in: query
+        name: username
+        type: string
+      - description: 表名
+        in: query
+        name: tableName
+        type: string
+      - description: 操作类型
+        in: query
+        name: action
+        type: string
+      - description: 开始时间
+        in: query
+        name: startTime
+        type: string
+      - description: 结束时间
+        in: query
+        name: endTime
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取数据日志列表
+      tags:
+      - 审计管理-数据日志
+  /api/v1/audit/data-logs/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: 删除指定的数据变更日志记录
+      parameters:
+      - description: 数据日志ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 删除数据日志
+      tags:
+      - 审计管理-数据日志
+    get:
+      consumes:
+      - application/json
+      description: 获取单条数据变更日志的详细信息
+      parameters:
+      - description: 数据日志ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: 日志不存在
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取数据日志详情
+      tags:
+      - 审计管理-数据日志
+  /api/v1/audit/data-logs/batch:
+    delete:
+      consumes:
+      - application/json
+      description: 批量删除多条数据变更日志记录
+      parameters:
+      - description: 日志ID列表
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 批量删除数据日志
+      tags:
+      - 审计管理-数据日志
+  /api/v1/audit/login-logs:
+    get:
+      consumes:
+      - application/json
+      description: 分页获取系统登录日志，支持按用户名、登录类型、登录状态和时间范围筛选
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: 每页数量
+        in: query
+        name: pageSize
+        type: integer
+      - description: 用户名
+        in: query
+        name: username
+        type: string
+      - description: 登录类型
+        in: query
+        name: loginType
+        type: string
+      - description: 登录状态
+        in: query
+        name: loginStatus
+        type: string
+      - description: 开始时间
+        in: query
+        name: startTime
+        type: string
+      - description: 结束时间
+        in: query
+        name: endTime
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取登录日志列表
+      tags:
+      - 审计管理-登录日志
+  /api/v1/audit/login-logs/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: 删除指定的登录日志记录
+      parameters:
+      - description: 登录日志ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 删除登录日志
+      tags:
+      - 审计管理-登录日志
+    get:
+      consumes:
+      - application/json
+      description: 获取单条登录日志的详细信息
+      parameters:
+      - description: 登录日志ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: 日志不存在
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取登录日志详情
+      tags:
+      - 审计管理-登录日志
+  /api/v1/audit/login-logs/batch:
+    delete:
+      consumes:
+      - application/json
+      description: 批量删除多条登录日志记录
+      parameters:
+      - description: 日志ID列表
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 批量删除登录日志
+      tags:
+      - 审计管理-登录日志
+  /api/v1/audit/operation-logs:
     get:
       consumes:
       - application/json
@@ -1292,7 +1485,33 @@ paths:
       summary: 获取操作日志列表
       tags:
       - 审计管理-操作日志
-  /audit/operation-logs/{id}:
+  /api/v1/audit/operation-logs/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: 删除指定的操作日志记录
+      parameters:
+      - description: 操作日志ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 删除操作日志
+      tags:
+      - 审计管理-操作日志
     get:
       consumes:
       - application/json
@@ -1315,7 +1534,35 @@ paths:
       summary: 获取操作日志详情
       tags:
       - 审计管理-操作日志
-  /captcha:
+  /api/v1/audit/operation-logs/batch:
+    delete:
+      consumes:
+      - application/json
+      description: 批量删除多条操作日志记录
+      parameters:
+      - description: 日志ID列表
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 批量删除操作日志
+      tags:
+      - 审计管理-操作日志
+  /api/v1/captcha:
     get:
       consumes:
       - application/json
@@ -1330,7 +1577,7 @@ paths:
       summary: 获取验证码
       tags:
       - 认证管理
-  /captcha/verify:
+  /api/v1/captcha/verify:
     post:
       consumes:
       - application/json
@@ -1361,7 +1608,251 @@ paths:
       summary: 验证验证码
       tags:
       - 认证管理
-  /credentials:
+  /api/v1/cloud-accounts:
+    get:
+      consumes:
+      - application/json
+      description: 分页获取云平台账号列表
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: 每页数量
+        in: query
+        name: pageSize
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取云平台账号列表
+      tags:
+      - 资产管理-云账号
+    post:
+      consumes:
+      - application/json
+      description: 创建新的云平台账号配置
+      parameters:
+      - description: 云账号信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/asset.CloudAccountRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 创建成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 创建云平台账号
+      tags:
+      - 资产管理-云账号
+  /api/v1/cloud-accounts/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: 删除指定的云平台账号
+      parameters:
+      - description: 云账号ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 删除云平台账号
+      tags:
+      - 资产管理-云账号
+    get:
+      consumes:
+      - application/json
+      description: 获取指定云平台账号的详细信息
+      parameters:
+      - description: 云账号ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: 账号不存在
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取云平台账号详情
+      tags:
+      - 资产管理-云账号
+    put:
+      consumes:
+      - application/json
+      description: 更新指定的云平台账号配置
+      parameters:
+      - description: 云账号ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 云账号信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/asset.CloudAccountRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 更新成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 更新云平台账号
+      tags:
+      - 资产管理-云账号
+  /api/v1/cloud-accounts/{id}/instances:
+    get:
+      consumes:
+      - application/json
+      description: 获取指定云账号在指定区域的实例列表
+      parameters:
+      - description: 云账号ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 区域
+        in: query
+        name: region
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取云平台实例列表
+      tags:
+      - 资产管理-云账号
+  /api/v1/cloud-accounts/{id}/regions:
+    get:
+      consumes:
+      - application/json
+      description: 获取指定云账号可用的区域列表
+      parameters:
+      - description: 云账号ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取云平台区域列表
+      tags:
+      - 资产管理-云账号
+  /api/v1/cloud-accounts/all:
+    get:
+      consumes:
+      - application/json
+      description: 获取所有启用的云平台账号列表
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取所有云平台账号
+      tags:
+      - 资产管理-云账号
+  /api/v1/cloud-accounts/import:
+    post:
+      consumes:
+      - application/json
+      description: 从云平台批量导入主机资源
+      parameters:
+      - description: 导入配置
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/asset.CloudImportRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 导入成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 从云平台导入主机
+      tags:
+      - 资产管理-云账号
+  /api/v1/credentials:
     get:
       consumes:
       - application/json
@@ -1416,7 +1907,7 @@ paths:
       summary: 创建凭证
       tags:
       - 资产管理-凭证
-  /credentials/{id}:
+  /api/v1/credentials/{id}:
     delete:
       consumes:
       - application/json
@@ -1489,6 +1980,2050 @@ paths:
       summary: 更新凭证
       tags:
       - 资产管理-凭证
+  /api/v1/credentials/all:
+    get:
+      consumes:
+      - application/json
+      description: 获取所有凭证列表，用于下拉选择
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取所有凭证
+      tags:
+      - 资产管理-凭证
+  /api/v1/departments:
+    post:
+      consumes:
+      - application/json
+      description: 管理员创建新部门
+      parameters:
+      - description: 部门信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/rbac.DepartmentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 创建成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 创建部门
+      tags:
+      - 部门管理
+  /api/v1/departments/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: 管理员删除部门
+      parameters:
+      - description: 部门ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 删除部门
+      tags:
+      - 部门管理
+    get:
+      consumes:
+      - application/json
+      description: 获取单个部门的详细信息
+      parameters:
+      - description: 部门ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: 部门不存在
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取部门详情
+      tags:
+      - 部门管理
+    put:
+      consumes:
+      - application/json
+      description: 管理员更新部门信息
+      parameters:
+      - description: 部门ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 部门信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/rbac.DepartmentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 更新成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 更新部门
+      tags:
+      - 部门管理
+  /api/v1/departments/parent-options:
+    get:
+      consumes:
+      - application/json
+      description: 获取可选的父级部门列表
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取父级部门选项
+      tags:
+      - 部门管理
+  /api/v1/departments/tree:
+    get:
+      consumes:
+      - application/json
+      description: 获取部门树形结构数据
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取部门树
+      tags:
+      - 部门管理
+  /api/v1/example:
+    get:
+      consumes:
+      - application/json
+      description: 这是一个示例接口
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  additionalProperties:
+                    type: string
+                  type: object
+              type: object
+      summary: 示例接口
+      tags:
+      - 示例
+  /api/v1/hosts:
+    get:
+      consumes:
+      - application/json
+      description: 分页获取主机列表，支持搜索和按分组筛选
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: 每页数量
+        in: query
+        name: pageSize
+        type: integer
+      - description: 搜索关键字
+        in: query
+        name: keyword
+        type: string
+      - description: 分组ID
+        in: query
+        name: groupId
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取主机列表
+      tags:
+      - 资产管理-主机
+    post:
+      consumes:
+      - application/json
+      description: 创建新的主机资源
+      parameters:
+      - description: 主机信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/asset.HostRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 创建成功
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 创建主机
+      tags:
+      - 资产管理-主机
+  /api/v1/hosts/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: 删除指定的主机资源
+      parameters:
+      - description: 主机ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 删除主机
+      tags:
+      - 资产管理-主机
+    get:
+      consumes:
+      - application/json
+      description: 获取单个主机的详细信息
+      parameters:
+      - description: 主机ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取主机详情
+      tags:
+      - 资产管理-主机
+    put:
+      consumes:
+      - application/json
+      description: 更新已有的主机信息
+      parameters:
+      - description: 主机ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 主机信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/asset.HostRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 更新成功
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 更新主机信息
+      tags:
+      - 资产管理-主机
+  /api/v1/hosts/{id}/collect:
+    post:
+      consumes:
+      - application/json
+      description: 采集指定主机的系统信息
+      parameters:
+      - description: 主机ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 采集成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 采集主机信息
+      tags:
+      - 资产管理-主机
+  /api/v1/hosts/{id}/files:
+    delete:
+      consumes:
+      - application/json
+      description: 删除指定主机上的指定文件
+      parameters:
+      - description: 主机ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: '文件路径 {path: string}'
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 删除主机文件
+      tags:
+      - 资产管理-主机文件
+    get:
+      consumes:
+      - application/json
+      description: 获取指定主机上指定目录的文件列表
+      parameters:
+      - description: 主机ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - default: "~"
+        description: 目录路径
+        in: query
+        name: path
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取主机文件列表
+      tags:
+      - 资产管理-主机文件
+  /api/v1/hosts/{id}/files/download:
+    get:
+      consumes:
+      - application/json
+      description: 从指定主机下载指定路径的文件
+      parameters:
+      - description: 主机ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 文件路径
+        in: query
+        name: path
+        required: true
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: 文件内容
+          schema:
+            type: file
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 从主机下载文件
+      tags:
+      - 资产管理-主机文件
+  /api/v1/hosts/{id}/files/upload:
+    post:
+      consumes:
+      - multipart/form-data
+      description: 将文件上传到指定主机的指定目录
+      parameters:
+      - description: 主机ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 上传的文件
+        in: formData
+        name: file
+        required: true
+        type: file
+      - default: ~/
+        description: 远程目录路径
+        in: formData
+        name: path
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 上传成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 上传文件到主机
+      tags:
+      - 资产管理-主机文件
+  /api/v1/hosts/{id}/test:
+    post:
+      consumes:
+      - application/json
+      description: 测试指定主机的SSH连接是否正常
+      parameters:
+      - description: 主机ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 连接成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 测试主机连接
+      tags:
+      - 资产管理-主机
+  /api/v1/hosts/batch-collect:
+    post:
+      consumes:
+      - application/json
+      description: 批量采集多个主机的系统信息
+      parameters:
+      - description: '主机ID列表 {hostIds: []uint}'
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 采集完成
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 批量采集主机信息
+      tags:
+      - 资产管理-主机
+  /api/v1/hosts/batch-delete:
+    post:
+      consumes:
+      - application/json
+      description: 批量删除多个主机资源
+      parameters:
+      - description: '主机ID列表 {hostIds: []uint}'
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 批量删除主机
+      tags:
+      - 资产管理-主机
+  /api/v1/hosts/import:
+    post:
+      consumes:
+      - multipart/form-data
+      description: 通过Excel文件批量导入主机
+      parameters:
+      - description: Excel文件
+        in: formData
+        name: file
+        required: true
+        type: file
+      - default: self
+        description: 主机类型
+        in: formData
+        name: type
+        type: string
+      - description: 分组ID
+        in: formData
+        name: groupId
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 导入结果
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: Excel批量导入主机
+      tags:
+      - 资产管理-主机
+  /api/v1/hosts/template/download:
+    get:
+      consumes:
+      - application/json
+      description: 下载主机Excel导入模板文件
+      produces:
+      - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      responses:
+        "200":
+          description: Excel模板文件
+          schema:
+            type: file
+      security:
+      - Bearer: []
+      summary: 下载导入模板
+      tags:
+      - 资产管理-主机
+  /api/v1/menus:
+    post:
+      consumes:
+      - application/json
+      description: 管理员创建新菜单
+      parameters:
+      - description: 菜单信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/rbac.SysMenu'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 创建成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+        "409":
+          description: 菜单编码已存在
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 创建菜单
+      tags:
+      - 菜单管理
+  /api/v1/menus/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: 管理员删除菜单
+      parameters:
+      - description: 菜单ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 删除菜单
+      tags:
+      - 菜单管理
+    get:
+      consumes:
+      - application/json
+      description: 获取单个菜单的详细信息
+      parameters:
+      - description: 菜单ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: 菜单不存在
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取菜单详情
+      tags:
+      - 菜单管理
+    put:
+      consumes:
+      - application/json
+      description: 管理员更新菜单信息
+      parameters:
+      - description: 菜单ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 菜单信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/rbac.SysMenu'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 更新成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+        "409":
+          description: 菜单编码已存在
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 更新菜单
+      tags:
+      - 菜单管理
+  /api/v1/menus/tree:
+    get:
+      consumes:
+      - application/json
+      description: 获取完整的菜单树形结构
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取菜单树
+      tags:
+      - 菜单管理
+  /api/v1/menus/user:
+    get:
+      consumes:
+      - application/json
+      description: 获取当前登录用户有权限的菜单树
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: 未登录
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取用户菜单
+      tags:
+      - 菜单管理
+  /api/v1/plugins:
+    get:
+      consumes:
+      - application/json
+      description: 获取系统中所有已注册的插件列表
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 插件列表
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 获取插件列表
+      tags:
+      - 插件管理
+  /api/v1/plugins/{name}:
+    get:
+      consumes:
+      - application/json
+      description: 获取指定插件的详细信息
+      parameters:
+      - description: 插件名称
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 插件详情
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: 插件不存在
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 获取插件详情
+      tags:
+      - 插件管理
+  /api/v1/plugins/{name}/disable:
+    post:
+      consumes:
+      - application/json
+      description: 禁用指定的插件
+      parameters:
+      - description: 插件名称
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 禁用成功
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: 禁用失败
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 禁用插件
+      tags:
+      - 插件管理
+  /api/v1/plugins/{name}/enable:
+    post:
+      consumes:
+      - application/json
+      description: 启用指定的插件
+      parameters:
+      - description: 插件名称
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 启用成功
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: 启用失败
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 启用插件
+      tags:
+      - 插件管理
+  /api/v1/plugins/{name}/menus:
+    get:
+      consumes:
+      - application/json
+      description: 获取指定插件的菜单配置信息
+      parameters:
+      - description: 插件名称
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 菜单配置
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: 插件不存在
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 获取插件菜单
+      tags:
+      - 插件管理
+  /api/v1/plugins/{name}/uninstall:
+    delete:
+      consumes:
+      - application/json
+      description: 卸载指定的插件，删除相关文件和配置
+      parameters:
+      - description: 插件名称
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 卸载成功
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 卸载插件
+      tags:
+      - 插件管理
+  /api/v1/plugins/kubernetes/clusters/{clusterId}/roles:
+    post:
+      consumes:
+      - application/json
+      description: 创建集群角色或命名空间角色
+      parameters:
+      - description: 集群ID
+        in: path
+        name: clusterId
+        required: true
+        type: integer
+      - description: 角色信息
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/server.CreateRoleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 创建角色
+      tags:
+      - Kubernetes/Role
+  /api/v1/plugins/kubernetes/inspection/{inspectionId}:
+    delete:
+      consumes:
+      - application/json
+      parameters:
+      - description: 巡检ID
+        in: path
+        name: inspectionId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 删除巡检记录
+      tags:
+      - Kubernetes巡检
+  /api/v1/plugins/kubernetes/inspection/export/{inspectionId}:
+    get:
+      consumes:
+      - application/json
+      parameters:
+      - description: 巡检ID
+        in: path
+        name: inspectionId
+        required: true
+        type: integer
+      - description: 导出格式(excel)
+        in: query
+        name: format
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+      summary: 导出巡检报告
+      tags:
+      - Kubernetes巡检
+  /api/v1/plugins/kubernetes/inspection/history:
+    get:
+      consumes:
+      - application/json
+      parameters:
+      - description: 集群ID
+        in: query
+        name: clusterId
+        type: integer
+      - description: 页码
+        in: query
+        name: page
+        type: integer
+      - description: 每页数量
+        in: query
+        name: pageSize
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 获取巡检历史
+      tags:
+      - Kubernetes巡检
+  /api/v1/plugins/kubernetes/inspection/progress/{inspectionId}:
+    get:
+      consumes:
+      - application/json
+      parameters:
+      - description: 巡检ID
+        in: path
+        name: inspectionId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 获取巡检进度
+      tags:
+      - Kubernetes巡检
+  /api/v1/plugins/kubernetes/inspection/result/{inspectionId}:
+    get:
+      consumes:
+      - application/json
+      parameters:
+      - description: 巡检ID
+        in: path
+        name: inspectionId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 获取巡检结果
+      tags:
+      - Kubernetes巡检
+  /api/v1/plugins/kubernetes/inspection/start:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 巡检请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/server.StartInspectionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 开始集群巡检
+      tags:
+      - Kubernetes巡检
+  /api/v1/plugins/upload:
+    post:
+      consumes:
+      - multipart/form-data
+      description: 上传并安装插件包，只支持 .zip 格式，最大50MB
+      parameters:
+      - description: 插件zip包
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 安装成功
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 上传插件包
+      tags:
+      - 插件管理
+  /api/v1/positions:
+    get:
+      consumes:
+      - application/json
+      description: 分页获取岗位列表
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: 每页数量
+        in: query
+        name: pageSize
+        type: integer
+      - description: 岗位编码
+        in: query
+        name: postCode
+        type: string
+      - description: 岗位名称
+        in: query
+        name: postName
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取岗位列表
+      tags:
+      - 岗位管理
+    post:
+      consumes:
+      - application/json
+      description: 管理员创建新岗位
+      parameters:
+      - description: 岗位信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/rbac.SysPosition'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 创建成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 创建岗位
+      tags:
+      - 岗位管理
+  /api/v1/positions/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: 管理员删除岗位
+      parameters:
+      - description: 岗位ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 删除岗位
+      tags:
+      - 岗位管理
+    get:
+      consumes:
+      - application/json
+      description: 获取单个岗位的详细信息
+      parameters:
+      - description: 岗位ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: 岗位不存在
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取岗位详情
+      tags:
+      - 岗位管理
+    put:
+      consumes:
+      - application/json
+      description: 管理员更新岗位信息
+      parameters:
+      - description: 岗位ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 岗位信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/rbac.SysPosition'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 更新成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 更新岗位
+      tags:
+      - 岗位管理
+  /api/v1/positions/{id}/users:
+    get:
+      consumes:
+      - application/json
+      description: 分页获取某个岗位下的用户列表
+      parameters:
+      - description: 岗位ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: 每页数量
+        in: query
+        name: pageSize
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取岗位用户
+      tags:
+      - 岗位管理
+    post:
+      consumes:
+      - application/json
+      description: 将多个用户分配到指定岗位
+      parameters:
+      - description: 岗位ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 用户IDs
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/rbac.AssignUsersToPositionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 分配成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 分配用户到岗位
+      tags:
+      - 岗位管理
+  /api/v1/positions/{id}/users/{userId}:
+    delete:
+      consumes:
+      - application/json
+      description: 从岗位中移除指定用户
+      parameters:
+      - description: 岗位ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 用户ID
+        in: path
+        name: userId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 移除成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 移除岗位用户
+      tags:
+      - 岗位管理
+  /api/v1/profile:
+    get:
+      consumes:
+      - application/json
+      description: 获取登录用户的个人信息（需要Bearer Token认证）
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "401":
+          description: 未登录
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取当前用户信息
+      tags:
+      - 用户管理
+  /api/v1/profile/avatar:
+    put:
+      consumes:
+      - application/json
+      description: 更新当前用户的头像地址
+      parameters:
+      - description: 头像地址
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 更新成功
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: 未登录
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 更新用户头像地址
+      tags:
+      - 文件上传
+  /api/v1/profile/password:
+    put:
+      consumes:
+      - application/json
+      description: 用户修改自己的登录密码
+      parameters:
+      - description: 密码信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/rbac.ChangePasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 修改成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 修改用户密码
+      tags:
+      - 用户管理
+  /api/v1/public/login:
+    post:
+      consumes:
+      - application/json
+      description: 用户使用用户名、密码和验证码登录系统
+      parameters:
+      - description: 登录信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/rbac.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 登录成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: 用户登录
+      tags:
+      - 认证管理
+  /api/v1/public/register:
+    post:
+      consumes:
+      - application/json
+      description: 新用户使用用户名、密码等信息注册账号
+      parameters:
+      - description: 注册信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/rbac.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 注册成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: 用户注册
+      tags:
+      - 认证管理
+  /api/v1/roles:
+    get:
+      consumes:
+      - application/json
+      description: 分页获取角色列表，支持关键字搜索
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: 每页数量
+        in: query
+        name: pageSize
+        type: integer
+      - description: 搜索关键字
+        in: query
+        name: keyword
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取角色列表
+      tags:
+      - 角色管理
+    post:
+      consumes:
+      - application/json
+      description: 管理员创建新角色
+      parameters:
+      - description: 角色信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/rbac.SysRole'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 创建成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 创建角色
+      tags:
+      - 角色管理
+  /api/v1/roles/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: 管理员删除角色
+      parameters:
+      - description: 角色ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 删除角色
+      tags:
+      - 角色管理
+    get:
+      consumes:
+      - application/json
+      description: 获取单个角色的详细信息
+      parameters:
+      - description: 角色ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: 角色不存在
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取角色详情
+      tags:
+      - 角色管理
+    put:
+      consumes:
+      - application/json
+      description: 管理员更新角色信息
+      parameters:
+      - description: 角色ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 角色信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/rbac.SysRole'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 更新成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 更新角色
+      tags:
+      - 角色管理
+  /api/v1/roles/{id}/menus:
+    post:
+      consumes:
+      - application/json
+      description: 为角色分配菜单权限
+      parameters:
+      - description: 角色ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 菜单IDs
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/rbac.AssignRoleMenusRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 分配成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 分配角色菜单
+      tags:
+      - 角色管理
+  /api/v1/roles/all:
+    get:
+      consumes:
+      - application/json
+      description: 获取所有角色列表，不分页
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取所有角色
+      tags:
+      - 角色管理
+  /api/v1/terminal-sessions:
+    get:
+      consumes:
+      - application/json
+      description: 分页获取终端审计会话列表，支持搜索
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: 每页数量
+        in: query
+        name: pageSize
+        type: integer
+      - description: 搜索关键字
+        in: query
+        name: keyword
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取终端会话列表
+      tags:
+      - 终端审计
+  /api/v1/terminal-sessions/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: 删除指定的终端会话记录及其录制文件
+      parameters:
+      - description: 会话ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: 会话不存在
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 删除终端会话
+      tags:
+      - 终端审计
+  /api/v1/terminal-sessions/{id}/play:
+    get:
+      consumes:
+      - application/json
+      description: 获取终端会话的录制文件内容用于回放
+      parameters:
+      - description: 会话ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 录制文件内容
+          schema:
+            type: string
+        "404":
+          description: 会话不存在
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 播放终端会话
+      tags:
+      - 终端审计
+  /api/v1/upload/avatar:
+    post:
+      consumes:
+      - multipart/form-data
+      description: 上传用户头像图片，支持常见图片格式，最大2MB
+      parameters:
+      - description: 头像图片文件
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 上传成功
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: 未登录
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 上传用户头像
+      tags:
+      - 文件上传
+  /api/v1/users:
+    get:
+      consumes:
+      - application/json
+      description: 分页获取用户列表，支持按关键字和部门筛选
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: 每页数量
+        in: query
+        name: pageSize
+        type: integer
+      - description: 搜索关键字
+        in: query
+        name: keyword
+        type: string
+      - description: 部门ID
+        in: query
+        name: departmentId
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取用户列表
+      tags:
+      - 用户管理
+    post:
+      consumes:
+      - application/json
+      description: 管理员创建新用户
+      parameters:
+      - description: 用户信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/rbac.SysUser'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 创建成功
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 创建用户
+      tags:
+      - 用户管理
+  /api/v1/users/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: 管理员删除用户
+      parameters:
+      - description: 用户ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 删除用户
+      tags:
+      - 用户管理
+    get:
+      consumes:
+      - application/json
+      description: 获取单个用户的详细信息
+      parameters:
+      - description: 用户ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取用户详情
+      tags:
+      - 用户管理
+    put:
+      consumes:
+      - application/json
+      description: 管理员更新用户信息
+      parameters:
+      - description: 用户ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 用户信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/rbac.SysUser'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 更新成功
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 更新用户信息
+      tags:
+      - 用户管理
+  /api/v1/users/{id}/password/reset:
+    post:
+      consumes:
+      - application/json
+      description: 管理员重置用户密码
+      parameters:
+      - description: 用户ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 新密码
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/rbac.ResetPasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 重置成功
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 重置用户密码
+      tags:
+      - 用户管理
+  /api/v1/users/{id}/positions:
+    post:
+      consumes:
+      - application/json
+      description: 为用户分配岗位
+      parameters:
+      - description: 用户ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 岗位IDs
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/rbac.AssignUserPositionsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 分配成功
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 分配用户岗位
+      tags:
+      - 用户管理
+  /api/v1/users/{id}/roles:
+    post:
+      consumes:
+      - application/json
+      description: 为用户分配角色
+      parameters:
+      - description: 用户ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 角色IDs
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/rbac.AssignUserRolesRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 分配成功
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 分配用户角色
+      tags:
+      - 用户管理
   /health:
     get:
       consumes:
@@ -2000,112 +4535,1513 @@ paths:
       summary: 获取域名监控统计数据
       tags:
       - DomainMonitor
-  /profile:
+  /plugins/kubernetes/clusters:
     get:
       consumes:
       - application/json
-      description: 获取登录用户的个人信息（需要Bearer Token认证）
+      description: 获取所有 Kubernetes 集群
       produces:
       - application/json
       responses:
         "200":
-          description: 获取成功
+          description: 成功
           schema:
-            $ref: '#/definitions/response.Response'
+            additionalProperties: true
+            type: object
+      summary: 获取集群列表
+      tags:
+      - Kubernetes/Cluster
+    post:
+      consumes:
+      - application/json
+      description: 创建新的 Kubernetes 集群
+      parameters:
+      - description: 集群信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/service.CreateClusterRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 创建成功
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties: true
+            type: object
         "401":
-          description: 未登录
+          description: 未授权
           schema:
-            $ref: '#/definitions/response.Response'
+            additionalProperties: true
+            type: object
+        "500":
+          description: 服务器错误
+          schema:
+            additionalProperties: true
+            type: object
       security:
       - Bearer: []
-      summary: 获取当前用户信息
+      summary: 创建集群
       tags:
-      - 用户管理
-  /profile/password:
+      - Kubernetes/集群管理
+  /plugins/kubernetes/clusters/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: 删除 Kubernetes 集群
+      parameters:
+      - description: 集群ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: 服务器错误
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 删除集群
+      tags:
+      - Kubernetes/集群管理
+    get:
+      consumes:
+      - application/json
+      description: 获取 Kubernetes 集群详细信息
+      parameters:
+      - description: 集群ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 获取集群详情
+      tags:
+      - Kubernetes/Cluster
     put:
       consumes:
       - application/json
-      description: 用户修改自己的登录密码
+      description: 更新 Kubernetes 集群信息
       parameters:
-      - description: 密码信息
+      - description: 集群ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 集群信息
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/rbac.ChangePasswordRequest'
+          $ref: '#/definitions/service.UpdateClusterRequest'
       produces:
       - application/json
       responses:
         "200":
-          description: 修改成功
+          description: 更新成功
           schema:
-            $ref: '#/definitions/response.Response'
+            additionalProperties: true
+            type: object
         "400":
           description: 参数错误
           schema:
-            $ref: '#/definitions/response.Response'
+            additionalProperties: true
+            type: object
+        "500":
+          description: 服务器错误
+          schema:
+            additionalProperties: true
+            type: object
       security:
       - Bearer: []
-      summary: 修改用户密码
+      summary: 更新集群
       tags:
-      - 用户管理
-  /public/login:
-    post:
-      consumes:
-      - application/json
-      description: 用户使用用户名、密码和验证码登录系统
-      parameters:
-      - description: 登录信息
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/rbac.LoginRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 登录成功
-          schema:
-            $ref: '#/definitions/response.Response'
-        "400":
-          description: 参数错误
-          schema:
-            $ref: '#/definitions/response.Response'
-      summary: 用户登录
-      tags:
-      - 认证管理
-  /public/register:
-    post:
-      consumes:
-      - application/json
-      description: 新用户使用用户名、密码等信息注册账号
-      parameters:
-      - description: 注册信息
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/rbac.RegisterRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 注册成功
-          schema:
-            $ref: '#/definitions/response.Response'
-        "400":
-          description: 参数错误
-          schema:
-            $ref: '#/definitions/response.Response'
-      summary: 用户注册
-      tags:
-      - 认证管理
-  /users:
+      - Kubernetes/集群管理
+  /plugins/kubernetes/clusters/{id}/config:
     get:
       consumes:
       - application/json
-      description: 分页获取用户列表，支持按关键字和部门筛选
+      description: 获取集群的 KubeConfig 配置（已解密）
+      parameters:
+      - description: 集群ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 获取集群凭证
+      tags:
+      - Kubernetes/Cluster
+  /plugins/kubernetes/clusters/{id}/sync:
+    post:
+      consumes:
+      - application/json
+      description: 同步指定集群的状态信息（节点数、Pod数等）
+      parameters:
+      - description: 集群ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 同步集群状态
+      tags:
+      - Kubernetes/Cluster
+  /plugins/kubernetes/clusters/{id}/test:
+    post:
+      consumes:
+      - application/json
+      description: 测试 Kubernetes 集群连接状态
+      parameters:
+      - description: 集群ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 测试集群连接
+      tags:
+      - Kubernetes/Cluster
+  /plugins/kubernetes/clusters/kubeconfig:
+    delete:
+      consumes:
+      - application/json
+      description: 吊销用户的集群 KubeConfig 凭据
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 吊销 KubeConfig
+      tags:
+      - Kubernetes/Cluster
+    post:
+      consumes:
+      - application/json
+      description: 为当前用户生成集群的 KubeConfig 凭据
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 生成 KubeConfig
+      tags:
+      - Kubernetes/Cluster
+  /plugins/kubernetes/clusters/kubeconfig/existing:
+    get:
+      consumes:
+      - application/json
+      description: 获取当前用户在指定集群的最新KubeConfig
+      parameters:
+      - description: 集群ID
+        in: query
+        name: clusterId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 获取用户现有的KubeConfig
+      tags:
+      - Kubernetes/Cluster
+  /plugins/kubernetes/clusters/kubeconfig/revoke:
+    delete:
+      consumes:
+      - application/json
+      description: 删除 ServiceAccount、所有相关 RoleBinding 和数据库记录
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 完全吊销凭据
+      tags:
+      - Kubernetes/Cluster
+  /plugins/kubernetes/clusters/kubeconfig/sa:
+    post:
+      consumes:
+      - application/json
+      description: 为指定的ServiceAccount生成KubeConfig凭据
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 根据ServiceAccount获取KubeConfig
+      tags:
+      - Kubernetes/Cluster
+  /plugins/kubernetes/clusters/sync-all:
+    post:
+      consumes:
+      - application/json
+      description: 同步所有集群的状态信息（用于后台定时任务）
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 同步所有集群状态
+      tags:
+      - Kubernetes/Cluster
+  /plugins/kubernetes/resources/api-groups:
+    get:
+      consumes:
+      - application/json
+      description: 获取Kubernetes集群所有可用的API组
+      parameters:
+      - description: 集群ID
+        in: query
+        name: clusterId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 获取API组列表
+      tags:
+      - Kubernetes/Resources
+  /plugins/kubernetes/resources/api-resources:
+    get:
+      consumes:
+      - application/json
+      description: 根据选定的API组列表获取所有这些组下的资源类型
+      parameters:
+      - description: 集群ID
+        in: query
+        name: clusterId
+        required: true
+        type: integer
+      - description: API组列表（逗号分隔）
+        in: query
+        name: apiGroups
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 根据API组获取资源列表
+      tags:
+      - Kubernetes/Resources
+  /plugins/kubernetes/resources/configmaps:
+    get:
+      consumes:
+      - application/json
+      description: 获取指定命名空间的 ConfigMap 列表
+      parameters:
+      - description: 集群ID
+        in: query
+        name: clusterId
+        required: true
+        type: integer
+      - description: 命名空间
+        in: query
+        name: namespace
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: ConfigMap列表
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: 服务器错误
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 获取ConfigMap列表
+      tags:
+      - Kubernetes/配置
+  /plugins/kubernetes/resources/deployments:
+    get:
+      consumes:
+      - application/json
+      description: 获取指定命名空间的 Deployment 列表
+      parameters:
+      - description: 集群ID
+        in: query
+        name: clusterId
+        required: true
+        type: integer
+      - description: 命名空间
+        in: query
+        name: namespace
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Deployment列表
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: 服务器错误
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 获取Deployment列表
+      tags:
+      - Kubernetes/工作负载
+  /plugins/kubernetes/resources/ingresses:
+    get:
+      consumes:
+      - application/json
+      description: 获取指定命名空间的 Ingress 列表
+      parameters:
+      - description: 集群ID
+        in: query
+        name: clusterId
+        required: true
+        type: integer
+      - description: 命名空间
+        in: query
+        name: namespace
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Ingress列表
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: 服务器错误
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 获取Ingress列表
+      tags:
+      - Kubernetes/网络
+  /plugins/kubernetes/resources/namespaces:
+    get:
+      consumes:
+      - application/json
+      description: 获取 Kubernetes 集群的命名空间列表
+      parameters:
+      - description: 集群ID
+        in: query
+        name: clusterId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 命名空间列表
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: 服务器错误
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 获取命名空间列表
+      tags:
+      - Kubernetes/命名空间
+    post:
+      consumes:
+      - application/json
+      description: 创建新的 Kubernetes 命名空间
+      parameters:
+      - description: 集群ID
+        in: query
+        name: clusterId
+        required: true
+        type: integer
+      - description: 命名空间配置
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 创建成功
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: 服务器错误
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 创建命名空间
+      tags:
+      - Kubernetes/命名空间
+  /plugins/kubernetes/resources/nodes:
+    get:
+      consumes:
+      - application/json
+      description: 获取 Kubernetes 集群的节点列表及其状态信息
+      parameters:
+      - description: 集群ID
+        in: query
+        name: clusterId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 节点列表
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: 未授权
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: 服务器错误
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 获取节点列表
+      tags:
+      - Kubernetes/节点管理
+  /plugins/kubernetes/resources/nodes/{nodeName}/cordon:
+    post:
+      consumes:
+      - application/json
+      description: 将指定节点设置为不可调度状态
+      parameters:
+      - description: 集群ID
+        in: query
+        name: clusterId
+        required: true
+        type: integer
+      - description: 节点名称
+        in: path
+        name: nodeName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 操作成功
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: 服务器错误
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 设置节点为不可调度
+      tags:
+      - Kubernetes/节点管理
+  /plugins/kubernetes/resources/nodes/{nodeName}/drain:
+    post:
+      consumes:
+      - application/json
+      description: 排空指定节点上的所有 Pod
+      parameters:
+      - description: 集群ID
+        in: query
+        name: clusterId
+        required: true
+        type: integer
+      - description: 节点名称
+        in: path
+        name: nodeName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 操作成功
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: 服务器错误
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 排空节点
+      tags:
+      - Kubernetes/节点管理
+  /plugins/kubernetes/resources/nodes/{nodeName}/metrics:
+    get:
+      consumes:
+      - application/json
+      description: 获取指定节点的 CPU、内存等资源使用指标
+      parameters:
+      - description: 集群ID
+        in: query
+        name: clusterId
+        required: true
+        type: integer
+      - description: 节点名称
+        in: path
+        name: nodeName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 节点指标数据
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: 服务器错误
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 获取节点指标
+      tags:
+      - Kubernetes/节点管理
+  /plugins/kubernetes/resources/nodes/{nodeName}/yaml:
+    get:
+      consumes:
+      - application/json
+      description: 获取指定节点的 YAML 配置
+      parameters:
+      - description: 集群ID
+        in: query
+        name: clusterId
+        required: true
+        type: integer
+      - description: 节点名称
+        in: path
+        name: nodeName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 节点YAML
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: 服务器错误
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 获取节点YAML
+      tags:
+      - Kubernetes/节点管理
+  /plugins/kubernetes/resources/persistentvolumeclaims:
+    get:
+      consumes:
+      - application/json
+      description: 获取指定命名空间的持久卷声明列表
+      parameters:
+      - description: 集群ID
+        in: query
+        name: clusterId
+        required: true
+        type: integer
+      - description: 命名空间
+        in: query
+        name: namespace
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: PVC列表
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: 服务器错误
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 获取PVC列表
+      tags:
+      - Kubernetes/存储
+  /plugins/kubernetes/resources/persistentvolumes:
+    get:
+      consumes:
+      - application/json
+      description: 获取集群的持久卷列表
+      parameters:
+      - description: 集群ID
+        in: query
+        name: clusterId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: PV列表
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: 服务器错误
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 获取PV列表
+      tags:
+      - Kubernetes/存储
+  /plugins/kubernetes/resources/pods:
+    get:
+      consumes:
+      - application/json
+      description: 获取指定命名空间的 Pod 列表
+      parameters:
+      - description: 集群ID
+        in: query
+        name: clusterId
+        required: true
+        type: integer
+      - description: 命名空间
+        in: query
+        name: namespace
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Pod列表
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: 服务器错误
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 获取Pod列表
+      tags:
+      - Kubernetes/工作负载
+  /plugins/kubernetes/resources/pods/logs:
+    get:
+      consumes:
+      - application/json
+      description: 获取指定 Pod 容器的日志
+      parameters:
+      - description: 集群ID
+        in: query
+        name: clusterId
+        required: true
+        type: integer
+      - description: 命名空间
+        in: query
+        name: namespace
+        required: true
+        type: string
+      - description: Pod名称
+        in: query
+        name: name
+        required: true
+        type: string
+      - description: 容器名称
+        in: query
+        name: container
+        type: string
+      - description: 返回日志行数
+        in: query
+        name: tailLines
+        type: integer
+      - description: 是否获取上一个容器的日志
+        in: query
+        name: previous
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Pod日志
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: 服务器错误
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 获取Pod日志
+      tags:
+      - Kubernetes/工作负载
+  /plugins/kubernetes/resources/secrets:
+    get:
+      consumes:
+      - application/json
+      description: 获取指定命名空间的 Secret 列表
+      parameters:
+      - description: 集群ID
+        in: query
+        name: clusterId
+        required: true
+        type: integer
+      - description: 命名空间
+        in: query
+        name: namespace
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Secret列表
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: 服务器错误
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 获取Secret列表
+      tags:
+      - Kubernetes/配置
+  /plugins/kubernetes/resources/services:
+    get:
+      consumes:
+      - application/json
+      description: 获取指定命名空间的 Service 列表
+      parameters:
+      - description: 集群ID
+        in: query
+        name: clusterId
+        required: true
+        type: integer
+      - description: 命名空间
+        in: query
+        name: namespace
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Service列表
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: 服务器错误
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 获取Service列表
+      tags:
+      - Kubernetes/网络
+  /plugins/kubernetes/resources/stats:
+    get:
+      consumes:
+      - application/json
+      description: 获取 Kubernetes 集群的资源统计信息（节点数、Pod数等）
+      parameters:
+      - description: 集群ID
+        in: query
+        name: clusterId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 集群统计信息
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: 服务器错误
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 获取集群统计信息
+      tags:
+      - Kubernetes/集群
+  /plugins/kubernetes/resources/storageclasses:
+    get:
+      consumes:
+      - application/json
+      description: 获取集群的存储类列表
+      parameters:
+      - description: 集群ID
+        in: query
+        name: clusterId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: StorageClass列表
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: 服务器错误
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 获取StorageClass列表
+      tags:
+      - Kubernetes/存储
+  /plugins/kubernetes/resources/workloads:
+    get:
+      consumes:
+      - application/json
+      description: 获取所有类型的工作负载（Deployment、StatefulSet、DaemonSet、Job、CronJob、Pod）
+      parameters:
+      - description: 集群ID
+        in: query
+        name: clusterId
+        required: true
+        type: integer
+      - description: 命名空间
+        in: query
+        name: namespace
+        type: string
+      - description: 工作负载类型
+        in: query
+        name: kind
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 工作负载列表
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: 服务器错误
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 获取工作负载列表
+      tags:
+      - Kubernetes/工作负载
+  /plugins/kubernetes/role-bindings/available-users:
+    get:
+      consumes:
+      - application/json
+      description: 获取系统中可以绑定的用户列表
+      parameters:
+      - description: 搜索关键词
+        in: query
+        name: keyword
+        type: string
+      - description: 页码
+        in: query
+        name: page
+        required: true
+        type: integer
+      - description: 每页数量
+        in: query
+        name: pageSize
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 获取可绑定的用户列表
+      tags:
+      - Kubernetes/RoleBinding
+  /plugins/kubernetes/role-bindings/bind:
+    post:
+      consumes:
+      - application/json
+      description: 将平台用户绑定到指定的K8s角色
+      parameters:
+      - description: 绑定信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/server.BindUserToRoleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 绑定用户到K8s角色
+      tags:
+      - Kubernetes/RoleBinding
+  /plugins/kubernetes/role-bindings/credential-users:
+    get:
+      consumes:
+      - application/json
+      description: 获取当前用户在指定集群的凭据用户（ServiceAccount）
+      parameters:
+      - description: 集群ID
+        in: query
+        name: clusterId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 获取集群的凭据用户列表
+      tags:
+      - Kubernetes/RoleBinding
+  /plugins/kubernetes/role-bindings/unbind:
+    delete:
+      consumes:
+      - application/json
+      description: 解除用户与K8s角色的绑定
+      parameters:
+      - description: 解绑信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/server.UnbindUserFromRoleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 解绑用户K8s角色
+      tags:
+      - Kubernetes/RoleBinding
+  /plugins/kubernetes/role-bindings/user-bindings:
+    get:
+      consumes:
+      - application/json
+      description: 获取指定集群中所有用户（或指定用户）的K8s角色绑定列表
+      parameters:
+      - description: 集群ID
+        in: query
+        name: clusterId
+        required: true
+        type: integer
+      - description: 用户ID（可选，不传则返回所有用户）
+        in: query
+        name: userId
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 获取用户的所有K8s角色绑定
+      tags:
+      - Kubernetes/RoleBinding
+  /plugins/kubernetes/role-bindings/user-roles:
+    get:
+      consumes:
+      - application/json
+      description: 获取指定用户在指定集群的所有角色
+      parameters:
+      - description: 集群ID
+        in: query
+        name: clusterId
+        required: true
+        type: integer
+      - description: 用户ID
+        in: query
+        name: userId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 获取用户在指定集群的角色列表
+      tags:
+      - Kubernetes/RoleBinding
+  /plugins/kubernetes/role-bindings/users:
+    get:
+      consumes:
+      - application/json
+      description: 获取指定角色的所有绑定用户
+      parameters:
+      - description: 集群ID
+        in: query
+        name: clusterId
+        required: true
+        type: integer
+      - description: 角色名称
+        in: query
+        name: roleName
+        required: true
+        type: string
+      - description: 角色命名空间
+        in: query
+        name: roleNamespace
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 获取角色已绑定的用户列表
+      tags:
+      - Kubernetes/RoleBinding
+  /plugins/kubernetes/roles/{namespace}/{name}:
+    delete:
+      consumes:
+      - application/json
+      description: 删除指定的角色
+      parameters:
+      - description: 集群ID
+        in: query
+        name: clusterId
+        required: true
+        type: integer
+      - description: 命名空间
+        in: path
+        name: namespace
+        required: true
+        type: string
+      - description: 角色名
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 删除角色
+      tags:
+      - Kubernetes/Role
+    get:
+      consumes:
+      - application/json
+      description: 获取角色的详细信息，包括权限规则
+      parameters:
+      - description: 集群ID
+        in: query
+        name: clusterId
+        required: true
+        type: integer
+      - description: 命名空间
+        in: path
+        name: namespace
+        required: true
+        type: string
+      - description: 角色名
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 获取角色详情
+      tags:
+      - Kubernetes/Role
+  /plugins/kubernetes/roles/cluster:
+    get:
+      consumes:
+      - application/json
+      description: 获取所有 Kubernetes 集群级别的角色
+      parameters:
+      - description: 集群ID
+        in: query
+        name: clusterId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 获取集群角色列表
+      tags:
+      - Kubernetes/Role
+  /plugins/kubernetes/roles/create-defaults:
+    post:
+      consumes:
+      - application/json
+      description: 创建 OpsHub 平台使用的默认集群角色
+      parameters:
+      - description: 集群ID
+        in: query
+        name: clusterId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 创建默认集群角色
+      tags:
+      - Kubernetes/Role
+  /plugins/kubernetes/roles/create-defaults-namespace:
+    post:
+      consumes:
+      - application/json
+      description: 创建用于命名空间级别授权的 ClusterRole（通过 RoleBinding 在特定命名空间生效）
+      parameters:
+      - description: 集群ID
+        in: query
+        name: clusterId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 创建默认命名空间角色
+      tags:
+      - Kubernetes/Role
+  /plugins/kubernetes/roles/namespace:
+    get:
+      consumes:
+      - application/json
+      description: 获取指定命名空间的所有角色
+      parameters:
+      - description: 集群ID
+        in: query
+        name: clusterId
+        required: true
+        type: integer
+      - description: 命名空间
+        in: query
+        name: namespace
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 获取命名空间角色列表
+      tags:
+      - Kubernetes/Role
+  /plugins/kubernetes/roles/namespaces:
+    get:
+      consumes:
+      - application/json
+      description: 获取所有命名空间
+      parameters:
+      - description: 集群ID
+        in: query
+        name: clusterId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 获取命名空间列表
+      tags:
+      - Kubernetes/Role
+  /plugins/kubernetes/shell/pods:
+    get:
+      consumes:
+      - application/json
+      description: 通过 WebSocket 连接到 Pod 容器的终端
+      parameters:
+      - description: 集群ID
+        in: query
+        name: clusterId
+        required: true
+        type: integer
+      - description: 命名空间
+        in: query
+        name: namespace
+        required: true
+        type: string
+      - description: Pod名称
+        in: query
+        name: pod
+        required: true
+        type: string
+      - description: 容器名称
+        in: query
+        name: container
+        type: string
+      produces:
+      - application/json
+      responses:
+        "101":
+          description: WebSocket连接升级成功
+          schema:
+            type: string
+        "400":
+          description: 参数错误
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: Pod终端WebSocket
+      tags:
+      - Kubernetes/终端
+  /task/ansible-tasks:
+    get:
+      consumes:
+      - application/json
+      description: 分页获取Ansible任务列表，支持按关键词、状态筛选
       parameters:
       - default: 1
         description: 页码
@@ -2117,14 +6053,14 @@ paths:
         in: query
         name: pageSize
         type: integer
-      - description: 搜索关键字
+      - description: 搜索关键词
         in: query
         name: keyword
         type: string
-      - description: 部门ID
+      - description: 任务状态
         in: query
-        name: departmentId
-        type: integer
+        name: status
+        type: string
       produces:
       - application/json
       responses:
@@ -2134,20 +6070,20 @@ paths:
             $ref: '#/definitions/response.Response'
       security:
       - Bearer: []
-      summary: 获取用户列表
+      summary: 获取Ansible任务列表
       tags:
-      - 用户管理
+      - 任务管理-Ansible任务
     post:
       consumes:
       - application/json
-      description: 管理员创建新用户
+      description: 创建新的Ansible任务
       parameters:
-      - description: 用户信息
+      - description: 任务信息
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/rbac.SysUser'
+          $ref: '#/definitions/model.AnsibleTask'
       produces:
       - application/json
       responses:
@@ -2155,18 +6091,22 @@ paths:
           description: 创建成功
           schema:
             $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
       security:
       - Bearer: []
-      summary: 创建用户
+      summary: 创建Ansible任务
       tags:
-      - 用户管理
-  /users/{id}:
+      - 任务管理-Ansible任务
+  /task/ansible-tasks/{id}:
     delete:
       consumes:
       - application/json
-      description: 管理员删除用户
+      description: 删除指定的Ansible任务（已禁用）
       parameters:
-      - description: 用户ID
+      - description: 任务ID
         in: path
         name: id
         required: true
@@ -2178,17 +6118,21 @@ paths:
           description: 删除成功
           schema:
             $ref: '#/definitions/response.Response'
+        "403":
+          description: 操作已禁用
+          schema:
+            $ref: '#/definitions/response.Response'
       security:
       - Bearer: []
-      summary: 删除用户
+      summary: 删除Ansible任务
       tags:
-      - 用户管理
+      - 任务管理-Ansible任务
     get:
       consumes:
       - application/json
-      description: 获取单个用户的详细信息
+      description: 获取指定Ansible任务的详细信息
       parameters:
-      - description: 用户ID
+      - description: 任务ID
         in: path
         name: id
         required: true
@@ -2200,27 +6144,31 @@ paths:
           description: 获取成功
           schema:
             $ref: '#/definitions/response.Response'
+        "404":
+          description: 任务不存在
+          schema:
+            $ref: '#/definitions/response.Response'
       security:
       - Bearer: []
-      summary: 获取用户详情
+      summary: 获取Ansible任务详情
       tags:
-      - 用户管理
+      - 任务管理-Ansible任务
     put:
       consumes:
       - application/json
-      description: 管理员更新用户信息
+      description: 更新指定Ansible任务的信息
       parameters:
-      - description: 用户ID
+      - description: 任务ID
         in: path
         name: id
         required: true
         type: integer
-      - description: 用户信息
+      - description: 任务信息
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/rbac.SysUser'
+          $ref: '#/definitions/model.AnsibleTask'
       produces:
       - application/json
       responses:
@@ -2228,98 +6176,558 @@ paths:
           description: 更新成功
           schema:
             $ref: '#/definitions/response.Response'
-      security:
-      - Bearer: []
-      summary: 更新用户信息
-      tags:
-      - 用户管理
-  /users/{id}/password/reset:
-    post:
-      consumes:
-      - application/json
-      description: 管理员重置用户密码
-      parameters:
-      - description: 用户ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      - description: 新密码
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/rbac.ResetPasswordRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 重置成功
+        "404":
+          description: 任务不存在
           schema:
             $ref: '#/definitions/response.Response'
       security:
       - Bearer: []
-      summary: 重置用户密码
+      summary: 更新Ansible任务
       tags:
-      - 用户管理
-  /users/{id}/positions:
+      - 任务管理-Ansible任务
+  /task/distribute-files:
     post:
       consumes:
-      - application/json
-      description: 为用户分配岗位
+      - multipart/form-data
+      description: 将文件分发到指定的目标主机
       parameters:
-      - description: 用户ID
-        in: path
-        name: id
+      - description: 上传的文件
+        in: formData
+        name: files
         required: true
-        type: integer
-      - description: 岗位IDs
-        in: body
-        name: body
+        type: file
+      - description: 目标路径
+        in: formData
+        name: targetPath
         required: true
-        schema:
-          $ref: '#/definitions/rbac.AssignUserPositionsRequest'
+        type: string
+      - description: 主机ID列表(JSON数组)
+        in: formData
+        name: hostIds
+        required: true
+        type: string
       produces:
       - application/json
       responses:
         "200":
-          description: 分配成功
+          description: 分发成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
           schema:
             $ref: '#/definitions/response.Response'
       security:
       - Bearer: []
-      summary: 分配用户岗位
+      summary: 文件分发
       tags:
-      - 用户管理
-  /users/{id}/roles:
+      - 任务管理-文件分发
+  /task/execute:
     post:
       consumes:
       - application/json
-      description: 为用户分配角色
+      description: 在指定主机上执行Shell或Python脚本
       parameters:
-      - description: 用户ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      - description: 角色IDs
+      - description: 执行参数
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/rbac.AssignUserRolesRequest'
+          $ref: '#/definitions/server.ExecuteTaskRequest'
       produces:
       - application/json
       responses:
         "200":
-          description: 分配成功
+          description: 执行成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+        "403":
+          description: 命令被拦截
           schema:
             $ref: '#/definitions/response.Response'
       security:
       - Bearer: []
-      summary: 分配用户角色
+      summary: 执行任务
       tags:
-      - 用户管理
+      - 任务管理-任务执行
+  /task/execution-history:
+    get:
+      consumes:
+      - application/json
+      description: 分页获取任务执行记录列表，支持按关键词、任务类型、状态和日期范围筛选
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: 每页数量
+        in: query
+        name: pageSize
+        type: integer
+      - description: 搜索关键词
+        in: query
+        name: keyword
+        type: string
+      - description: 任务类型
+        in: query
+        name: taskType
+        type: string
+      - description: 执行状态
+        in: query
+        name: status
+        type: string
+      - description: 开始日期
+        in: query
+        name: startDate
+        type: string
+      - description: 结束日期
+        in: query
+        name: endDate
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取执行记录列表
+      tags:
+      - 任务管理-执行记录
+  /task/execution-history/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: 删除指定的执行记录
+      parameters:
+      - description: 记录ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: 删除失败
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 删除执行记录
+      tags:
+      - 任务管理-执行记录
+    get:
+      consumes:
+      - application/json
+      description: 获取指定执行记录的详细信息
+      parameters:
+      - description: 记录ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: 记录不存在
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取执行记录详情
+      tags:
+      - 任务管理-执行记录
+  /task/execution-history/batch:
+    delete:
+      consumes:
+      - application/json
+      description: 批量删除多条执行记录
+      parameters:
+      - description: 记录ID列表
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 批量删除执行记录
+      tags:
+      - 任务管理-执行记录
+  /task/execution-history/export:
+    post:
+      consumes:
+      - application/json
+      description: 导出执行记录数据
+      parameters:
+      - description: 记录ID列表，不传则导出全部
+        in: body
+        name: body
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 导出成功
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 导出执行记录
+      tags:
+      - 任务管理-执行记录
+  /task/job-tasks:
+    get:
+      consumes:
+      - application/json
+      description: 分页获取任务作业列表，支持按关键词、任务类型、状态筛选
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: 每页数量
+        in: query
+        name: pageSize
+        type: integer
+      - description: 搜索关键词
+        in: query
+        name: keyword
+        type: string
+      - description: 任务类型
+        in: query
+        name: taskType
+        type: string
+      - description: 任务状态
+        in: query
+        name: status
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取任务作业列表
+      tags:
+      - 任务管理-任务作业
+    post:
+      consumes:
+      - application/json
+      description: 创建新的任务作业
+      parameters:
+      - description: 任务信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/model.JobTask'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 创建成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 创建任务作业
+      tags:
+      - 任务管理-任务作业
+  /task/job-tasks/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: 删除指定的任务作业记录（已禁用）
+      parameters:
+      - description: 任务ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "403":
+          description: 操作已禁用
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 删除任务作业
+      tags:
+      - 任务管理-任务作业
+    get:
+      consumes:
+      - application/json
+      description: 获取指定任务作业的详细信息
+      parameters:
+      - description: 任务ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: 任务不存在
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取任务作业详情
+      tags:
+      - 任务管理-任务作业
+    put:
+      consumes:
+      - application/json
+      description: 更新指定任务作业的信息
+      parameters:
+      - description: 任务ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 任务信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/model.JobTask'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 更新成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: 任务不存在
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 更新任务作业
+      tags:
+      - 任务管理-任务作业
+  /task/job-templates:
+    get:
+      consumes:
+      - application/json
+      description: 分页获取任务模板列表，支持按关键词、分类筛选
+      parameters:
+      - default: 1
+        description: 页码
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: 每页数量
+        in: query
+        name: pageSize
+        type: integer
+      - description: 搜索关键词
+        in: query
+        name: keyword
+        type: string
+      - description: 模板分类
+        in: query
+        name: category
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取任务模板列表
+      tags:
+      - 任务管理-任务模板
+    post:
+      consumes:
+      - application/json
+      description: 创建新的任务模板
+      parameters:
+      - description: 模板信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/model.JobTemplate'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 创建成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: 参数错误
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 创建任务模板
+      tags:
+      - 任务管理-任务模板
+  /task/job-templates/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: 删除指定的任务模板（已禁用）
+      parameters:
+      - description: 模板ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "403":
+          description: 操作已禁用
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 删除任务模板
+      tags:
+      - 任务管理-任务模板
+    get:
+      consumes:
+      - application/json
+      description: 获取指定任务模板的详细信息
+      parameters:
+      - description: 模板ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: 模板不存在
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取任务模板详情
+      tags:
+      - 任务管理-任务模板
+    put:
+      consumes:
+      - application/json
+      description: 更新指定任务模板的信息
+      parameters:
+      - description: 模板ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: 模板信息
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/model.JobTemplate'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 更新成功
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: 模板不存在
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 更新任务模板
+      tags:
+      - 任务管理-任务模板
+  /task/job-templates/all:
+    get:
+      consumes:
+      - application/json
+      description: 获取所有启用状态的任务模板，用于下拉选择
+      parameters:
+      - description: 模板分类
+        in: query
+        name: category
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 获取成功
+          schema:
+            $ref: '#/definitions/response.Response'
+      security:
+      - Bearer: []
+      summary: 获取所有任务模板
+      tags:
+      - 任务管理-任务模板
 securityDefinitions:
   Bearer:
     description: Type "Bearer" followed by a space and JWT token.

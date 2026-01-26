@@ -29,7 +29,7 @@ func NewAssetPermissionService(assetPermissionUseCase *rbac.AssetPermissionUseCa
 // @Param body body rbac.AssetPermissionCreateReqWithPermissions true "权限信息"
 // @Success 200 {object} response.Response "创建成功"
 // @Failure 400 {object} response.Response "参数错误"
-// @Router /asset-permissions [post]
+// @Router /api/v1/asset-permissions [post]
 func (s *AssetPermissionService) CreateAssetPermission(c *gin.Context) {
 	var req rbac.AssetPermissionCreateReqWithPermissions
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -61,7 +61,7 @@ func (s *AssetPermissionService) CreateAssetPermission(c *gin.Context) {
 // @Param id path int true "权限ID"
 // @Success 200 {object} response.Response "删除成功"
 // @Failure 400 {object} response.Response "参数错误"
-// @Router /asset-permissions/{id} [delete]
+// @Router /api/v1/asset-permissions/{id} [delete]
 func (s *AssetPermissionService) DeleteAssetPermission(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
@@ -88,7 +88,7 @@ func (s *AssetPermissionService) DeleteAssetPermission(c *gin.Context) {
 // @Param id path int true "权限ID"
 // @Success 200 {object} response.Response "获取成功"
 // @Failure 400 {object} response.Response "参数错误"
-// @Router /asset-permissions/{id} [get]
+// @Router /api/v1/asset-permissions/{id} [get]
 func (s *AssetPermissionService) GetAssetPermissionDetail(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
@@ -117,7 +117,7 @@ func (s *AssetPermissionService) GetAssetPermissionDetail(c *gin.Context) {
 // @Param body body rbac.AssetPermissionCreateReqWithPermissions true "权限信息"
 // @Success 200 {object} response.Response "更新成功"
 // @Failure 400 {object} response.Response "参数错误"
-// @Router /asset-permissions/{id} [put]
+// @Router /api/v1/asset-permissions/{id} [put]
 func (s *AssetPermissionService) UpdateAssetPermission(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
@@ -163,7 +163,7 @@ func (s *AssetPermissionService) UpdateAssetPermission(c *gin.Context) {
 // @Param assetGroupId query int true "资产分组ID"
 // @Success 200 {object} response.Response "删除成功"
 // @Failure 400 {object} response.Response "参数错误"
-// @Router /asset-permissions [delete]
+// @Router /api/v1/asset-permissions [delete]
 func (s *AssetPermissionService) DeleteAssetPermissionByRoleAndGroup(c *gin.Context) {
 	roleIDStr := c.Query("roleId")
 	assetGroupIDStr := c.Query("assetGroupId")
@@ -200,7 +200,7 @@ func (s *AssetPermissionService) DeleteAssetPermissionByRoleAndGroup(c *gin.Cont
 // @Param roleId query int false "角色ID"
 // @Param assetGroupId query int false "资产分组ID"
 // @Success 200 {object} response.Response "获取成功"
-// @Router /asset-permissions [get]
+// @Router /api/v1/asset-permissions [get]
 func (s *AssetPermissionService) ListAssetPermissions(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
@@ -246,7 +246,7 @@ func (s *AssetPermissionService) ListAssetPermissions(c *gin.Context) {
 // @Param roleId path int true "角色ID"
 // @Success 200 {object} response.Response "获取成功"
 // @Failure 400 {object} response.Response "参数错误"
-// @Router /asset-permissions/role/{roleId} [get]
+// @Router /api/v1/asset-permissions/role/{roleId} [get]
 func (s *AssetPermissionService) GetAssetPermissionsByRole(c *gin.Context) {
 	roleIDStr := c.Param("roleId")
 	roleID, err := strconv.ParseUint(roleIDStr, 10, 32)
@@ -274,7 +274,7 @@ func (s *AssetPermissionService) GetAssetPermissionsByRole(c *gin.Context) {
 // @Param assetGroupId path int true "资产分组ID"
 // @Success 200 {object} response.Response "获取成功"
 // @Failure 400 {object} response.Response "参数错误"
-// @Router /asset-permissions/group/{assetGroupId} [get]
+// @Router /api/v1/asset-permissions/group/{assetGroupId} [get]
 func (s *AssetPermissionService) GetAssetPermissionsByGroup(c *gin.Context) {
 	assetGroupIDStr := c.Param("assetGroupId")
 	assetGroupID, err := strconv.ParseUint(assetGroupIDStr, 10, 32)
@@ -303,7 +303,7 @@ func (s *AssetPermissionService) GetAssetPermissionsByGroup(c *gin.Context) {
 // @Success 200 {object} response.Response "获取成功"
 // @Failure 400 {object} response.Response "参数错误"
 // @Failure 401 {object} response.Response "未授权"
-// @Router /asset-permissions/user/host [get]
+// @Router /api/v1/asset-permissions/user/host [get]
 func (s *AssetPermissionService) GetUserHostPermissions(c *gin.Context) {
 	hostIDStr := c.Query("hostId")
 	if hostIDStr == "" {
