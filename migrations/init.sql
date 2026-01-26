@@ -341,6 +341,29 @@ CREATE TABLE IF NOT EXISTS `sys_role_asset_permission` (
   CONSTRAINT `fk_role_asset_perm_group` FOREIGN KEY (`asset_group_id`) REFERENCES `asset_group` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- SSH终端会话记录表（资产管理-终端审计）
+CREATE TABLE IF NOT EXISTS `ssh_terminal_sessions` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `host_id` bigint unsigned NOT NULL COMMENT '主机ID',
+  `host_name` varchar(100) COMMENT '主机名称',
+  `host_ip` varchar(50) COMMENT '主机IP',
+  `user_id` bigint unsigned NOT NULL COMMENT '操作用户ID',
+  `username` varchar(100) COMMENT '用户名',
+  `recording_path` varchar(500) COMMENT '录制文件路径',
+  `duration` int COMMENT '会话时长(秒)',
+  `file_size` bigint COMMENT '文件大小(字节)',
+  `status` varchar(20) DEFAULT 'recording' COMMENT '会话状态 recording/completed/failed',
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `deleted_at` datetime COMMENT '删除时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_host_id` (`host_id`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_status` (`status`),
+  KEY `idx_created_at` (`created_at`),
+  KEY `idx_deleted_at` (`deleted_at`)
+) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- ============================================================
 -- 4. 任务管理表 (Task Plugin)
 -- ============================================================
