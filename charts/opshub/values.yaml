@@ -42,14 +42,14 @@ backend:
   # 健康检查
   livenessProbe:
     enabled: true
-    path: /api/health
+    path: /health
     initialDelaySeconds: 30
     periodSeconds: 10
     timeoutSeconds: 5
 
   readinessProbe:
     enabled: true
-    path: /api/health
+    path: /health
     initialDelaySeconds: 10
     periodSeconds: 5
     timeoutSeconds: 3
