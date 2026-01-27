@@ -1,0 +1,116 @@
+{{- if .Values.mysql.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "opshub.fullname" . }}-mysql-pvc
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "opshub.mysql.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    {{- toYaml .Values.mysql.persistence.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.mysql.persistence.size }}
+  {{- if or .Values.mysql.persistence.storageClass .Values.global.storageClass }}
+  storageClassName: {{ .Values.mysql.persistence.storageClass | default .Values.global.storageClass }}
+  {{- end }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "opshub.fullname" . }}-mysql
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "opshub.mysql.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "opshub.fullname" . }}-mysql
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "opshub.mysql.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "opshub.mysql.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: mysql
+          image: "{{ .Values.mysql.image.repository }}:{{ .Values.mysql.image.tag }}"
+          imagePullPolicy: {{ .Values.mysql.image.pullPolicy | default .Values.global.imagePullPolicy }}
+          ports:
+            - name: mysql
+              containerPort: 3306
+              protocol: TCP
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "opshub.fullname" . }}-secrets
+                  key: mysql-root-password
+            - name: MYSQL_DATABASE
+              value: {{ .Values.mysql.auth.database | quote }}
+          volumeMounts:
+            - name: mysql-data
+              mountPath: /var/lib/mysql
+            - name: mysql-init
+              mountPath: /docker-entrypoint-initdb.d
+          resources:
+            {{- toYaml .Values.mysql.resources | nindent 12 }}
+          livenessProbe:
+            exec:
+              command:
+                - mysqladmin
+                - ping
+                - -h
+                - localhost
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+          readinessProbe:
+            exec:
+              command:
+                - bash
+                - -c
+                - mysql -h localhost -uroot -p$MYSQL_ROOT_PASSWORD -e "SELECT 1"
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+      volumes:
+        - name: mysql-data
+          persistentVolumeClaim:
+            claimName: {{ include "opshub.fullname" . }}-mysql-pvc
+        - name: mysql-init
+          configMap:
+            name: {{ include "opshub.fullname" . }}-mysql-init
+      {{- with .Values.mysql.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.mysql.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "opshub.fullname" . }}-mysql
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "opshub.mysql.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - port: 3306
+      targetPort: mysql
+      protocol: TCP
+      name: mysql
+  selector:
+    {{- include "opshub.mysql.selectorLabels" . | nindent 4 }}
+{{- end }}

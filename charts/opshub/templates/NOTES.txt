@@ -1,0 +1,50 @@
+🎉 OpsHub 部署成功！
+
+{{- if .Values.ingress.enabled }}
+
+📌 访问地址:
+{{- range $host := .Values.ingress.hosts }}
+  {{- range .paths }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $host.host }}{{ .path }}
+  {{- end }}
+{{- end }}
+
+{{- else }}
+
+📌 获取应用 URL:
+
+1. 前端服务:
+{{- if contains "NodePort" .Values.frontend.service.type }}
+  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "opshub.fullname" . }}-frontend)
+  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo http://$NODE_IP:$NODE_PORT
+{{- else if contains "LoadBalancer" .Values.frontend.service.type }}
+  NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+  You can watch the status by running:
+  kubectl get --namespace {{ .Release.Namespace }} svc -w {{ include "opshub.fullname" . }}-frontend
+{{- else if contains "ClusterIP" .Values.frontend.service.type }}
+  kubectl port-forward --namespace {{ .Release.Namespace }} svc/{{ include "opshub.fullname" . }}-frontend 8080:{{ .Values.frontend.service.port }}
+  echo "访问 http://127.0.0.1:8080"
+{{- end }}
+
+2. 后端 API:
+{{- if contains "ClusterIP" .Values.backend.service.type }}
+  kubectl port-forward --namespace {{ .Release.Namespace }} svc/{{ include "opshub.fullname" . }}-backend 9876:{{ .Values.backend.service.port }}
+  echo "API: http://127.0.0.1:9876"
+  echo "Swagger: http://127.0.0.1:9876/swagger/index.html"
+{{- end }}
+
+{{- end }}
+
+📊 查看部署状态:
+  kubectl get pods -n {{ .Release.Namespace }}
+  kubectl get svc -n {{ .Release.Namespace }}
+
+📝 默认登录账号:
+  用户名: admin
+  密码: 123456
+  ⚠️ 请在首次登录后立即修改密码！
+
+📚 更多信息:
+  - 文档: https://github.com/ydcloud-dy/opshub
+  - Issues: https://github.com/ydcloud-dy/opshub/issues

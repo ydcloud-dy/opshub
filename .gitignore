@@ -6,7 +6,7 @@
 *.dylib
 bin/
 *.test
-opshub
+/opshub
 *.log
 # Test binary, built with `go test -c`
 *.test
