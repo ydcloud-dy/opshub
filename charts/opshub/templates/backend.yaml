@@ -22,7 +22,7 @@ spec:
       initContainers:
         # 等待 MySQL 就绪
         - name: wait-for-mysql
-          image: busybox:1.36
+          image: "{{ .Values.global.busybox.repository }}:{{ .Values.global.busybox.tag }}"
           command:
             - sh
             - -c
@@ -34,7 +34,7 @@ spec:
               echo "MySQL is ready!"
         # 等待 Redis 就绪
         - name: wait-for-redis
-          image: busybox:1.36
+          image: "{{ .Values.global.busybox.repository }}:{{ .Values.global.busybox.tag }}"
           command:
             - sh
             - -c

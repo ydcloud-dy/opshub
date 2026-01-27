@@ -9,6 +9,10 @@ global:
   imagePullPolicy: IfNotPresent
   # 镜像拉取密钥
   imagePullSecrets: []
+  # busybox 镜像（用于 initContainer 等待依赖服务）
+  busybox:
+    repository: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/busybox
+    tag: "1.36"
 
 # ==================== 后端配置 ====================
 backend:
