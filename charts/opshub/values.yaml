@@ -16,7 +16,8 @@ backend:
   replicaCount: 2
 
   image:
-    repository: ydcloud/opshub-backend
+    # 华为云 SWR 示例: swr.cn-east-3.myhuaweicloud.com/你的组织名/opshub-backend
+    repository: swr.cn-east-3.myhuaweicloud.com/dycloud/opshub-backend
     tag: latest
     pullPolicy: IfNotPresent
 
@@ -64,7 +65,8 @@ frontend:
   replicaCount: 2
 
   image:
-    repository: ydcloud/opshub-frontend
+    # 华为云 SWR 示例: swr.cn-east-3.myhuaweicloud.com/你的组织名/opshub-frontend
+    repository: swr.cn-east-3.myhuaweicloud.com/dycloud/opshub-frontend
     tag: latest
     pullPolicy: IfNotPresent
 
@@ -110,13 +112,13 @@ mysql:
   enabled: true
 
   image:
-    repository: mysql
+    repository: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/mysql
     tag: "8.0"
     pullPolicy: IfNotPresent
 
   # 认证配置
   auth:
-    rootPassword: "OpsHub@2024"
+    rootPassword: "OpsHub@2026"
     database: opshub
 
   # 持久化存储
@@ -148,7 +150,7 @@ redis:
   enabled: true
 
   image:
-    repository: redis
+    repository: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/redis
     tag: "7-alpine"
     pullPolicy: IfNotPresent
 

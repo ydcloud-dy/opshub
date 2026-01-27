@@ -36,8 +36,8 @@ WORKDIR /app
 # Copy the binary from builder
 COPY --from=builder /build/opshub .
 
-# Copy config template
-COPY config/config.yaml.example config/config.yaml.example
+# Copy config template as default config
+COPY config/config.yaml.example config/config.yaml
 
 # Create logs directory
 RUN mkdir -p logs
