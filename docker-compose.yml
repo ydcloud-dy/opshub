@@ -3,7 +3,7 @@ version: '3.8'
 services:
   # MySQL 数据库
   mysql:
-    image: mysql:8.0
+    image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/mysql:8.0.44
     container_name: opshub-mysql
     restart: unless-stopped
     environment:
@@ -21,7 +21,7 @@ services:
 
   # Redis 缓存
   redis:
-    image: redis:7-alpine
+    image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/redis:7-alpine
     container_name: opshub-redis
     restart: unless-stopped
     ports:
@@ -64,7 +64,7 @@ services:
 
   # 前端服务 (开发模式)
   frontend:
-    image: node:18-alpine
+    image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/node:18-alpine
     container_name: opshub-frontend
     working_dir: /app
     restart: unless-stopped

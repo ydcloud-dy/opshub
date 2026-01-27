@@ -53,6 +53,7 @@ func (p *Plugin) Enable(db *gorm.DB) error {
 	// 自动迁移所有插件相关的表
 	models := []interface{}{
 		&model.DomainMonitor{},
+		&model.DomainCheckHistory{},
 		&model.AlertConfig{},
 		&model.AlertChannel{},
 		&model.AlertReceiver{},

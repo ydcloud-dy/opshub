@@ -20,6 +20,7 @@ func RegisterRoutes(router *gin.RouterGroup, db *gorm.DB) {
 			domains.GET("", handler.ListDomains)               // 获取域名监控列表
 			domains.GET("/stats", handler.GetStats)            // 获取统计数据
 			domains.GET("/:id", handler.GetDomain)             // 获取域名监控详情
+			domains.GET("/:id/history", handler.GetCheckHistory) // 获取检查历史
 			domains.POST("", handler.CreateDomain)             // 创建域名监控
 			domains.PUT("/:id", handler.UpdateDomain)          // 更新域名监控
 			domains.DELETE("/:id", handler.DeleteDomain)       // 删除域名监控
@@ -75,6 +76,7 @@ func RegisterRoutes(router *gin.RouterGroup, db *gorm.DB) {
 func AutoMigrate(db *gorm.DB) error {
 	return db.AutoMigrate(
 		&model.DomainMonitor{},
+		&model.DomainCheckHistory{},
 		&model.AlertConfig{},
 		&model.AlertChannel{},
 		&model.AlertReceiver{},

@@ -1,26 +1,28 @@
 # Build stage
-FROM golang:1.21-alpine AS builder
-
+FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/golang:1.25-alpine AS builder
+# 设置 Go 环境变量
+ENV GOPROXY=https://goproxy.cn,https://mirrors.aliyun.com/goproxy/,direct \
+    GO111MODULE=on \
+    CGO_ENABLED=0 \
+    GOOS=linux
 # Install build dependencies
 RUN apk add --no-cache git make
 
 # Set working directory
 WORKDIR /build
 
-# Copy go mod files
-COPY go.mod go.sum ./
-
-# Download dependencies
-RUN go mod download
-
 # Copy source code
 COPY . .
 
+# Copy go mod files
+#COPY go.mod go.sum ./
+# Download dependencies
+RUN go mod download
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o opshub main.go
 
 # Runtime stage
-FROM alpine:latest
+FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/selectdb/alpine:latest
 
 # Install ca-certificates for HTTPS
 RUN apk --no-cache add ca-certificates tzdata

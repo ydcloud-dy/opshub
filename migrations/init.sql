@@ -784,10 +784,10 @@ VALUES
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- 创建默认的admin用户
--- 密码: 123456 (需要前端加密后的值，这里需要根据实际的密码加密方式来设置)
+-- 密码: 123456
 -- 警告: 生产环境请立即修改默认密码!
 INSERT INTO `sys_user` (`id`, `username`, `password`, `real_name`, `email`, `status`, `department_id`, `created_at`, `updated_at`)
-VALUES (1, 'admin', '$2a$10$N9qo8uLOickgx2ZMRZoMye4RjIvjQaY8FiKbLsxI0W.6.rPfELDci', '系统管理员', 'admin@opshub.io', 1, 1, NOW(), NOW());
+VALUES (1, 'admin', '$2a$10$RLkgoedTSa0dYj3ujbXMcunSED3c6GLvfdKYsmpz0l0YFZbVrSBqW', '系统管理员', 'admin@opshub.io', 1, 1, NOW(), NOW());
 
 -- 关联admin用户到admin角色
 INSERT INTO `sys_user_role` (`user_id`, `role_id`) VALUES (1, 1);

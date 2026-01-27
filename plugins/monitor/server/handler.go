@@ -141,6 +141,9 @@ func (h *Handler) CreateDomain(c *gin.Context) {
 		// 即使检查失败，记录也已创建，只是保持unknown状态
 		// 可以选择记录日志或直接忽略
 	} else {
+		// 保存检查历史
+		h.saveCheckHistory(&req, result)
+
 		// 更新检查结果
 		req.Status = result.Status
 		req.ResponseTime = result.ResponseTime
@@ -312,6 +315,9 @@ func (h *Handler) CheckDomain(c *gin.Context) {
 		return
 	}
 
+	// 保存检查历史
+	h.saveCheckHistory(monitor, result)
+
 	// 更新监控记录
 	monitor.Status = result.Status
 	monitor.ResponseTime = result.ResponseTime
@@ -374,6 +380,8 @@ type CheckResult struct {
 	ResponseTime int         `json:"responseTime"`  // 响应时间(ms)
 	SSLValid     bool        `json:"sslValid"`      // SSL是否有效
 	SSLExpiry    *time.Time  `json:"sslExpiry"`     // SSL过期时间
+	StatusCode   int         `json:"statusCode"`    // HTTP状态码
+	ErrorMessage string      `json:"errorMessage"`  // 错误信息
 }
 
 // performCheck 执行域名检查
@@ -383,6 +391,8 @@ func (h *Handler) performCheck(monitor *model.DomainMonitor) (*CheckResult, erro
 		ResponseTime: 0,
 		SSLValid:     false,
 		SSLExpiry:    nil,
+		StatusCode:   0,
+		ErrorMessage: "",
 	}
 
 	// 构造目标URL
@@ -407,6 +417,9 @@ func (h *Handler) performCheck(monitor *model.DomainMonitor) (*CheckResult, erro
 		// 检查是否是网络错误
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 			result.ResponseTime = int(10 * time.Second / time.Millisecond)
+			result.ErrorMessage = "请求超时"
+		} else {
+			result.ErrorMessage = err.Error()
 		}
 		return result, nil
 	}
@@ -414,12 +427,14 @@ func (h *Handler) performCheck(monitor *model.DomainMonitor) (*CheckResult, erro
 
 	// 计算响应时间
 	result.ResponseTime = int(time.Since(start).Milliseconds())
+	result.StatusCode = resp.StatusCode
 
 	// 检查响应状态码
 	if resp.StatusCode >= 200 && resp.StatusCode < 400 {
 		result.Status = "normal"
 	} else {
 		result.Status = "abnormal"
+		result.ErrorMessage = fmt.Sprintf("HTTP状态码异常: %d", resp.StatusCode)
 	}
 
 	// 如果启用SSL检查，验证SSL证书
@@ -744,6 +759,9 @@ func (h *Handler) CheckDomainByID(id uint) {
 		return
 	}
 
+	// 保存检查历史
+	h.saveCheckHistory(monitor, result)
+
 	// 更新监控记录
 	monitor.Status = result.Status
 	monitor.ResponseTime = result.ResponseTime
@@ -760,4 +778,122 @@ func (h *Handler) CheckDomainByID(id uint) {
 
 	// 检查并发送告警
 	h.checkAndSendAlert(monitor, result)
+}
+
+// 每个域名保留的最大历史记录数
+const maxHistoryPerDomain = 100
+
+// saveCheckHistory 保存检查历史记录
+func (h *Handler) saveCheckHistory(monitor *model.DomainMonitor, result *CheckResult) {
+	history := &model.DomainCheckHistory{
+		DomainID:     monitor.ID,
+		Domain:       monitor.Domain,
+		Status:       result.Status,
+		ResponseTime: result.ResponseTime,
+		SSLValid:     result.SSLValid,
+		SSLExpiry:    result.SSLExpiry,
+		StatusCode:   result.StatusCode,
+		ErrorMessage: result.ErrorMessage,
+		CheckedAt:    time.Now(),
+	}
+
+	h.db.Create(history)
+
+	// 清理旧的历史记录，只保留最近的 maxHistoryPerDomain 条
+	h.cleanupOldHistory(monitor.ID)
+}
+
+// cleanupOldHistory 清理旧的检查历史记录
+func (h *Handler) cleanupOldHistory(domainID uint) {
+	// 统计该域名的历史记录数量
+	var count int64
+	h.db.Model(&model.DomainCheckHistory{}).Where("domain_id = ?", domainID).Count(&count)
+
+	// 如果超过限制，删除最旧的记录
+	if count > maxHistoryPerDomain {
+		// 找到要保留的最小ID（保留最新的 maxHistoryPerDomain 条）
+		var minKeepID uint
+		h.db.Model(&model.DomainCheckHistory{}).
+			Where("domain_id = ?", domainID).
+			Order("checked_at DESC").
+			Offset(maxHistoryPerDomain).
+			Limit(1).
+			Pluck("id", &minKeepID)
+
+		// 删除比这个ID更旧的记录
+		if minKeepID > 0 {
+			h.db.Where("domain_id = ? AND id <= ?", domainID, minKeepID).
+				Delete(&model.DomainCheckHistory{})
+		}
+	}
+}
+
+// GetCheckHistory 获取域名检查历史
+// @Summary 获取域名检查历史
+// @Description 获取指定域名的检查历史记录
+// @Tags DomainMonitor
+// @Accept json
+// @Produce json
+// @Param id path int true "域名ID"
+// @Param page query int false "页码" default(1)
+// @Param pageSize query int false "每页数量" default(20)
+// @Success 200 {object} map[string]interface{} "成功"
+// @Router /plugins/monitor/domains/{id}/history [get]
+func (h *Handler) GetCheckHistory(c *gin.Context) {
+	var id uint
+	if _, err := fmt.Sscanf(c.Param("id"), "%d", &id); err != nil {
+		c.JSON(400, gin.H{
+			"code":    400,
+			"message": "无效的ID",
+		})
+		return
+	}
+
+	// 获取分页参数
+	page := 1
+	pageSize := 20
+	if p, err := fmt.Sscanf(c.DefaultQuery("page", "1"), "%d", &page); err != nil || p == 0 {
+		page = 1
+	}
+	if ps, err := fmt.Sscanf(c.DefaultQuery("pageSize", "20"), "%d", &pageSize); err != nil || ps == 0 {
+		pageSize = 20
+	}
+
+	// 限制每页最大数量
+	if pageSize > 100 {
+		pageSize = 100
+	}
+
+	// 查询检查历史
+	var histories []model.DomainCheckHistory
+	var total int64
+
+	// 统计总数
+	h.db.Model(&model.DomainCheckHistory{}).Where("domain_id = ?", id).Count(&total)
+
+	// 分页查询
+	offset := (page - 1) * pageSize
+	if err := h.db.Where("domain_id = ?", id).
+		Order("checked_at DESC").
+		Offset(offset).
+		Limit(pageSize).
+		Find(&histories).Error; err != nil {
+		c.JSON(500, gin.H{
+			"code":    500,
+			"message": "获取检查历史失败",
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"code":    0,
+		"message": "success",
+		"data": gin.H{
+			"list":     histories,
+			"total":    total,
+			"page":     page,
+			"pageSize": pageSize,
+		},
+	})
 }

@@ -31,3 +31,23 @@ type DomainMonitor struct {
 func (DomainMonitor) TableName() string {
 	return "domain_monitors"
 }
+
+// DomainCheckHistory 域名检查历史记录
+type DomainCheckHistory struct {
+	ID           uint       `gorm:"primarykey" json:"id"`
+	DomainID     uint       `gorm:"index;not null" json:"domainId"`                              // 域名监控ID
+	Domain       string     `gorm:"type:varchar(255);not null" json:"domain"`                   // 域名
+	Status       string     `gorm:"type:varchar(20);not null" json:"status"`                    // 检查状态: normal, abnormal
+	ResponseTime int        `gorm:"type:int;default:0" json:"responseTime"`                     // 响应时间(ms)
+	SSLValid     bool       `gorm:"type:tinyint(1);default:0" json:"sslValid"`                  // SSL是否有效
+	SSLExpiry    *time.Time `gorm:"type:datetime" json:"sslExpiry"`                             // SSL过期时间
+	StatusCode   int        `gorm:"type:int;default:0" json:"statusCode"`                       // HTTP状态码
+	ErrorMessage string     `gorm:"type:text" json:"errorMessage"`                              // 错误信息
+	CheckedAt    time.Time  `gorm:"type:datetime;not null;index" json:"checkedAt"`              // 检查时间
+	CreatedAt    time.Time  `json:"createdAt"`
+}
+
+// TableName 指定表名
+func (DomainCheckHistory) TableName() string {
+	return "domain_check_histories"
+}

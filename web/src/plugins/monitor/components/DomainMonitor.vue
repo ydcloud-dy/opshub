@@ -500,9 +500,12 @@ const handleView = async (row: any) => {
       getDomainMonitor(row.id),
       getDomainCheckHistory(row.id, 1, 20)
     ])
+    console.log('Domain detail:', detail)
+    console.log('History data:', historyData)
     currentDomain.value = detail
     // 转换检查历史数据格式
     if (historyData && historyData.list) {
+      console.log('History list:', historyData.list)
       checkHistory.value = historyData.list.map((item: any) => ({
         id: item.id,
         time: formatDateTime(item.checkedAt),
@@ -511,10 +514,12 @@ const handleView = async (row: any) => {
         message: item.errorMessage || ''
       }))
     } else {
+      console.log('No history list found in:', historyData)
       checkHistory.value = []
     }
     detailDialogVisible.value = true
   } catch (error: any) {
+    console.error('Error fetching details:', error)
     ElMessage.error('获取详情失败')
   } finally {
     loading.value = false

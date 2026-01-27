@@ -1,0 +1,35 @@
+server:
+  mode: release  # debug, release, test
+  http_port: 9876
+  rpc_port: 9090
+  read_timeout: 60000  # 毫秒
+  write_timeout: 60000 # 毫秒
+  jwt_secret: "your-secret-key-change-in-production"  # JWT密钥
+
+database:
+  driver: mysql
+  host: mysql
+  port: 3306
+  database: opshub
+  username: root
+  password: "your-password"
+  max_idle_conns: 10
+  max_open_conns: 100
+  conn_max_lifetime: 3600 # 秒
+
+redis:
+  host: redis
+  port: 6379
+  password: ""
+  db: 0
+  pool_size: 10
+  min_idle_conn: 5
+
+log:
+  level: info  # debug, info, warn, error
+  filename: logs/app.log
+  max_size: 100      # MB
+  max_backups: 10
+  max_age: 30        # days
+  compress: true
+  console: true
