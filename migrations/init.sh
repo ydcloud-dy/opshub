@@ -1,4 +1,5 @@
 #!/bin/bash
+
 # MySQL initialization wrapper script
 # This script ensures proper execution of init.sql
 

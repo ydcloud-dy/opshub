@@ -184,281 +184,29 @@ cd web && npm install && npm run dev
 
 ## 🚢 部署方式
 
-### 方式一：Docker Compose 部署（推荐）
+我们提供多种部署方式，请根据实际环境选择：
 
-最简单的部署方式，一键启动所有服务。
+| 部署方式 | 适用场景 | 复杂度 |
+|:---------|:---------|:-------|
+| Docker Compose | 快速体验、开发测试 | 简单 |
+| Kubernetes | 生产环境、高可用部署 | 中等 |
+| 源码部署 | 开发调试、二次开发 | 中等 |
+
+**👉 [查看完整部署文档](docs/deployment.md)**
+
+### 快速开始（Docker Compose）
 
 ```bash
-# 1. 克隆项目
+# 克隆项目
 git clone https://github.com/ydcloud-dy/opshub.git
 cd opshub
 
-# 2. 创建环境变量文件（可选）
-cp .env.example .env
-# 编辑 .env 文件修改配置
-
-# 3. 启动服务
+# 启动服务
 docker-compose up -d
 
-# 4. 查看服务状态
-docker-compose ps
-
-# 5. 查看日志
-docker-compose logs -f
-```
-
-**访问地址：**
-| 服务 | 地址 |
-|:-----|:-----|
-| 前端 | http://localhost:3000 |
-| 后端 API | http://localhost:9876 |
-| Swagger 文档 | http://localhost:9876/swagger/index.html |
-
-```bash
-# 停止服务
-docker-compose down
-
-# 停止并删除数据卷
-docker-compose down -v
-```
-
----
-
-### 方式二：脚本一键部署
-
-提供一键部署脚本，适合快速部署到服务器。
-
-```bash
-# 下载并执行安装脚本
-curl -fsSL https://raw.githubusercontent.com/ydcloud-dy/opshub/main/scripts/install.sh | bash
-
-# 或者手动下载后执行
-curl -fsSL https://raw.githubusercontent.com/ydcloud-dy/opshub/main/scripts/install.sh -o install.sh
-chmod +x install.sh
-./install.sh
-```
-
-**脚本支持的参数：**
-
-```bash
-# 指定安装目录
-./install.sh --install-dir /opt/opshub
-
-# 指定数据库配置
-./install.sh --db-host 127.0.0.1 --db-password your-password
-
-# 跳过依赖检查
-./install.sh --skip-deps
-
-# 查看帮助
-./install.sh --help
-```
-
----
-
-### 方式三：Kubernetes 部署
-
-适合生产环境的容器化部署。
-
-#### 使用 YAML 部署
-
-```bash
-# 1. 创建命名空间
-kubectl create namespace opshub
-
-# 2. 创建配置密钥
-kubectl create secret generic opshub-secrets \
-  --from-literal=db-password=your-db-password \
-  --from-literal=jwt-secret=your-jwt-secret \
-  -n opshub
-
-# 3. 部署应用
-kubectl apply -f deploy/kubernetes/ -n opshub
-
-# 4. 查看部署状态
-kubectl get pods -n opshub
-
-# 5. 查看服务
-kubectl get svc -n opshub
-```
-
-**Deployment 示例：**
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: opshub
-  labels:
-    app: opshub
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: opshub
-  template:
-    metadata:
-      labels:
-        app: opshub
-    spec:
-      containers:
-      - name: opshub
-        image: opshub:latest
-        ports:
-        - containerPort: 9876
-        env:
-        - name: OPSHUB_SERVER_MODE
-          value: "release"
-        - name: OPSHUB_DATABASE_HOST
-          value: "mysql-service"
-        - name: OPSHUB_DATABASE_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: opshub-secrets
-              key: db-password
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "100m"
-          limits:
-            memory: "512Mi"
-            cpu: "500m"
-        readinessProbe:
-          httpGet:
-            path: /api/health
-            port: 9876
-          initialDelaySeconds: 5
-          periodSeconds: 10
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: opshub-service
-spec:
-  selector:
-    app: opshub
-  ports:
-  - port: 80
-    targetPort: 9876
-  type: ClusterIP
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: opshub-ingress
-spec:
-  rules:
-  - host: opshub.example.com
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: opshub-service
-            port:
-              number: 80
-```
-
-#### 使用 Helm 部署
-
-```bash
-# 添加 Helm 仓库
-helm repo add opshub https://charts.opshub.io
-helm repo update
-
-# 安装
-helm install opshub opshub/opshub \
-  --namespace opshub \
-  --create-namespace \
-  --set database.host=mysql-service \
-  --set database.password=your-password \
-  --set server.jwtSecret=your-jwt-secret
-
-# 使用自定义 values.yaml
-helm install opshub opshub/opshub \
-  --namespace opshub \
-  --create-namespace \
-  -f values.yaml
-
-# 升级
-helm upgrade opshub opshub/opshub -n opshub
-
-# 卸载
-helm uninstall opshub -n opshub
-```
-
-**values.yaml 示例：**
-
-```yaml
-replicaCount: 2
-
-image:
-  repository: opshub
-  tag: latest
-  pullPolicy: IfNotPresent
-
-server:
-  mode: release
-  httpPort: 9876
-  jwtSecret: "your-jwt-secret"
-
-database:
-  host: mysql-service
-  port: 3306
-  database: opshub
-  username: root
-  password: "your-password"
-
-redis:
-  host: redis-service
-  port: 6379
-  password: ""
-
-ingress:
-  enabled: true
-  className: nginx
-  hosts:
-    - host: opshub.example.com
-      paths:
-        - path: /
-          pathType: Prefix
-
-resources:
-  requests:
-    memory: "256Mi"
-    cpu: "100m"
-  limits:
-    memory: "512Mi"
-    cpu: "500m"
-```
-
----
-
-### 方式四：Docker 单独部署
-
-单独使用 Docker 部署后端服务。
-
-```bash
-# 构建镜像
-docker build -t opshub:latest .
-
-# 运行容器
-docker run -d \
-  --name opshub \
-  -p 9876:9876 \
-  -e OPSHUB_SERVER_MODE=release \
-  -e OPSHUB_DATABASE_HOST=your-mysql-host \
-  -e OPSHUB_DATABASE_PASSWORD=your-password \
-  -e OPSHUB_REDIS_HOST=your-redis-host \
-  -e OPSHUB_SERVER_JWT_SECRET=your-jwt-secret \
-  opshub:latest
-
-# 查看日志
-docker logs -f opshub
-
-# 停止并删除
-docker stop opshub && docker rm opshub
+# 访问系统
+# 前端：http://localhost:3000
+# 后端：http://localhost:9876
 ```
 
 ---
@@ -467,6 +215,7 @@ docker stop opshub && docker rm opshub
 
 | 文档 | 链接 |
 |:-----|:-----|
+| 🚀 部署指南 | [docs/deployment.md](docs/deployment.md) |
 | 📘 数据库初始化 | [migrations/README.md](migrations/README.md) |
 | 📗 Kubernetes 插件 | [docs/plugins/kubernetes.md](docs/plugins/kubernetes.md) |
 | 📙 任务中心插件 | [docs/plugins/task.md](docs/plugins/task.md) |
@@ -476,38 +225,7 @@ docker stop opshub && docker rm opshub
 
 ## 🏗️ 系统架构
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      👥 用户层                               │
-│                  (浏览器 / API Client)                       │
-└─────────────────────────┬───────────────────────────────────┘
-                          │ HTTP/HTTPS
-┌─────────────────────────▼───────────────────────────────────┐
-│                    🎨 前端应用                               │
-│            Vue 3 + TypeScript + Element Plus                 │
-│  ┌──────────────┬──────────────┬──────────────┐            │
-│  │  Kubernetes  │    Task      │   Monitor    │            │
-│  │    插件      │    插件       │    插件      │            │
-│  └──────────────┴──────────────┴──────────────┘            │
-└─────────────────────────┬───────────────────────────────────┘
-                          │ API
-┌─────────────────────────▼───────────────────────────────────┐
-│                    ⚙️ 后端服务                               │
-│                  Go + Gin + GORM                             │
-│  ┌──────────────┬──────────────┬──────────────┐            │
-│  │  JWT 认证    │  RBAC 权限   │   审计日志   │            │
-│  └──────────────┴──────────────┴──────────────┘            │
-│  ┌──────────────┬──────────────┬──────────────┐            │
-│  │  Kubernetes  │    Task      │   Monitor    │            │
-│  │    插件      │    插件       │    插件      │            │
-│  └──────────────┴──────────────┴──────────────┘            │
-└───────┬─────────────────┬───────────────────┬───────────────┘
-        │                 │                   │
-┌───────▼────────┐ ┌──────▼──────┐ ┌─────────▼─────────┐
-│   🗄️ MySQL    │ │  ⚡ Redis   │ │  ☸️ Kubernetes   │
-│   数据持久化   │ │  缓存/会话  │ │     集群          │
-└────────────────┘ └─────────────┘ └───────────────────┘
-```
+![img.png](img.png)
 
 ---
 
@@ -537,21 +255,6 @@ opshub/
 ├── Dockerfile
 └── main.go
 ```
-
----
-
-## 🔧 环境变量
-
-| 变量名 | 描述 | 默认值 |
-|:-------|:-----|:-------|
-| `OPSHUB_SERVER_MODE` | 运行模式 | `debug` |
-| `OPSHUB_SERVER_HTTP_PORT` | HTTP 端口 | `9876` |
-| `OPSHUB_SERVER_JWT_SECRET` | JWT 密钥 | - |
-| `OPSHUB_DATABASE_HOST` | MySQL 地址 | `127.0.0.1` |
-| `OPSHUB_DATABASE_PORT` | MySQL 端口 | `3306` |
-| `OPSHUB_DATABASE_PASSWORD` | MySQL 密码 | - |
-| `OPSHUB_REDIS_HOST` | Redis 地址 | `127.0.0.1` |
-| `OPSHUB_REDIS_PORT` | Redis 端口 | `6379` |
 
 ---
 

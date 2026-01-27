@@ -1,3 +1,4 @@
+
 # Build stage
 FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/golang:1.25-alpine AS builder
 # 设置 Go 环境变量

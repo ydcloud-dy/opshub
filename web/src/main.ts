@@ -12,6 +12,7 @@ import { pluginManager } from './plugins/manager'
 import '@/plugins/kubernetes'
 import '@/plugins/monitor'
 import '@/plugins/task'
+import '@/plugins/test'
 const app = createApp(App)
 const pinia = createPinia()
 
