@@ -35,9 +35,12 @@ var captchaStore base64Captcha.Store
 func InitCaptchaStore(redisClient *redis.Client) {
 	if redisClient != nil {
 		captchaStore = NewRedisCaptchaStore(redisClient, 5*time.Minute)
+		// 添加日志确认使用 Redis 存储
+		println("[Captcha] 使用 Redis 存储验证码")
 	} else {
 		// 如果没有 Redis，回退到内存存储
 		captchaStore = base64Captcha.DefaultMemStore
+		println("[Captcha] 警告: Redis 为 nil，回退到内存存储")
 	}
 }
 

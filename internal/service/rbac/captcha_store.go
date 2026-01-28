@@ -24,6 +24,8 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	appLogger "github.com/ydcloud-dy/opshub/pkg/logger"
+	"go.uber.org/zap"
 )
 
 // RedisCaptchaStore Redis 验证码存储
@@ -45,18 +47,23 @@ func NewRedisCaptchaStore(client *redis.Client, expiration time.Duration) *Redis
 // Set 存储验证码
 func (s *RedisCaptchaStore) Set(id string, value string) error {
 	ctx := context.Background()
-	return s.client.Set(ctx, s.keyPrefix+id, value, s.expiration).Err()
+	key := s.keyPrefix + id
+	err := s.client.Set(ctx, key, value, s.expiration).Err()
+	appLogger.Info("Redis验证码存储", zap.String("key", key), zap.String("value", value), zap.Error(err))
+	return err
 }
 
 // Get 获取验证码（不删除）
 func (s *RedisCaptchaStore) Get(id string, clear bool) string {
 	ctx := context.Background()
-	val, err := s.client.Get(ctx, s.keyPrefix+id).Result()
+	key := s.keyPrefix + id
+	val, err := s.client.Get(ctx, key).Result()
+	appLogger.Info("Redis验证码获取", zap.String("key", key), zap.String("value", val), zap.Bool("clear", clear), zap.Error(err))
 	if err != nil {
 		return ""
 	}
 	if clear {
-		s.client.Del(ctx, s.keyPrefix+id)
+		s.client.Del(ctx, key)
 	}
 	return val
 }
