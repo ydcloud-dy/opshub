@@ -380,8 +380,8 @@ const initTerminal = async (tabId: string, host: any) => {
   // 根据当前环境判断后端地址
   const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const backendHost = window.location.hostname
   const backendPort = isDev ? ':9876' : (window.location.port ? ':' + window.location.port : '')
-  const backendHost = isDev ? window.location.hostname : window.location.host
   // 将终端尺寸作为参数传递
   const wsUrl = `${protocol}//${backendHost}${backendPort}/api/v1/asset/terminal/${host.id}?token=${token}&cols=${dims.cols}&rows=${dims.rows}`
 
