@@ -70,5 +70,5 @@ metadata:
     {{- include "opshub.labels" . | nindent 4 }}
 data:
   init.sql: |
-    CREATE DATABASE IF NOT EXISTS {{ .Values.mysql.auth.database }} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+{{ .Files.Get "files/init.sql" | indent 4 }}
 {{- end }}
