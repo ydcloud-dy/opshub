@@ -130,21 +130,6 @@ Kubernetes 插件是 OpsHub 的核心插件，提供完整的多集群 Kubernete
 4. 点击「启用」按钮
 5. 刷新页面，左侧菜单出现「容器管理」
 
-### 通过 API 启用
-
-```bash
-# 启用插件
-curl -X POST http://localhost:9876/api/v1/plugins/kubernetes/enable \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN"
-
-# 禁用插件
-curl -X POST http://localhost:9876/api/v1/plugins/kubernetes/disable \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN"
-
-# 查看插件状态
-curl http://localhost:9876/api/v1/plugins \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN"
-```
 
 ---
 
@@ -228,47 +213,7 @@ kubectl config view --minify --flatten
 3. 点击「回放」查看操作录像
 4. 支持按用户、时间、Pod 筛选
 
-### 使用 Arthas 诊断
 
-#### 启动诊断
-
-1. 进入「容器管理」-「应用诊断」
-2. 选择集群、命名空间、Pod
-3. 点击「启动诊断」
-4. 等待 Arthas 注入完成
-
-#### 常用诊断命令
-
-```bash
-# 查看线程列表
-thread
-
-# 查看最忙的前 N 个线程
-thread -n 3
-
-# 查看死锁
-thread -b
-
-# 生成火焰图
-profiler start
-# ... 等待采样 ...
-profiler stop --format html
-
-# 查看 JVM 信息
-jvm
-
-# 查看内存使用
-memory
-
-# 追踪方法调用
-trace com.example.UserService getUser
-
-# 监控方法调用
-monitor com.example.UserService getUser -c 5
-
-# 反编译类
-jad com.example.UserService
-```
 
 ### 执行集群巡检
 

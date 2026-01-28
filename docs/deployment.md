@@ -108,6 +108,9 @@ helm install opshub ./charts/opshub \
 ```
 
 ### 3. 自定义配置安装
+```bash
+cd charts/opshub
+```
 
 编辑 `values.yaml` 文件：
 
@@ -134,8 +137,7 @@ backend:
   replicaCount: 2
 
   image:
-    # 华为云 SWR 示例: swr.cn-east-3.myhuaweicloud.com/你的组织名/opshub-backend
-    repository: harbor.test.com/library/opshub-backend
+    repository: docker.1ms.run/dyclouds/opshub-api
     tag: latest
     pullPolicy: Always
 
@@ -183,8 +185,7 @@ frontend:
   replicaCount: 2
 
   image:
-    # 华为云 SWR 示例: swr.cn-east-3.myhuaweicloud.com/你的组织名/opshub-frontend
-    repository: harbor.test.com/library/opshub-frontend
+    repository: docker.1ms.run/dyclouds/opshub-web
     tag: latest
     pullPolicy: Always
 
@@ -243,7 +244,7 @@ mysql:
   persistence:
     enabled: true
     size: 20Gi
-    storageClass: "cbs"
+    storageClass: ""
     accessModes:
       - ReadWriteOnce
 
@@ -278,9 +279,9 @@ redis:
 
   # 持久化存储
   persistence:
-    enabled: true
-    size: 10Gi
-    storageClass: "cbs"
+    enabled: false
+    size: 1Gi
+    storageClass: ""
 
   # 资源限制
   resources:
@@ -372,15 +373,13 @@ autoscaling:
   maxReplicas: 10
   targetCPUUtilizationPercentage: 80
   targetMemoryUtilizationPercentage: 80
+
 ```
 
 安装：
 
 ```bash
-helm install opshub ./charts/opshub \
-  --namespace opshub \
-  --create-namespace \
-  -f my-values.yaml
+helm upgrade --install opshub -n opshub .
 ```
 
 ### 4. 使用外部数据库

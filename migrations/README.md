@@ -33,7 +33,7 @@ mysql -u root -p opshub < migrations/init.sql
 ```sql
 USE opshub;
 SHOW TABLES;
--- 应该看到 32 个表
+-- 应该看到 33 个表
 SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'opshub';
 ```
 
@@ -41,7 +41,7 @@ SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'opshub';
 
 ## 表结构概览
 
-### 总计：32 张表
+### 总计：33 张表
 
 ---
 
