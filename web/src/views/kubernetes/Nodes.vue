@@ -2099,6 +2099,10 @@ const handleShell = async () => {
     }
 
     const service = serviceResponse.data.data
+    if (!service) {
+      ElMessage.error('CloudTTY服务信息不完整，请检查CloudTTY是否正确部署')
+      return
+    }
     const nodeIp = service.nodeIP || selectedNode.value.internalIP
     const port = service.port || 30000
     const path = service.path || '/cloudtty'
