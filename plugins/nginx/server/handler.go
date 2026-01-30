@@ -35,18 +35,23 @@ import (
 	"github.com/ydcloud-dy/opshub/pkg/response"
 	"github.com/ydcloud-dy/opshub/plugins/nginx/model"
 	"github.com/ydcloud-dy/opshub/plugins/nginx/repository"
+	"github.com/ydcloud-dy/opshub/plugins/nginx/service"
 	"gorm.io/gorm"
 )
 
 type Handler struct {
-	db   *gorm.DB
-	repo *repository.NginxRepository
+	db        *gorm.DB
+	repo      *repository.NginxRepository
+	geoSvc    *service.GeolocationService
+	uaParser  *service.UAParser
 }
 
 func NewHandler(db *gorm.DB) *Handler {
 	return &Handler{
-		db:   db,
-		repo: repository.NewNginxRepository(db),
+		db:        db,
+		repo:      repository.NewNginxRepository(db),
+		geoSvc:    service.NewGeolocationService(),
+		uaParser:  service.NewUAParser(),
 	}
 }
 
@@ -1091,5 +1096,112 @@ func (h *Handler) ListAccessLogsWithDimensions(c *gin.Context) {
 		"total":    total,
 		"page":     page,
 		"pageSize": pageSize,
+	})
+}
+
+// BackfillGeoData 回填地理位置数据
+// @Summary 回填地理位置数据
+// @Description 为现有的访问日志回填地理位置信息
+// @Tags Nginx统计-数据源
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Param sourceId query int false "数据源ID（不指定则处理所有）"
+// @Param batchSize query int false "批量处理数量" default(1000)
+// @Success 200 {object} response.Response "回填成功"
+// @Router /nginx/backfill-geo [post]
+func (h *Handler) BackfillGeoData(c *gin.Context) {
+	sourceIDStr := c.Query("sourceId")
+	batchSize, _ := strconv.Atoi(c.DefaultQuery("batchSize", "1000"))
+	if batchSize <= 0 || batchSize > 5000 {
+		batchSize = 1000
+	}
+
+	var totalUpdated int64
+	var lastID uint64 = 0
+
+	// 分批处理，使用 ID 分页避免重复处理
+	for {
+		var logs []model.NginxAccessLog
+
+		// 构建查询条件：country 为空或为 "-" 的日志，按 ID 分页
+		query := h.db.Model(&model.NginxAccessLog{}).
+			Where("(country = '' OR country = '-' OR country IS NULL)").
+			Where("id > ?", lastID).
+			Order("id ASC").
+			Limit(batchSize)
+
+		if sourceIDStr != "" {
+			sourceID, _ := strconv.ParseUint(sourceIDStr, 10, 32)
+			query = query.Where("source_id = ?", sourceID)
+		}
+
+		if err := query.Find(&logs).Error; err != nil {
+			response.ErrorCode(c, http.StatusInternalServerError, "查询日志失败: "+err.Error())
+			return
+		}
+
+		if len(logs) == 0 {
+			break
+		}
+
+		// 更新 lastID 用于下一批
+		lastID = logs[len(logs)-1].ID
+
+		// 更新每条日志的地理位置信息
+		for _, log := range logs {
+			geoInfo, _ := h.geoSvc.Lookup(log.RemoteAddr)
+			uaInfo := h.uaParser.Parse(log.HTTPUserAgent)
+
+			updates := map[string]interface{}{}
+
+			// 地理位置信息
+			if geoInfo != nil {
+				if geoInfo.Country != "" {
+					updates["country"] = geoInfo.Country
+				}
+				if geoInfo.Province != "" {
+					updates["province"] = geoInfo.Province
+				}
+				if geoInfo.City != "" {
+					updates["city"] = geoInfo.City
+				}
+				if geoInfo.ISP != "" {
+					updates["isp"] = geoInfo.ISP
+				}
+			}
+
+			// UA 信息（如果为空也一起更新）
+			if log.Browser == "" || log.Browser == "-" {
+				if uaInfo.Browser != "" {
+					updates["browser"] = uaInfo.Browser
+				}
+				if uaInfo.BrowserVersion != "" {
+					updates["browser_version"] = uaInfo.BrowserVersion
+				}
+				if uaInfo.OS != "" {
+					updates["os"] = uaInfo.OS
+				}
+				if uaInfo.OSVersion != "" {
+					updates["os_version"] = uaInfo.OSVersion
+				}
+				if uaInfo.DeviceType != "" {
+					updates["device_type"] = uaInfo.DeviceType
+				}
+			}
+
+			if len(updates) > 0 {
+				if err := h.db.Model(&model.NginxAccessLog{}).Where("id = ?", log.ID).Updates(updates).Error; err != nil {
+					fmt.Printf("更新日志 %d 失败: %v\n", log.ID, err)
+					continue
+				}
+				totalUpdated++
+			}
+		}
+	}
+
+	response.Success(c, gin.H{
+		"message":      "回填完成",
+		"totalUpdated": totalUpdated,
 	})
 }

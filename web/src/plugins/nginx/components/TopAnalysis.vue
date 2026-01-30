@@ -42,54 +42,76 @@
       <el-tabs v-model="activeTab" @tab-change="handleTabChange">
         <!-- Top URLs -->
         <el-tab-pane label="Top URLs" name="urls">
-          <div v-loading="loadingUrls">
-            <el-table :data="topUrls" stripe>
-              <el-table-column type="index" label="#" width="60" />
-              <el-table-column label="URL" prop="uri" min-width="400" show-overflow-tooltip />
+          <div v-loading="loadingUrls" class="table-container">
+            <el-table :data="topUrls" v-if="topUrls.length > 0" class="custom-table">
+              <el-table-column type="index" label="#" width="60" align="center">
+                <template #default="{ $index }">
+                  <span class="rank-badge" :class="getRankClass($index)">{{ $index + 1 }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="URL" prop="uri" min-width="400" show-overflow-tooltip>
+                <template #default="{ row }">
+                  <span class="url-text">{{ row.uri }}</span>
+                </template>
+              </el-table-column>
               <el-table-column label="访问次数" prop="count" width="150" align="right">
                 <template #default="{ row }">
                   <span class="count-cell">{{ formatNumber(row.count) }}</span>
                 </template>
               </el-table-column>
-              <el-table-column label="占比" width="200">
+              <el-table-column label="占比" width="220">
                 <template #default="{ row }">
                   <div class="progress-wrapper">
-                    <el-progress
-                      :percentage="getPercent(row.count, totalUrlCount)"
-                      :stroke-width="10"
-                      :show-text="false"
-                      color="#d4af37"
-                    />
+                    <div class="progress-bar-container">
+                      <div
+                        class="progress-bar"
+                        :style="{ width: getPercent(row.count, totalUrlCount) + '%', backgroundColor: '#d4af37' }"
+                      ></div>
+                    </div>
                     <span class="progress-text">{{ getPercent(row.count, totalUrlCount).toFixed(1) }}%</span>
                   </div>
                 </template>
               </el-table-column>
             </el-table>
+            <el-empty v-else description="暂无数据，请先采集日志" />
           </div>
         </el-tab-pane>
 
         <!-- Top IPs -->
         <el-tab-pane label="Top IPs" name="ips">
-          <div v-loading="loadingIps">
-            <el-table :data="topIps" stripe>
-              <el-table-column type="index" label="#" width="60" />
-              <el-table-column label="IP 地址" prop="ip" width="180" />
-              <el-table-column label="国家/地区" width="120">
-                <template #default="{ row }">
-                  {{ row.country || '-' }}
+          <div v-loading="loadingIps" class="table-container">
+            <el-table :data="topIps" v-if="topIps.length > 0" class="custom-table">
+              <el-table-column type="index" label="#" width="60" align="center">
+                <template #default="{ $index }">
+                  <span class="rank-badge" :class="getRankClass($index)">{{ $index + 1 }}</span>
                 </template>
               </el-table-column>
-              <el-table-column label="省份" width="100">
+              <el-table-column label="IP 地址" prop="ip" width="160">
                 <template #default="{ row }">
-                  {{ row.province || '-' }}
+                  <span class="ip-text">{{ row.ip }}</span>
                 </template>
               </el-table-column>
-              <el-table-column label="城市" width="100">
+              <el-table-column label="国家/地区" width="110" align="center">
                 <template #default="{ row }">
-                  {{ row.city || '-' }}
+                  <el-tag v-if="row.country && row.country !== '-'" size="small" effect="plain" type="info">
+                    {{ row.country }}
+                  </el-tag>
+                  <span v-else class="no-data">-</span>
                 </template>
               </el-table-column>
-              <el-table-column label="访问次数" prop="count" width="150" align="right">
+              <el-table-column label="省份" width="100" align="center">
+                <template #default="{ row }">
+                  <span v-if="row.province && row.province !== '-'" class="geo-text">{{ row.province }}</span>
+                  <span v-else class="no-data">-</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="城市" width="100" align="center">
+                <template #default="{ row }">
+                  <span v-if="row.city && row.city !== '-'" class="geo-text">{{ row.city }}</span>
+                  <span v-else class="no-data">-</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="访问次数" prop="count" width="120" align="right">
                 <template #default="{ row }">
                   <span class="count-cell">{{ formatNumber(row.count) }}</span>
                 </template>
@@ -97,30 +119,37 @@
               <el-table-column label="占比" width="200">
                 <template #default="{ row }">
                   <div class="progress-wrapper">
-                    <el-progress
-                      :percentage="getPercent(row.count, totalIpCount)"
-                      :stroke-width="10"
-                      :show-text="false"
-                      color="#409EFF"
-                    />
+                    <div class="progress-bar-container">
+                      <div
+                        class="progress-bar"
+                        :style="{ width: getPercent(row.count, totalIpCount) + '%', backgroundColor: '#409EFF' }"
+                      ></div>
+                    </div>
                     <span class="progress-text">{{ getPercent(row.count, totalIpCount).toFixed(1) }}%</span>
                   </div>
                 </template>
               </el-table-column>
             </el-table>
+            <el-empty v-else description="暂无数据，请先采集日志" />
           </div>
         </el-tab-pane>
 
         <!-- Top Browsers -->
         <el-tab-pane label="浏览器分布" name="browsers">
-          <div v-loading="loadingBrowsers">
-            <el-table :data="browserStats" stripe>
-              <el-table-column type="index" label="#" width="60" />
-              <el-table-column label="浏览器" width="180">
+          <div v-loading="loadingBrowsers" class="table-container">
+            <el-table :data="browserStats" v-if="browserStats.length > 0" class="custom-table">
+              <el-table-column type="index" label="#" width="60" align="center">
+                <template #default="{ $index }">
+                  <span class="rank-badge" :class="getRankClass($index)">{{ $index + 1 }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="浏览器" width="200">
                 <template #default="{ row }">
                   <div class="browser-cell">
-                    <span class="browser-icon" :style="{ backgroundColor: getBrowserColor(row.browser) }"></span>
-                    {{ row.browser || '未知' }}
+                    <div class="browser-icon" :style="{ backgroundColor: getBrowserColor(row.browser) }">
+                      {{ getBrowserEmoji(row.browser) }}
+                    </div>
+                    <span class="browser-name">{{ row.browser || '未知' }}</span>
                   </div>
                 </template>
               </el-table-column>
@@ -129,35 +158,42 @@
                   <span class="count-cell">{{ formatNumber(row.count) }}</span>
                 </template>
               </el-table-column>
-              <el-table-column label="占比" min-width="200">
+              <el-table-column label="占比" min-width="250">
                 <template #default="{ row }">
                   <div class="progress-wrapper">
-                    <el-progress
-                      :percentage="row.percent"
-                      :stroke-width="10"
-                      :show-text="false"
-                      :color="getBrowserColor(row.browser)"
-                    />
+                    <div class="progress-bar-container">
+                      <div
+                        class="progress-bar"
+                        :style="{ width: row.percent + '%', backgroundColor: getBrowserColor(row.browser) }"
+                      ></div>
+                    </div>
                     <span class="progress-text">{{ row.percent.toFixed(1) }}%</span>
                   </div>
                 </template>
               </el-table-column>
             </el-table>
+            <el-empty v-else description="暂无浏览器数据，请重新采集日志以获取UA解析信息" />
           </div>
         </el-tab-pane>
 
         <!-- Top Devices -->
         <el-tab-pane label="设备分布" name="devices">
-          <div v-loading="loadingDevices">
-            <el-table :data="deviceStats" stripe>
-              <el-table-column type="index" label="#" width="60" />
-              <el-table-column label="设备类型" width="180">
+          <div v-loading="loadingDevices" class="table-container">
+            <el-table :data="deviceStats" v-if="deviceStats.length > 0" class="custom-table">
+              <el-table-column type="index" label="#" width="60" align="center">
+                <template #default="{ $index }">
+                  <span class="rank-badge" :class="getRankClass($index)">{{ $index + 1 }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="设备类型" width="200">
                 <template #default="{ row }">
                   <div class="device-cell">
-                    <el-icon :style="{ color: getDeviceColor(row.deviceType) }">
-                      <component :is="getDeviceIcon(row.deviceType)" />
-                    </el-icon>
-                    {{ getDeviceName(row.deviceType) }}
+                    <div class="device-icon" :style="{ backgroundColor: getDeviceColor(row.deviceType) }">
+                      <el-icon>
+                        <component :is="getDeviceIcon(row.deviceType)" />
+                      </el-icon>
+                    </div>
+                    <span class="device-name">{{ row.deviceType }}</span>
                   </div>
                 </template>
               </el-table-column>
@@ -166,20 +202,21 @@
                   <span class="count-cell">{{ formatNumber(row.count) }}</span>
                 </template>
               </el-table-column>
-              <el-table-column label="占比" min-width="200">
+              <el-table-column label="占比" min-width="250">
                 <template #default="{ row }">
                   <div class="progress-wrapper">
-                    <el-progress
-                      :percentage="row.percent"
-                      :stroke-width="10"
-                      :show-text="false"
-                      :color="getDeviceColor(row.deviceType)"
-                    />
+                    <div class="progress-bar-container">
+                      <div
+                        class="progress-bar"
+                        :style="{ width: row.percent + '%', backgroundColor: getDeviceColor(row.deviceType) }"
+                      ></div>
+                    </div>
                     <span class="progress-text">{{ row.percent.toFixed(1) }}%</span>
                   </div>
                 </template>
               </el-table-column>
             </el-table>
+            <el-empty v-else description="暂无设备数据，请重新采集日志以获取UA解析信息" />
           </div>
         </el-tab-pane>
       </el-tabs>
@@ -190,7 +227,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Rank, Refresh, Monitor, Cellphone, Iphone } from '@element-plus/icons-vue'
+import { Rank, Refresh, Monitor, Cellphone, Iphone, Platform } from '@element-plus/icons-vue'
 import {
   getNginxSources,
   getNginxTopURLs,
@@ -372,6 +409,13 @@ const getPercent = (count: number, total: number): number => {
   return (count / total) * 100
 }
 
+const getRankClass = (index: number): string => {
+  if (index === 0) return 'rank-gold'
+  if (index === 1) return 'rank-silver'
+  if (index === 2) return 'rank-bronze'
+  return ''
+}
+
 const getBrowserColor = (browser: string): string => {
   const colors: Record<string, string> = {
     'Chrome': '#4285F4',
@@ -379,39 +423,46 @@ const getBrowserColor = (browser: string): string => {
     'Safari': '#000000',
     'Edge': '#0078D7',
     'IE': '#0078D7',
-    'Opera': '#FF1B2D'
+    'Opera': '#FF1B2D',
+    'Samsung Browser': '#1428A0',
+    'UC Browser': '#FF6600',
+    'QQ Browser': '#12B7F5',
+    'Other': '#909399'
   }
   return colors[browser] || '#909399'
 }
 
-const getDeviceName = (type: string): string => {
-  const names: Record<string, string> = {
-    'desktop': '桌面端',
-    'mobile': '移动端',
-    'tablet': '平板',
-    'bot': '机器人'
+const getBrowserEmoji = (browser: string): string => {
+  const emojis: Record<string, string> = {
+    'Chrome': 'C',
+    'Firefox': 'F',
+    'Safari': 'S',
+    'Edge': 'E',
+    'IE': 'I',
+    'Opera': 'O',
+    'Samsung Browser': 'S',
+    'UC Browser': 'U',
+    'QQ Browser': 'Q',
   }
-  return names[type] || type
+  return emojis[browser] || '?'
 }
 
 const getDeviceColor = (type: string): string => {
-  const colors: Record<string, string> = {
-    'desktop': '#409EFF',
-    'mobile': '#67C23A',
-    'tablet': '#E6A23C',
-    'bot': '#909399'
-  }
-  return colors[type] || '#909399'
+  const typeLower = type?.toLowerCase() || ''
+  if (typeLower.includes('桌面') || typeLower === 'desktop') return '#409EFF'
+  if (typeLower.includes('移动') || typeLower === 'mobile') return '#67C23A'
+  if (typeLower.includes('平板') || typeLower === 'tablet') return '#E6A23C'
+  if (typeLower.includes('爬虫') || typeLower.includes('机器人') || typeLower === 'bot') return '#909399'
+  return '#909399'
 }
 
 const getDeviceIcon = (type: string) => {
-  const icons: Record<string, any> = {
-    'desktop': Monitor,
-    'mobile': Cellphone,
-    'tablet': Iphone,
-    'bot': Monitor
-  }
-  return icons[type] || Monitor
+  const typeLower = type?.toLowerCase() || ''
+  if (typeLower.includes('桌面') || typeLower === 'desktop') return Monitor
+  if (typeLower.includes('移动') || typeLower === 'mobile') return Cellphone
+  if (typeLower.includes('平板') || typeLower === 'tablet') return Iphone
+  if (typeLower.includes('爬虫') || typeLower.includes('机器人') || typeLower === 'bot') return Platform
+  return Monitor
 }
 
 // 监听筛选条件变化
@@ -503,46 +554,170 @@ onMounted(() => {
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
 }
 
-.count-cell {
+.table-container {
+  min-height: 300px;
+}
+
+.custom-table {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.custom-table :deep(.el-table__header th) {
+  background-color: #f8f9fa;
   font-weight: 600;
+  color: #606266;
+}
+
+.custom-table :deep(.el-table__row) {
+  transition: background-color 0.2s;
+}
+
+.custom-table :deep(.el-table__row:hover td) {
+  background-color: #f5f7fa !important;
+}
+
+/* 排名徽章 */
+.rank-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 13px;
+  background-color: #f0f2f5;
+  color: #606266;
+}
+
+.rank-badge.rank-gold {
+  background: linear-gradient(135deg, #ffd700 0%, #ffb300 100%);
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(255, 179, 0, 0.4);
+}
+
+.rank-badge.rank-silver {
+  background: linear-gradient(135deg, #c0c0c0 0%, #a0a0a0 100%);
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(160, 160, 160, 0.4);
+}
+
+.rank-badge.rank-bronze {
+  background: linear-gradient(135deg, #cd7f32 0%, #b06c2c 100%);
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(176, 108, 44, 0.4);
+}
+
+/* URL 文本 */
+.url-text {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 13px;
+  color: #606266;
+}
+
+/* IP 文本 */
+.ip-text {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 13px;
+  font-weight: 500;
   color: #303133;
 }
 
+/* 地理信息文本 */
+.geo-text {
+  font-size: 13px;
+  color: #606266;
+}
+
+.no-data {
+  color: #c0c4cc;
+}
+
+/* 计数单元格 */
+.count-cell {
+  font-weight: 600;
+  color: #303133;
+  font-size: 14px;
+}
+
+/* 进度条 */
 .progress-wrapper {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-.progress-wrapper :deep(.el-progress) {
+.progress-bar-container {
   flex: 1;
+  height: 8px;
+  background-color: #f0f2f5;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
 }
 
 .progress-text {
-  min-width: 50px;
+  min-width: 55px;
   text-align: right;
   font-size: 13px;
   color: #606266;
+  font-weight: 500;
 }
 
+/* 浏览器单元格 */
 .browser-cell {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .browser-icon {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 600;
+  font-size: 12px;
 }
 
+.browser-name {
+  font-weight: 500;
+  color: #303133;
+}
+
+/* 设备单元格 */
 .device-cell {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
+.device-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 14px;
+}
+
+.device-name {
+  font-weight: 500;
+  color: #303133;
+}
+
+/* Tab 样式 */
 .content-section :deep(.el-tabs__item) {
   font-size: 14px;
   font-weight: 500;
@@ -556,6 +731,7 @@ onMounted(() => {
   background-color: #d4af37;
 }
 
+/* 响应式 */
 @media (max-width: 1200px) {
   .header-actions {
     flex-wrap: wrap;

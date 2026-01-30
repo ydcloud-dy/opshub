@@ -1,117 +1,141 @@
 <template>
   <div class="portal-container">
-    <!-- 页面标题 -->
+    <!-- 页面头部 -->
     <div class="page-header">
-      <h2 class="page-title">应用门户</h2>
+      <div class="page-title-group">
+        <div class="page-title-icon">
+          <el-icon><Grid /></el-icon>
+        </div>
+        <div>
+          <h2 class="page-title">应用门户</h2>
+          <p class="page-subtitle">一站式访问所有运维应用，支持收藏和快速搜索</p>
+        </div>
+      </div>
       <div class="header-stats">
-        <div class="stat-item">
+        <div class="stat-card">
           <span class="stat-value">{{ apps.length }}</span>
           <span class="stat-label">可用应用</span>
         </div>
-        <div class="stat-item">
+        <div class="stat-card">
           <span class="stat-value">{{ favoriteApps.length }}</span>
           <span class="stat-label">已收藏</span>
         </div>
       </div>
     </div>
 
-    <!-- 搜索和筛选 -->
-    <div class="filter-bar">
-      <el-input
-        v-model="searchKeyword"
-        placeholder="搜索应用..."
-        prefix-icon="Search"
-        clearable
-        class="search-input"
-      />
-      <div class="category-tabs">
-        <el-radio-group v-model="selectedCategory" @change="loadApps">
-          <el-radio-button label="">全部</el-radio-button>
-          <el-radio-button label="cicd">CI/CD</el-radio-button>
-          <el-radio-button label="code">代码管理</el-radio-button>
-          <el-radio-button label="monitor">监控告警</el-radio-button>
-          <el-radio-button label="registry">镜像仓库</el-radio-button>
-          <el-radio-button label="other">其他</el-radio-button>
-        </el-radio-group>
-      </div>
-    </div>
-
-    <!-- 收藏的应用 -->
-    <div v-if="favoriteApps.length > 0 && !selectedCategory" class="section">
-      <div class="section-header">
-        <h3 class="section-title">
-          <el-icon><Star /></el-icon>
-          我的收藏
-        </h3>
-      </div>
-      <div class="app-grid">
-        <div
-          v-for="app in favoriteApps"
-          :key="app.id"
-          class="app-card favorite"
-          @click="handleAccessApp(app)"
-        >
-          <div class="app-icon">
-            <img v-if="app.icon" :src="app.icon" :alt="app.name" />
-            <el-icon v-else :size="32"><Grid /></el-icon>
-          </div>
-          <div class="app-info">
-            <h4 class="app-name">{{ app.name }}</h4>
-            <p class="app-desc">{{ app.description || '暂无描述' }}</p>
-          </div>
-          <div class="app-actions">
-            <el-button
-              type="text"
-              @click.stop="handleToggleFavorite(app)"
-              class="favorite-btn active"
-            >
-              <el-icon><StarFilled /></el-icon>
-            </el-button>
-          </div>
-          <div class="category-tag">{{ getCategoryLabel(app.category) }}</div>
+    <!-- 主内容区域 -->
+    <div class="main-content">
+      <!-- 搜索和筛选栏 -->
+      <div class="filter-bar">
+        <div class="filter-left">
+          <el-input
+            v-model="searchKeyword"
+            placeholder="搜索应用名称..."
+            clearable
+            class="search-input"
+            @input="handleSearch"
+          >
+            <template #prefix>
+              <el-icon><Search /></el-icon>
+            </template>
+          </el-input>
+        </div>
+        <div class="filter-right">
+          <el-radio-group v-model="selectedCategory" @change="loadApps" class="category-group">
+            <el-radio-button label="">全部</el-radio-button>
+            <el-radio-button label="cicd">CI/CD</el-radio-button>
+            <el-radio-button label="code">代码管理</el-radio-button>
+            <el-radio-button label="monitor">监控告警</el-radio-button>
+            <el-radio-button label="registry">镜像仓库</el-radio-button>
+            <el-radio-button label="other">其他</el-radio-button>
+          </el-radio-group>
         </div>
       </div>
-    </div>
 
-    <!-- 所有应用 -->
-    <div class="section">
-      <div class="section-header">
-        <h3 class="section-title">
-          <el-icon><Grid /></el-icon>
-          {{ selectedCategory ? getCategoryLabel(selectedCategory) : '全部应用' }}
-        </h3>
-      </div>
-      <div v-if="filteredApps.length > 0" class="app-grid">
-        <div
-          v-for="app in filteredApps"
-          :key="app.id"
-          class="app-card"
-          @click="handleAccessApp(app)"
-        >
-          <div class="app-icon">
-            <img v-if="app.icon" :src="app.icon" :alt="app.name" />
-            <el-icon v-else :size="32"><Grid /></el-icon>
+      <!-- 收藏的应用 -->
+      <div v-if="favoriteApps.length > 0 && !selectedCategory && !searchKeyword" class="app-section">
+        <div class="section-header">
+          <div class="section-title">
+            <el-icon class="section-icon" color="#d4af37"><StarFilled /></el-icon>
+            <span>我的收藏</span>
           </div>
-          <div class="app-info">
-            <h4 class="app-name">{{ app.name }}</h4>
-            <p class="app-desc">{{ app.description || '暂无描述' }}</p>
+        </div>
+        <div class="app-grid">
+          <div
+            v-for="app in favoriteApps"
+            :key="'fav-' + app.id"
+            class="app-card favorite"
+            @click="handleAccessApp(app)"
+          >
+            <div class="app-card-header">
+              <div class="app-icon">
+                <img v-if="app.icon" :src="app.icon" :alt="app.name" />
+                <el-icon v-else :size="24" color="#d4af37"><Grid /></el-icon>
+              </div>
+              <el-button
+                link
+                @click.stop="handleToggleFavorite(app)"
+                class="favorite-btn active"
+              >
+                <el-icon :size="18"><StarFilled /></el-icon>
+              </el-button>
+            </div>
+            <div class="app-card-body">
+              <h4 class="app-name">{{ app.name }}</h4>
+              <p class="app-desc">{{ app.description || '暂无描述' }}</p>
+            </div>
+            <div class="app-card-footer">
+              <span class="category-tag">{{ getCategoryLabel(app.category) }}</span>
+              <el-icon class="access-icon"><Right /></el-icon>
+            </div>
           </div>
-          <div class="app-actions">
-            <el-button
-              type="text"
-              @click.stop="handleToggleFavorite(app)"
-              :class="['favorite-btn', { active: app.isFavorite }]"
-            >
-              <el-icon>
-                <StarFilled v-if="app.isFavorite" />
-                <Star v-else />
-              </el-icon>
-            </el-button>
-          </div>
-          <div class="category-tag">{{ getCategoryLabel(app.category) }}</div>
         </div>
       </div>
-      <el-empty v-else description="暂无应用" />
+
+      <!-- 所有应用 -->
+      <div class="app-section">
+        <div class="section-header">
+          <div class="section-title">
+            <el-icon class="section-icon"><Grid /></el-icon>
+            <span>{{ selectedCategory ? getCategoryLabel(selectedCategory) : '全部应用' }}</span>
+            <el-tag size="small" type="info" style="margin-left: 8px;">{{ filteredApps.length }} 个</el-tag>
+          </div>
+        </div>
+        <div v-if="filteredApps.length > 0" class="app-grid" v-loading="loading">
+          <div
+            v-for="app in filteredApps"
+            :key="app.id"
+            class="app-card"
+            @click="handleAccessApp(app)"
+          >
+            <div class="app-card-header">
+              <div class="app-icon">
+                <img v-if="app.icon" :src="app.icon" :alt="app.name" />
+                <el-icon v-else :size="24" color="#d4af37"><Grid /></el-icon>
+              </div>
+              <el-button
+                link
+                @click.stop="handleToggleFavorite(app)"
+                :class="['favorite-btn', { active: app.isFavorite }]"
+              >
+                <el-icon :size="18">
+                  <StarFilled v-if="app.isFavorite" />
+                  <Star v-else />
+                </el-icon>
+              </el-button>
+            </div>
+            <div class="app-card-body">
+              <h4 class="app-name">{{ app.name }}</h4>
+              <p class="app-desc">{{ app.description || '暂无描述' }}</p>
+            </div>
+            <div class="app-card-footer">
+              <span class="category-tag">{{ getCategoryLabel(app.category) }}</span>
+              <el-icon class="access-icon"><Right /></el-icon>
+            </div>
+          </div>
+        </div>
+        <el-empty v-else-if="!loading" description="暂无应用" :image-size="120" />
+      </div>
     </div>
   </div>
 </template>
@@ -119,7 +143,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Star, StarFilled, Grid, Search } from '@element-plus/icons-vue'
+import { Star, StarFilled, Grid, Search, Right } from '@element-plus/icons-vue'
 import { getPortalApps, toggleFavoriteApp, accessApp, type PortalApp } from '@/api/identity'
 
 const apps = ref<PortalApp[]>([])
@@ -127,7 +151,6 @@ const searchKeyword = ref('')
 const selectedCategory = ref('')
 const loading = ref(false)
 
-// 分类映射
 const categoryMap: Record<string, string> = {
   cicd: 'CI/CD',
   code: '代码管理',
@@ -137,29 +160,30 @@ const categoryMap: Record<string, string> = {
 }
 
 const getCategoryLabel = (category: string) => {
-  return categoryMap[category] || category
+  return categoryMap[category] || category || '未分类'
 }
 
-// 收藏的应用
 const favoriteApps = computed(() => {
   return apps.value.filter(app => app.isFavorite)
 })
 
-// 过滤后的应用
 const filteredApps = computed(() => {
   let result = apps.value
   if (searchKeyword.value) {
     const keyword = searchKeyword.value.toLowerCase()
     result = result.filter(app =>
       app.name.toLowerCase().includes(keyword) ||
-      app.code.toLowerCase().includes(keyword) ||
+      app.code?.toLowerCase().includes(keyword) ||
       (app.description && app.description.toLowerCase().includes(keyword))
     )
   }
   return result
 })
 
-// 加载应用列表
+const handleSearch = () => {
+  // 搜索由computed属性自动处理
+}
+
 const loadApps = async () => {
   loading.value = true
   try {
@@ -174,7 +198,6 @@ const loadApps = async () => {
   }
 }
 
-// 访问应用
 const handleAccessApp = async (app: PortalApp) => {
   try {
     const res = await accessApp(app.id)
@@ -186,7 +209,6 @@ const handleAccessApp = async (app: PortalApp) => {
   }
 }
 
-// 切换收藏
 const handleToggleFavorite = async (app: PortalApp) => {
   try {
     const res = await toggleFavoriteApp(app.id)
@@ -206,30 +228,69 @@ onMounted(() => {
 
 <style scoped>
 .portal-container {
-  padding: 20px;
+  padding: 0;
+  background-color: transparent;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
+/* 页面头部 */
 .page-header {
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+  padding: 16px 20px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+.page-title-group {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.page-title-icon {
+  width: 48px;
+  height: 48px;
+  background: linear-gradient(135deg, #000 0%, #1a1a1a 100%);
+  border-radius: 10px;
+  display: flex;
   align-items: center;
-  margin-bottom: 24px;
+  justify-content: center;
+  color: #d4af37;
+  font-size: 22px;
+  border: 1px solid #d4af37;
 }
 
 .page-title {
-  font-size: 24px;
-  font-weight: 600;
-  color: #1a1a1a;
   margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.page-subtitle {
+  margin: 4px 0 0 0;
+  font-size: 13px;
+  color: #909399;
 }
 
 .header-stats {
   display: flex;
-  gap: 24px;
+  gap: 16px;
 }
 
-.stat-item {
+.stat-card {
+  background: linear-gradient(135deg, #000 0%, #1a1a1a 100%);
+  border: 1px solid #d4af37;
+  border-radius: 8px;
+  padding: 12px 20px;
   text-align: center;
+  min-width: 80px;
 }
 
 .stat-value {
@@ -241,36 +302,60 @@ onMounted(() => {
 
 .stat-label {
   font-size: 12px;
-  color: #909399;
+  color: rgba(255, 255, 255, 0.7);
 }
 
+/* 主内容区域 */
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 筛选栏 */
 .filter-bar {
   display: flex;
-  gap: 16px;
-  margin-bottom: 24px;
-  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+.filter-left {
+  display: flex;
+  gap: 12px;
 }
 
 .search-input {
   width: 280px;
 }
 
-.category-tabs :deep(.el-radio-button__inner) {
+.category-group :deep(.el-radio-button__inner) {
   border-color: #dcdfe6;
 }
 
-.category-tabs :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) {
+.category-group :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) {
   background-color: #000;
   border-color: #000;
   color: #d4af37;
+  box-shadow: -1px 0 0 0 #000;
 }
 
-.section {
-  margin-bottom: 32px;
+/* 应用区块 */
+.app-section {
+  background: #fff;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
 }
 
 .section-header {
   margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #ebeef5;
 }
 
 .section-title {
@@ -280,26 +365,29 @@ onMounted(() => {
   font-size: 16px;
   font-weight: 600;
   color: #303133;
-  margin: 0;
 }
 
+.section-icon {
+  font-size: 18px;
+}
+
+/* 应用网格 */
 .app-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 16px;
 }
 
+/* 应用卡片 */
 .app-card {
-  position: relative;
-  background: #fff;
+  background: #fafafa;
   border: 1px solid #ebeef5;
-  border-radius: 12px;
-  padding: 20px;
+  border-radius: 8px;
+  padding: 16px;
   cursor: pointer;
   transition: all 0.3s ease;
   display: flex;
-  align-items: flex-start;
-  gap: 16px;
+  flex-direction: column;
 }
 
 .app-card:hover {
@@ -309,16 +397,22 @@ onMounted(() => {
 }
 
 .app-card.favorite {
-  background: linear-gradient(135deg, #fffef5 0%, #fff 100%);
-  border-color: rgba(212, 175, 55, 0.3);
+  background: linear-gradient(135deg, #fffef8 0%, #fafafa 100%);
+  border-color: rgba(212, 175, 55, 0.4);
+}
+
+.app-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
 }
 
 .app-icon {
-  width: 48px;
-  height: 48px;
-  min-width: 48px;
+  width: 44px;
+  height: 44px;
   background: linear-gradient(135deg, #000 0%, #1a1a1a 100%);
-  border-radius: 10px;
+  border-radius: 8px;
   border: 1px solid #d4af37;
   display: flex;
   align-items: center;
@@ -327,44 +421,9 @@ onMounted(() => {
 }
 
 .app-icon img {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   object-fit: contain;
-}
-
-.app-icon .el-icon {
-  color: #d4af37;
-}
-
-.app-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.app-name {
-  font-size: 15px;
-  font-weight: 600;
-  color: #303133;
-  margin: 0 0 4px 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.app-desc {
-  font-size: 12px;
-  color: #909399;
-  margin: 0;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.app-actions {
-  position: absolute;
-  top: 12px;
-  right: 12px;
 }
 
 .favorite-btn {
@@ -380,15 +439,54 @@ onMounted(() => {
   color: #d4af37;
 }
 
+.app-card-body {
+  flex: 1;
+  margin-bottom: 12px;
+}
+
+.app-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+  margin: 0 0 6px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-desc {
+  font-size: 12px;
+  color: #909399;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.5;
+}
+
+.app-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
 .category-tag {
-  position: absolute;
-  bottom: 12px;
-  right: 12px;
   padding: 2px 8px;
-  border-radius: 10px;
-  font-size: 10px;
+  border-radius: 4px;
+  font-size: 11px;
   background: rgba(212, 175, 55, 0.1);
+  color: #b8960c;
+  border: 1px solid rgba(212, 175, 55, 0.2);
+}
+
+.access-icon {
+  color: #c0c4cc;
+  transition: all 0.3s;
+}
+
+.app-card:hover .access-icon {
   color: #d4af37;
-  border: 1px solid rgba(212, 175, 55, 0.3);
+  transform: translateX(4px);
 }
 </style>

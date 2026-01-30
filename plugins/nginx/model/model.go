@@ -169,8 +169,8 @@ type NginxFactAccessLog struct {
 	UAID      uint64 `gorm:"index" json:"uaId"`
 
 	// 度量字段
-	Method        string  `gorm:"type:varchar(10);index" json:"method"`
-	Protocol      string  `gorm:"type:varchar(20)" json:"protocol"`
+	Method        string  `gorm:"type:varchar(20);index" json:"method"`
+	Protocol      string  `gorm:"type:varchar(50)" json:"protocol"`
 	Status        int     `gorm:"type:int;index" json:"status"`
 	BodyBytesSent int64   `gorm:"type:bigint" json:"bodyBytesSent"`
 	RequestTime   float64 `gorm:"type:decimal(10,3)" json:"requestTime"`
@@ -202,9 +202,9 @@ type NginxAccessLog struct {
 	RemoteAddr    string    `gorm:"type:varchar(50);index" json:"remoteAddr"`
 	RemoteUser    string    `gorm:"type:varchar(100)" json:"remoteUser"`
 	Request       string    `gorm:"type:varchar(2000)" json:"request"`
-	Method        string    `gorm:"type:varchar(10);index" json:"method"`
+	Method        string    `gorm:"type:varchar(20);index" json:"method"`
 	URI           string    `gorm:"type:varchar(1000)" json:"uri"`
-	Protocol      string    `gorm:"type:varchar(20)" json:"protocol"`
+	Protocol      string    `gorm:"type:varchar(50)" json:"protocol"`
 	Status        int       `gorm:"type:int;index" json:"status"`
 	BodyBytesSent int64     `gorm:"type:bigint" json:"bodyBytesSent"`
 	HTTPReferer   string    `gorm:"type:varchar(1000)" json:"httpReferer"`
@@ -212,6 +212,19 @@ type NginxAccessLog struct {
 	RequestTime   float64   `gorm:"type:decimal(10,3)" json:"requestTime"`
 	UpstreamTime  float64   `gorm:"type:decimal(10,3)" json:"upstreamTime"`
 	Host          string    `gorm:"type:varchar(255);index" json:"host"`
+
+	// 地理位置字段
+	Country  string `gorm:"type:varchar(50)" json:"country"`
+	Province string `gorm:"type:varchar(50)" json:"province"`
+	City     string `gorm:"type:varchar(50)" json:"city"`
+	ISP      string `gorm:"type:varchar(100)" json:"isp"`
+
+	// UA 解析字段
+	Browser        string `gorm:"type:varchar(50);index" json:"browser"`
+	BrowserVersion string `gorm:"type:varchar(20)" json:"browserVersion"`
+	OS             string `gorm:"type:varchar(50);index" json:"os"`
+	OSVersion      string `gorm:"type:varchar(20)" json:"osVersion"`
+	DeviceType     string `gorm:"type:varchar(20);index" json:"deviceType"` // desktop, mobile, tablet, bot
 
 	// K8s Ingress 特有字段
 	IngressName string `gorm:"type:varchar(100)" json:"ingressName"`

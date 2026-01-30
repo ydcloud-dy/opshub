@@ -1,71 +1,107 @@
 <template>
-  <div class="identity-sources-container">
-    <!-- 页面标题和操作按钮 -->
+  <div class="sources-container">
+    <!-- 页面头部 -->
     <div class="page-header">
-      <h2 class="page-title">身份源管理</h2>
-      <el-button class="black-button" @click="handleAdd">新增身份源</el-button>
+      <div class="page-title-group">
+        <div class="page-title-icon">
+          <el-icon><User /></el-icon>
+        </div>
+        <div>
+          <h2 class="page-title">身份源管理</h2>
+          <p class="page-subtitle">配置第三方登录方式，支持微信、钉钉、飞书、GitHub等</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <el-button class="black-button" @click="handleAdd">
+          <el-icon style="margin-right: 6px;"><Plus /></el-icon>
+          新增身份源
+        </el-button>
+      </div>
     </div>
 
-    <!-- 搜索表单 -->
-    <el-form :inline="true" :model="searchForm" class="search-form">
-      <el-form-item label="关键词">
-        <el-input v-model="searchForm.keyword" placeholder="身份源名称" clearable />
-      </el-form-item>
-      <el-form-item label="状态">
-        <el-select v-model="searchForm.enabled" placeholder="请选择" clearable>
-          <el-option label="启用" :value="true" />
-          <el-option label="禁用" :value="false" />
-        </el-select>
-      </el-form-item>
-      <el-form-item>
-        <el-button class="black-button" @click="loadSources">查询</el-button>
-        <el-button @click="resetSearch">重置</el-button>
-      </el-form-item>
-    </el-form>
-
-    <!-- 身份源卡片列表 -->
-    <div class="source-grid" v-loading="loading">
-      <div
-        v-for="source in sourceList"
-        :key="source.id"
-        class="source-card"
-        :class="{ disabled: !source.enabled }"
-      >
-        <div class="source-header">
-          <div class="source-icon">
-            <img v-if="source.icon" :src="source.icon" :alt="source.name" />
-            <el-icon v-else :size="24"><Key /></el-icon>
-          </div>
-          <div class="source-title">
-            <h4>{{ source.name }}</h4>
-            <el-tag size="small" :type="source.enabled ? 'success' : 'info'">
-              {{ source.enabled ? '已启用' : '已禁用' }}
-            </el-tag>
-          </div>
+    <!-- 主内容区域 -->
+    <div class="main-content">
+      <!-- 搜索栏 -->
+      <div class="filter-bar">
+        <div class="filter-inputs">
+          <el-input
+            v-model="searchForm.keyword"
+            placeholder="搜索名称..."
+            clearable
+            class="filter-input"
+            @keyup.enter="loadSources"
+          >
+            <template #prefix>
+              <el-icon><Search /></el-icon>
+            </template>
+          </el-input>
+          <el-select v-model="searchForm.enabled" placeholder="状态" clearable class="filter-input" @change="loadSources">
+            <el-option label="启用" :value="true" />
+            <el-option label="禁用" :value="false" />
+          </el-select>
         </div>
-        <div class="source-body">
-          <div class="source-type">
-            <span class="label">类型：</span>
-            <span class="value">{{ getSourceTypeLabel(source.type) }}</span>
-          </div>
-          <div class="source-config">
-            <span class="label">自动创建用户：</span>
-            <span class="value">{{ source.autoCreateUser ? '是' : '否' }}</span>
-          </div>
-        </div>
-        <div class="source-footer">
-          <el-button type="primary" link @click="handleEdit(source)">编辑</el-button>
-          <el-button type="primary" link @click="handleToggleEnable(source)">
-            {{ source.enabled ? '禁用' : '启用' }}
-          </el-button>
-          <el-button type="danger" link @click="handleDelete(source)">删除</el-button>
+        <div class="filter-actions">
+          <el-button class="black-button" @click="loadSources">查询</el-button>
+          <el-button @click="resetSearch">重置</el-button>
         </div>
       </div>
 
-      <!-- 添加新身份源卡片 -->
-      <div class="source-card add-card" @click="handleAdd">
-        <el-icon :size="32"><Plus /></el-icon>
-        <span>添加身份源</span>
+      <!-- 表格 -->
+      <div class="table-wrapper">
+        <el-table :data="sourceList" v-loading="loading" border stripe>
+          <el-table-column prop="name" label="名称" min-width="150">
+            <template #default="{ row }">
+              <div class="source-name">
+                <div class="source-icon">
+                  <img v-if="row.icon" :src="row.icon" :alt="row.name" />
+                  <el-icon v-else><Link /></el-icon>
+                </div>
+                <span>{{ row.name }}</span>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column prop="type" label="类型" width="120">
+            <template #default="{ row }">
+              <el-tag>{{ getSourceTypeLabel(row.type) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="autoCreateUser" label="自动创建用户" width="120" align="center">
+            <template #default="{ row }">
+              <el-tag :type="row.autoCreateUser ? 'success' : 'info'" size="small">
+                {{ row.autoCreateUser ? '是' : '否' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="enabled" label="状态" width="100" align="center">
+            <template #default="{ row }">
+              <el-switch
+                v-model="row.enabled"
+                @change="handleToggleEnabled(row)"
+              />
+            </template>
+          </el-table-column>
+          <el-table-column prop="sort" label="排序" width="80" align="center" />
+          <el-table-column prop="createdAt" label="创建时间" width="170" />
+          <el-table-column label="操作" width="180" fixed="right">
+            <template #default="{ row }">
+              <el-button class="black-button" size="small" @click="handleEdit(row)">编辑</el-button>
+              <el-button type="danger" size="small" @click="handleDelete(row)">删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+
+        <!-- 分页 -->
+        <div class="pagination-wrapper">
+          <el-pagination
+            v-model:current-page="pagination.page"
+            v-model:page-size="pagination.pageSize"
+            :total="pagination.total"
+            :page-sizes="[10, 20, 50, 100]"
+            layout="total, sizes, prev, pager, next, jumper"
+            @size-change="loadSources"
+            @current-change="loadSources"
+          />
+        </div>
       </div>
     </div>
 
@@ -76,19 +112,17 @@
       width="600px"
       @close="handleDialogClose"
     >
-      <el-form :model="formData" :rules="rules" ref="formRef" label-width="120px">
-        <el-form-item label="身份源名称" prop="name">
-          <el-input v-model="formData.name" placeholder="请输入身份源名称" />
+      <el-form :model="form" :rules="rules" ref="formRef" label-width="100px">
+        <el-form-item label="名称" prop="name">
+          <el-input v-model="form.name" placeholder="请输入身份源名称" />
         </el-form-item>
-        <el-form-item label="身份源类型" prop="type">
-          <el-select v-model="formData.type" placeholder="请选择类型" style="width: 100%">
-            <el-option label="GitHub" value="github" />
-            <el-option label="GitLab" value="gitlab" />
+        <el-form-item label="类型" prop="type">
+          <el-select v-model="form.type" placeholder="请选择类型" style="width: 100%">
             <el-option label="微信" value="wechat" />
-            <el-option label="企业微信" value="wechat_work" />
             <el-option label="钉钉" value="dingtalk" />
             <el-option label="飞书" value="feishu" />
             <el-option label="QQ" value="qq" />
+            <el-option label="GitHub" value="github" />
             <el-option label="支付宝" value="alipay" />
             <el-option label="百度" value="baidu" />
             <el-option label="LDAP" value="ldap" />
@@ -96,52 +130,39 @@
             <el-option label="SAML" value="saml" />
           </el-select>
         </el-form-item>
-        <el-form-item label="图标URL">
-          <el-input v-model="formData.icon" placeholder="请输入图标URL" />
+        <el-form-item label="图标URL" prop="icon">
+          <el-input v-model="form.icon" placeholder="请输入图标URL" />
         </el-form-item>
-
-        <el-divider content-position="left">OAuth配置</el-divider>
-        <el-form-item label="Client ID" prop="clientId">
-          <el-input v-model="configData.clientId" placeholder="请输入Client ID" />
+        <el-form-item label="配置" prop="config">
+          <el-input
+            v-model="form.config"
+            type="textarea"
+            :rows="4"
+            placeholder="请输入JSON格式配置"
+          />
         </el-form-item>
-        <el-form-item label="Client Secret" prop="clientSecret">
-          <el-input v-model="configData.clientSecret" placeholder="请输入Client Secret" show-password />
+        <el-form-item label="自动创建用户" prop="autoCreateUser">
+          <el-switch v-model="form.autoCreateUser" />
         </el-form-item>
-        <el-form-item label="回调地址">
-          <el-input v-model="configData.redirectUri" placeholder="请输入回调地址" />
+        <el-form-item label="排序" prop="sort">
+          <el-input-number v-model="form.sort" :min="0" :max="999" />
         </el-form-item>
-        <el-form-item label="权限范围">
-          <el-input v-model="configData.scopes" placeholder="如: user:email" />
-        </el-form-item>
-
-        <el-divider content-position="left">用户配置</el-divider>
-        <el-form-item label="自动创建用户">
-          <el-switch v-model="formData.autoCreateUser" />
-        </el-form-item>
-        <el-form-item label="默认角色" v-if="formData.autoCreateUser">
-          <el-select v-model="formData.defaultRoleId" placeholder="请选择默认角色" style="width: 100%">
-            <el-option v-for="role in roleList" :key="role.id" :label="role.name" :value="role.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="启用状态">
-          <el-switch v-model="formData.enabled" />
-        </el-form-item>
-        <el-form-item label="排序">
-          <el-input-number v-model="formData.sort" :min="0" />
+        <el-form-item label="启用" prop="enabled">
+          <el-switch v-model="form.enabled" />
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button class="black-button" @click="handleSubmit">确定</el-button>
+        <el-button class="black-button" @click="handleSubmit" :loading="submitLoading">确定</el-button>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { Key, Plus } from '@element-plus/icons-vue'
+import { ref, reactive, onMounted } from 'vue'
+import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { User, Plus, Search, Link } from '@element-plus/icons-vue'
 import {
   getIdentitySources,
   createIdentitySource,
@@ -149,54 +170,49 @@ import {
   deleteIdentitySource,
   type IdentitySource
 } from '@/api/identity'
-import { getRoleList } from '@/api/role'
 
-const loading = ref(false)
 const sourceList = ref<IdentitySource[]>([])
-const roleList = ref<any[]>([])
+const loading = ref(false)
 const dialogVisible = ref(false)
+const dialogTitle = ref('新增身份源')
+const submitLoading = ref(false)
+const formRef = ref<FormInstance>()
 const isEdit = ref(false)
-const formRef = ref()
 
 const searchForm = reactive({
   keyword: '',
   enabled: undefined as boolean | undefined
 })
 
-const formData = reactive({
+const pagination = reactive({
+  page: 1,
+  pageSize: 10,
+  total: 0
+})
+
+const form = reactive({
   id: 0,
   name: '',
   type: '',
   icon: '',
+  config: '',
   autoCreateUser: false,
   defaultRoleId: 0,
   enabled: true,
   sort: 0
 })
 
-const configData = reactive({
-  clientId: '',
-  clientSecret: '',
-  redirectUri: '',
-  scopes: ''
-})
-
-const rules = {
-  name: [{ required: true, message: '请输入身份源名称', trigger: 'blur' }],
-  type: [{ required: true, message: '请选择身份源类型', trigger: 'change' }]
+const rules: FormRules = {
+  name: [{ required: true, message: '请输入名称', trigger: 'blur' }],
+  type: [{ required: true, message: '请选择类型', trigger: 'change' }]
 }
 
-const dialogTitle = computed(() => isEdit.value ? '编辑身份源' : '新增身份源')
-
-// 类型标签映射
 const sourceTypeMap: Record<string, string> = {
-  github: 'GitHub',
-  gitlab: 'GitLab',
   wechat: '微信',
-  wechat_work: '企业微信',
   dingtalk: '钉钉',
   feishu: '飞书',
   qq: 'QQ',
+  github: 'GitHub',
   alipay: '支付宝',
   baidu: '百度',
   ldap: 'LDAP',
@@ -204,226 +220,218 @@ const sourceTypeMap: Record<string, string> = {
   saml: 'SAML'
 }
 
-const getSourceTypeLabel = (type: string) => {
-  return sourceTypeMap[type] || type
-}
+const getSourceTypeLabel = (type: string) => sourceTypeMap[type] || type
 
-// 加载身份源列表
 const loadSources = async () => {
   loading.value = true
   try {
     const res = await getIdentitySources({
-      page: 1,
-      pageSize: 100,
+      page: pagination.page,
+      pageSize: pagination.pageSize,
       keyword: searchForm.keyword,
       enabled: searchForm.enabled
     })
     if (res.data.code === 0) {
       sourceList.value = res.data.data?.list || []
+      pagination.total = res.data.data?.total || 0
     }
   } catch (error) {
-    console.error('加载身份源列表失败:', error)
+    console.error('加载身份源失败:', error)
   } finally {
     loading.value = false
-  }
-}
-
-// 加载角色列表
-const loadRoles = async () => {
-  try {
-    const res = await getRoleList({ page: 1, pageSize: 100 })
-    if (res.data.code === 0) {
-      roleList.value = res.data.data?.list || []
-    }
-  } catch (error) {
-    console.error('加载角色列表失败:', error)
   }
 }
 
 const resetSearch = () => {
   searchForm.keyword = ''
   searchForm.enabled = undefined
+  pagination.page = 1
   loadSources()
 }
 
 const handleAdd = () => {
   isEdit.value = false
-  resetForm()
-  dialogVisible.value = true
-}
-
-const handleEdit = (source: IdentitySource) => {
-  isEdit.value = true
-  Object.assign(formData, {
-    id: source.id,
-    name: source.name,
-    type: source.type,
-    icon: source.icon,
-    autoCreateUser: source.autoCreateUser,
-    defaultRoleId: source.defaultRoleId,
-    enabled: source.enabled,
-    sort: source.sort
-  })
-  // 解析配置
-  try {
-    const config = JSON.parse(source.config || '{}')
-    Object.assign(configData, config)
-  } catch {
-    // ignore
-  }
-  dialogVisible.value = true
-}
-
-const handleToggleEnable = async (source: IdentitySource) => {
-  try {
-    await updateIdentitySource(source.id, { enabled: !source.enabled })
-    ElMessage.success(source.enabled ? '已禁用' : '已启用')
-    loadSources()
-  } catch (error) {
-    ElMessage.error('操作失败')
-  }
-}
-
-const handleDelete = async (source: IdentitySource) => {
-  try {
-    await ElMessageBox.confirm(`确定要删除身份源 "${source.name}" 吗？`, '提示', {
-      type: 'warning'
-    })
-    await deleteIdentitySource(source.id)
-    ElMessage.success('删除成功')
-    loadSources()
-  } catch (error) {
-    if (error !== 'cancel') {
-      ElMessage.error('删除失败')
-    }
-  }
-}
-
-const handleSubmit = async () => {
-  try {
-    await formRef.value?.validate()
-    const data = {
-      ...formData,
-      config: JSON.stringify(configData)
-    }
-    if (isEdit.value) {
-      await updateIdentitySource(formData.id, data)
-      ElMessage.success('更新成功')
-    } else {
-      await createIdentitySource(data)
-      ElMessage.success('创建成功')
-    }
-    dialogVisible.value = false
-    loadSources()
-  } catch (error) {
-    console.error('提交失败:', error)
-  }
-}
-
-const handleDialogClose = () => {
-  resetForm()
-}
-
-const resetForm = () => {
-  Object.assign(formData, {
+  dialogTitle.value = '新增身份源'
+  Object.assign(form, {
     id: 0,
     name: '',
     type: '',
     icon: '',
+    config: '',
     autoCreateUser: false,
     defaultRoleId: 0,
     enabled: true,
     sort: 0
   })
-  Object.assign(configData, {
-    clientId: '',
-    clientSecret: '',
-    redirectUri: '',
-    scopes: ''
+  dialogVisible.value = true
+}
+
+const handleEdit = (row: IdentitySource) => {
+  isEdit.value = true
+  dialogTitle.value = '编辑身份源'
+  Object.assign(form, { ...row })
+  dialogVisible.value = true
+}
+
+const handleSubmit = async () => {
+  if (!formRef.value) return
+  await formRef.value.validate(async (valid) => {
+    if (!valid) return
+    submitLoading.value = true
+    try {
+      if (isEdit.value) {
+        await updateIdentitySource(form.id, form)
+        ElMessage.success('更新成功')
+      } else {
+        await createIdentitySource(form)
+        ElMessage.success('创建成功')
+      }
+      dialogVisible.value = false
+      loadSources()
+    } catch (error) {
+      ElMessage.error('操作失败')
+    } finally {
+      submitLoading.value = false
+    }
   })
-  formRef.value?.clearValidate()
+}
+
+const handleDelete = (row: IdentitySource) => {
+  ElMessageBox.confirm(`确定要删除身份源"${row.name}"吗？`, '提示', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    type: 'warning'
+  }).then(async () => {
+    try {
+      await deleteIdentitySource(row.id)
+      ElMessage.success('删除成功')
+      loadSources()
+    } catch (error) {
+      ElMessage.error('删除失败')
+    }
+  }).catch(() => {})
+}
+
+const handleToggleEnabled = async (row: IdentitySource) => {
+  try {
+    await updateIdentitySource(row.id, { enabled: row.enabled })
+    ElMessage.success(row.enabled ? '已启用' : '已禁用')
+  } catch (error) {
+    row.enabled = !row.enabled
+    ElMessage.error('操作失败')
+  }
+}
+
+const handleDialogClose = () => {
+  formRef.value?.resetFields()
 }
 
 onMounted(() => {
   loadSources()
-  loadRoles()
 })
 </script>
 
 <style scoped>
-.identity-sources-container {
-  padding: 20px;
+.sources-container {
+  padding: 0;
+  background-color: transparent;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .page-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+  padding: 16px 20px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
 }
 
-.page-title {
-  font-size: 20px;
-  font-weight: 600;
-  color: #1a1a1a;
-  margin: 0;
-}
-
-.search-form {
-  margin-bottom: 20px;
-}
-
-.source-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+.page-title-group {
+  display: flex;
+  align-items: flex-start;
   gap: 16px;
 }
 
-.source-card {
-  background: #fff;
-  border: 1px solid #ebeef5;
-  border-radius: 12px;
-  padding: 20px;
-  transition: all 0.3s ease;
-}
-
-.source-card:hover {
-  border-color: #d4af37;
-  box-shadow: 0 4px 16px rgba(212, 175, 55, 0.15);
-}
-
-.source-card.disabled {
-  opacity: 0.6;
-}
-
-.source-card.add-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 180px;
-  cursor: pointer;
-  border-style: dashed;
-  color: #909399;
-}
-
-.source-card.add-card:hover {
-  color: #d4af37;
-  border-color: #d4af37;
-}
-
-.source-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.source-icon {
+.page-title-icon {
   width: 48px;
   height: 48px;
   background: linear-gradient(135deg, #000 0%, #1a1a1a 100%);
   border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #d4af37;
+  font-size: 22px;
+  border: 1px solid #d4af37;
+}
+
+.page-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.page-subtitle {
+  margin: 4px 0 0 0;
+  font-size: 13px;
+  color: #909399;
+}
+
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.filter-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+.filter-inputs {
+  display: flex;
+  gap: 12px;
+}
+
+.filter-input {
+  width: 200px;
+}
+
+.filter-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.table-wrapper {
+  background: #fff;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+.source-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.source-icon {
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(135deg, #000 0%, #1a1a1a 100%);
+  border-radius: 6px;
   border: 1px solid #d4af37;
   display: flex;
   align-items: center;
@@ -432,44 +440,20 @@ onMounted(() => {
 }
 
 .source-icon img {
-  width: 32px;
-  height: 32px;
+  width: 20px;
+  height: 20px;
   object-fit: contain;
 }
 
 .source-icon .el-icon {
   color: #d4af37;
-}
-
-.source-title h4 {
-  margin: 0 0 4px 0;
   font-size: 16px;
-  font-weight: 600;
-  color: #303133;
 }
 
-.source-body {
-  margin-bottom: 16px;
-}
-
-.source-body > div {
-  margin-bottom: 8px;
-  font-size: 13px;
-}
-
-.source-body .label {
-  color: #909399;
-}
-
-.source-body .value {
-  color: #606266;
-}
-
-.source-footer {
+.pagination-wrapper {
+  margin-top: 20px;
   display: flex;
-  gap: 8px;
-  border-top: 1px solid #ebeef5;
-  padding-top: 12px;
+  justify-content: center;
 }
 
 .black-button {
@@ -480,5 +464,6 @@ onMounted(() => {
 
 .black-button:hover {
   background-color: #1a1a1a !important;
+  border-color: #1a1a1a !important;
 }
 </style>

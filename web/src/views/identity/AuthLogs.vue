@@ -1,15 +1,23 @@
 <template>
-  <div class="auth-logs-container">
-    <!-- 页面标题 -->
+  <div class="logs-container">
+    <!-- 页面头部 -->
     <div class="page-header">
-      <h2 class="page-title">认证日志</h2>
+      <div class="page-title-group">
+        <div class="page-title-icon">
+          <el-icon><Document /></el-icon>
+        </div>
+        <div>
+          <h2 class="page-title">认证日志</h2>
+          <p class="page-subtitle">查看用户登录和应用访问的审计记录</p>
+        </div>
+      </div>
     </div>
 
     <!-- 统计卡片 -->
-    <div class="stats-grid">
+    <div class="stats-row">
       <div class="stat-card">
         <div class="stat-icon">
-          <el-icon :size="24"><User /></el-icon>
+          <el-icon :size="22"><User /></el-icon>
         </div>
         <div class="stat-content">
           <div class="stat-value">{{ stats.totalLogins }}</div>
@@ -17,17 +25,17 @@
         </div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon">
-          <el-icon :size="24"><Calendar /></el-icon>
+        <div class="stat-icon blue">
+          <el-icon :size="22"><Calendar /></el-icon>
         </div>
         <div class="stat-content">
           <div class="stat-value">{{ stats.todayLogins }}</div>
           <div class="stat-label">今日登录</div>
         </div>
       </div>
-      <div class="stat-card warning">
-        <div class="stat-icon">
-          <el-icon :size="24"><Warning /></el-icon>
+      <div class="stat-card">
+        <div class="stat-icon red">
+          <el-icon :size="22"><Warning /></el-icon>
         </div>
         <div class="stat-content">
           <div class="stat-value">{{ stats.failedLogins }}</div>
@@ -35,8 +43,8 @@
         </div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon">
-          <el-icon :size="24"><Grid /></el-icon>
+        <div class="stat-icon green">
+          <el-icon :size="22"><Grid /></el-icon>
         </div>
         <div class="stat-content">
           <div class="stat-value">{{ stats.appAccessCount }}</div>
@@ -45,129 +53,141 @@
       </div>
     </div>
 
-    <!-- 搜索表单 -->
-    <el-form :inline="true" :model="searchForm" class="search-form">
-      <el-form-item label="动作">
-        <el-select v-model="searchForm.action" placeholder="请选择" clearable>
-          <el-option label="登录" value="login" />
-          <el-option label="登出" value="logout" />
-          <el-option label="访问应用" value="access_app" />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="结果">
-        <el-select v-model="searchForm.result" placeholder="请选择" clearable>
-          <el-option label="成功" value="success" />
-          <el-option label="失败" value="failed" />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="时间范围">
-        <el-date-picker
-          v-model="searchForm.dateRange"
-          type="daterange"
-          range-separator="至"
-          start-placeholder="开始日期"
-          end-placeholder="结束日期"
-          value-format="YYYY-MM-DD"
-        />
-      </el-form-item>
-      <el-form-item>
-        <el-button class="black-button" @click="loadLogs">查询</el-button>
-        <el-button @click="resetSearch">重置</el-button>
-      </el-form-item>
-    </el-form>
+    <!-- 主内容区域 -->
+    <div class="main-content">
+      <!-- 搜索栏 -->
+      <div class="filter-bar">
+        <div class="filter-inputs">
+          <el-select v-model="searchForm.action" placeholder="动作" clearable class="filter-input" @change="loadLogs">
+            <el-option label="登录" value="login" />
+            <el-option label="退出" value="logout" />
+            <el-option label="访问应用" value="access_app" />
+          </el-select>
+          <el-select v-model="searchForm.result" placeholder="结果" clearable class="filter-input" @change="loadLogs">
+            <el-option label="成功" value="success" />
+            <el-option label="失败" value="failed" />
+          </el-select>
+          <el-date-picker
+            v-model="searchForm.dateRange"
+            type="daterange"
+            range-separator="-"
+            start-placeholder="开始日期"
+            end-placeholder="结束日期"
+            value-format="YYYY-MM-DD"
+            class="date-picker"
+            @change="loadLogs"
+          />
+        </div>
+        <div class="filter-actions">
+          <el-button class="black-button" @click="loadLogs">查询</el-button>
+          <el-button @click="resetSearch">重置</el-button>
+        </div>
+      </div>
 
-    <!-- 表格 -->
-    <el-table :data="logList" border stripe v-loading="loading" style="width: 100%">
-      <el-table-column label="时间" width="180" prop="createdAt" />
-      <el-table-column label="用户" width="120" prop="username" />
-      <el-table-column label="动作" width="100">
-        <template #default="{ row }">
-          <el-tag size="small" :type="getActionTag(row.action)">
-            {{ getActionLabel(row.action) }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="应用" width="120">
-        <template #default="{ row }">
-          {{ row.appName || '-' }}
-        </template>
-      </el-table-column>
-      <el-table-column label="登录类型" width="100">
-        <template #default="{ row }">
-          {{ row.loginType || '-' }}
-        </template>
-      </el-table-column>
-      <el-table-column label="IP地址" width="140" prop="ip" />
-      <el-table-column label="地理位置" width="120" prop="location" show-overflow-tooltip />
-      <el-table-column label="结果" width="80">
-        <template #default="{ row }">
-          <el-tag size="small" :type="row.result === 'success' ? 'success' : 'danger'">
-            {{ row.result === 'success' ? '成功' : '失败' }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="失败原因" min-width="150" prop="failReason" show-overflow-tooltip />
-    </el-table>
+      <!-- 表格 -->
+      <div class="table-wrapper">
+        <el-table :data="logList" v-loading="loading" border stripe>
+          <el-table-column prop="username" label="用户" width="120" />
+          <el-table-column label="动作" width="100">
+            <template #default="{ row }">
+              <el-tag size="small" :type="getActionTag(row.action)">
+                {{ getActionLabel(row.action) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="appName" label="应用" min-width="120">
+            <template #default="{ row }">
+              {{ row.appName || '-' }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="loginType" label="登录方式" width="100">
+            <template #default="{ row }">
+              {{ row.loginType || '-' }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="ip" label="IP地址" width="130" />
+          <el-table-column prop="location" label="位置" min-width="120">
+            <template #default="{ row }">
+              {{ row.location || '-' }}
+            </template>
+          </el-table-column>
+          <el-table-column label="结果" width="80" align="center">
+            <template #default="{ row }">
+              <el-tag size="small" :type="row.result === 'success' ? 'success' : 'danger'">
+                {{ row.result === 'success' ? '成功' : '失败' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="failReason" label="失败原因" min-width="150" show-overflow-tooltip>
+            <template #default="{ row }">
+              {{ row.failReason || '-' }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="createdAt" label="时间" width="170" />
+        </el-table>
 
-    <!-- 分页 -->
-    <el-pagination
-      v-model:current-page="pagination.page"
-      v-model:page-size="pagination.pageSize"
-      :total="pagination.total"
-      :page-sizes="[10, 20, 50, 100]"
-      layout="total, sizes, prev, pager, next, jumper"
-      @size-change="loadLogs"
-      @current-change="loadLogs"
-      style="margin-top: 20px; justify-content: center"
-    />
+        <!-- 分页 -->
+        <div class="pagination-wrapper">
+          <el-pagination
+            v-model:current-page="pagination.page"
+            v-model:page-size="pagination.pageSize"
+            :total="pagination.total"
+            :page-sizes="[10, 20, 50, 100]"
+            layout="total, sizes, prev, pager, next, jumper"
+            @size-change="loadLogs"
+            @current-change="loadLogs"
+          />
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
-import { User, Calendar, Warning, Grid } from '@element-plus/icons-vue'
-import {
-  getAuthLogs,
-  getAuthLogStats,
-  type AuthLog,
-  type AuthLogStats
-} from '@/api/identity'
+import { Document, User, Calendar, Warning, Grid } from '@element-plus/icons-vue'
+import { getAuthLogs, getAuthStats } from '@/api/identity'
 
+const logList = ref<any[]>([])
 const loading = ref(false)
-const logList = ref<AuthLog[]>([])
-const stats = ref<AuthLogStats>({
+
+const stats = reactive({
   totalLogins: 0,
   todayLogins: 0,
   failedLogins: 0,
-  uniqueUsers: 0,
-  appAccessCount: 0,
-  loginTrend: [],
-  topApps: [],
-  topUsers: []
+  appAccessCount: 0
 })
 
 const searchForm = reactive({
   action: '',
   result: '',
-  dateRange: [] as string[]
+  dateRange: null as [string, string] | null
 })
 
 const pagination = reactive({
   page: 1,
-  pageSize: 20,
+  pageSize: 10,
   total: 0
 })
 
-const actionMap: Record<string, { label: string; tag: string }> = {
-  login: { label: '登录', tag: '' },
-  logout: { label: '登出', tag: 'info' },
-  access_app: { label: '访问应用', tag: 'success' }
+const getActionLabel = (action: string) => {
+  const map: Record<string, string> = {
+    login: '登录',
+    logout: '退出',
+    access_app: '访问应用'
+  }
+  return map[action] || action
 }
 
-const getActionLabel = (action: string) => actionMap[action]?.label || action
-const getActionTag = (action: string) => actionMap[action]?.tag || ''
+const getActionTag = (action: string) => {
+  const map: Record<string, string> = {
+    login: 'success',
+    logout: 'info',
+    access_app: ''
+  }
+  return map[action] || ''
+}
 
-// 加载日志列表
 const loadLogs = async () => {
   loading.value = true
   try {
@@ -187,28 +207,31 @@ const loadLogs = async () => {
       pagination.total = res.data.data?.total || 0
     }
   } catch (error) {
-    console.error('加载日志列表失败:', error)
+    console.error('加载日志失败:', error)
   } finally {
     loading.value = false
   }
 }
 
-// 加载统计数据
 const loadStats = async () => {
   try {
-    const res = await getAuthLogStats()
+    const res = await getAuthStats({})
     if (res.data.code === 0) {
-      stats.value = res.data.data || stats.value
+      const data = res.data.data || {}
+      stats.totalLogins = data.totalLogins || 0
+      stats.todayLogins = data.todayLogins || 0
+      stats.failedLogins = data.failedLogins || 0
+      stats.appAccessCount = data.appAccessCount || 0
     }
   } catch (error) {
-    console.error('加载统计数据失败:', error)
+    console.error('加载统计失败:', error)
   }
 }
 
 const resetSearch = () => {
   searchForm.action = ''
   searchForm.result = ''
-  searchForm.dateRange = []
+  searchForm.dateRange = null
   pagination.page = 1
   loadLogs()
 }
@@ -220,54 +243,102 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.auth-logs-container {
-  padding: 20px;
+.logs-container {
+  padding: 0;
+  background-color: transparent;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .page-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
+  align-items: flex-start;
+  padding: 16px 20px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
 }
 
-.page-title {
-  font-size: 20px;
-  font-weight: 600;
-  color: #1a1a1a;
-  margin: 0;
-}
-
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
-}
-
-.stat-card {
-  background: linear-gradient(135deg, #000 0%, #1a1a1a 100%);
-  border: 1px solid #d4af37;
-  border-radius: 12px;
-  padding: 20px;
+.page-title-group {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 16px;
 }
 
-.stat-card.warning .stat-value {
-  color: #f56c6c;
-}
-
-.stat-icon {
+.page-title-icon {
   width: 48px;
   height: 48px;
-  background: rgba(212, 175, 55, 0.1);
+  background: linear-gradient(135deg, #000 0%, #1a1a1a 100%);
   border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #d4af37;
+  font-size: 22px;
+  border: 1px solid #d4af37;
+}
+
+.page-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.page-subtitle {
+  margin: 4px 0 0 0;
+  font-size: 13px;
+  color: #909399;
+}
+
+/* 统计卡片 */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.stat-card {
+  background: #fff;
+  border-radius: 8px;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+.stat-icon {
+  width: 48px;
+  height: 48px;
+  background: linear-gradient(135deg, #000 0%, #1a1a1a 100%);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #d4af37;
+  border: 1px solid #d4af37;
+}
+
+.stat-icon.blue {
+  background: linear-gradient(135deg, #409eff 0%, #337ecc 100%);
+  border-color: #409eff;
+  color: #fff;
+}
+
+.stat-icon.red {
+  background: linear-gradient(135deg, #f56c6c 0%, #c45656 100%);
+  border-color: #f56c6c;
+  color: #fff;
+}
+
+.stat-icon.green {
+  background: linear-gradient(135deg, #67c23a 0%, #529b2e 100%);
+  border-color: #67c23a;
+  color: #fff;
 }
 
 .stat-content {
@@ -277,18 +348,63 @@ onMounted(() => {
 .stat-value {
   font-size: 28px;
   font-weight: 700;
-  color: #d4af37;
-  line-height: 1;
-  margin-bottom: 4px;
+  color: #303133;
+  line-height: 1.2;
 }
 
 .stat-label {
   font-size: 13px;
   color: #909399;
+  margin-top: 4px;
 }
 
-.search-form {
-  margin-bottom: 20px;
+/* 主内容 */
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.filter-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+.filter-inputs {
+  display: flex;
+  gap: 12px;
+}
+
+.filter-input {
+  width: 150px;
+}
+
+.date-picker {
+  width: 260px;
+}
+
+.filter-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.table-wrapper {
+  background: #fff;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+.pagination-wrapper {
+  margin-top: 20px;
+  display: flex;
+  justify-content: center;
 }
 
 .black-button {
@@ -299,5 +415,6 @@ onMounted(() => {
 
 .black-button:hover {
   background-color: #1a1a1a !important;
+  border-color: #1a1a1a !important;
 }
 </style>

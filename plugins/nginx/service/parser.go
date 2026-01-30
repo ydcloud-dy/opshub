@@ -430,9 +430,9 @@ func NewUAParser() *UAParser {
 		regexp.MustCompile(`(?i)iPhone|iPod|Android.*Mobile|Windows Phone|BlackBerry|IEMobile|Opera Mini|Opera Mobi`),
 	}
 
-	// 平板设备模式
+	// 平板设备模式 (不使用负向前瞻，因为 Go 不支持)
 	parser.tabletPatterns = []*regexp.Regexp{
-		regexp.MustCompile(`(?i)iPad|Android(?!.*Mobile)|Tablet|PlayBook|Silk`),
+		regexp.MustCompile(`(?i)iPad|Tablet|PlayBook|Silk|Kindle`),
 	}
 
 	return parser
@@ -499,12 +499,23 @@ func (p *UAParser) Parse(ua string) UAInfo {
 
 	// 检测设备类型 (如果不是 bot)
 	if !info.IsBot {
+		// 先检测平板
 		for _, pattern := range p.tabletPatterns {
 			if pattern.MatchString(ua) {
 				info.DeviceType = "tablet"
 				break
 			}
 		}
+
+		// 特殊处理: Android 不含 Mobile 的是平板
+		if info.DeviceType == "desktop" {
+			uaLower := strings.ToLower(ua)
+			if strings.Contains(uaLower, "android") && !strings.Contains(uaLower, "mobile") {
+				info.DeviceType = "tablet"
+			}
+		}
+
+		// 检测移动设备
 		if info.DeviceType == "desktop" {
 			for _, pattern := range p.mobilePatterns {
 				if pattern.MatchString(ua) {

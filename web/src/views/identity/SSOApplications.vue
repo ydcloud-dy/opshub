@@ -1,91 +1,135 @@
 <template>
-  <div class="sso-apps-container">
-    <!-- 页面标题和操作按钮 -->
+  <div class="apps-container">
+    <!-- 页面头部 -->
     <div class="page-header">
-      <h2 class="page-title">应用管理</h2>
+      <div class="page-title-group">
+        <div class="page-title-icon">
+          <el-icon><Grid /></el-icon>
+        </div>
+        <div>
+          <h2 class="page-title">应用管理</h2>
+          <p class="page-subtitle">配置SSO应用，支持Jenkins、GitLab、Harbor、Grafana等</p>
+        </div>
+      </div>
       <div class="header-actions">
-        <el-button @click="showTemplates = true">选择模板</el-button>
-        <el-button class="black-button" @click="handleAdd">新增应用</el-button>
+        <el-button @click="showTemplates = true">
+          <el-icon style="margin-right: 6px;"><Files /></el-icon>
+          选择模板
+        </el-button>
+        <el-button class="black-button" @click="handleAdd">
+          <el-icon style="margin-right: 6px;"><Plus /></el-icon>
+          新增应用
+        </el-button>
       </div>
     </div>
 
-    <!-- 搜索表单 -->
-    <el-form :inline="true" :model="searchForm" class="search-form">
-      <el-form-item label="关键词">
-        <el-input v-model="searchForm.keyword" placeholder="应用名称/编码" clearable />
-      </el-form-item>
-      <el-form-item label="分类">
-        <el-select v-model="searchForm.category" placeholder="请选择" clearable>
-          <el-option v-for="cat in categories" :key="cat.value" :label="cat.label" :value="cat.value" />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="状态">
-        <el-select v-model="searchForm.enabled" placeholder="请选择" clearable>
-          <el-option label="启用" :value="true" />
-          <el-option label="禁用" :value="false" />
-        </el-select>
-      </el-form-item>
-      <el-form-item>
-        <el-button class="black-button" @click="loadApps">查询</el-button>
-        <el-button @click="resetSearch">重置</el-button>
-      </el-form-item>
-    </el-form>
+    <!-- 主内容区域 -->
+    <div class="main-content">
+      <!-- 搜索栏 -->
+      <div class="filter-bar">
+        <div class="filter-inputs">
+          <el-input
+            v-model="searchForm.keyword"
+            placeholder="搜索应用名称..."
+            clearable
+            class="filter-input"
+            @keyup.enter="loadApps"
+          >
+            <template #prefix>
+              <el-icon><Search /></el-icon>
+            </template>
+          </el-input>
+          <el-select v-model="searchForm.category" placeholder="分类" clearable class="filter-input" @change="loadApps">
+            <el-option v-for="cat in categories" :key="cat.value" :label="cat.label" :value="cat.value" />
+          </el-select>
+          <el-select v-model="searchForm.enabled" placeholder="状态" clearable class="filter-input" @change="loadApps">
+            <el-option label="启用" :value="true" />
+            <el-option label="禁用" :value="false" />
+          </el-select>
+        </div>
+        <div class="filter-actions">
+          <el-button class="black-button" @click="loadApps">查询</el-button>
+          <el-button @click="resetSearch">重置</el-button>
+        </div>
+      </div>
 
-    <!-- 表格 -->
-    <el-table :data="appList" border stripe v-loading="loading" style="width: 100%">
-      <el-table-column label="应用" min-width="200">
-        <template #default="{ row }">
-          <div class="app-cell">
-            <div class="app-icon-small">
-              <img v-if="row.icon" :src="row.icon" :alt="row.name" />
-              <el-icon v-else><Grid /></el-icon>
-            </div>
-            <div class="app-text">
-              <div class="app-name">{{ row.name }}</div>
-              <div class="app-code">{{ row.code }}</div>
-            </div>
+      <!-- 表格 -->
+      <div class="table-wrapper">
+        <el-table :data="appList" v-loading="loading" border stripe>
+          <el-table-column label="应用" min-width="200">
+            <template #default="{ row }">
+              <div class="app-cell">
+                <div class="app-icon-small">
+                  <img v-if="row.icon" :src="row.icon" :alt="row.name" />
+                  <el-icon v-else><Grid /></el-icon>
+                </div>
+                <div class="app-text">
+                  <div class="app-name">{{ row.name }}</div>
+                  <div class="app-code">{{ row.code }}</div>
+                </div>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="分类" width="120">
+            <template #default="{ row }">
+              <el-tag size="small">{{ getCategoryLabel(row.category) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="url" label="URL" min-width="200" show-overflow-tooltip />
+          <el-table-column label="SSO类型" width="100">
+            <template #default="{ row }">
+              <span>{{ row.ssoType || '-' }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" width="100" align="center">
+            <template #default="{ row }">
+              <el-switch v-model="row.enabled" @change="handleToggleEnabled(row)" />
+            </template>
+          </el-table-column>
+          <el-table-column prop="createdAt" label="创建时间" width="170" />
+          <el-table-column label="操作" width="180" fixed="right">
+            <template #default="{ row }">
+              <el-button class="black-button" size="small" @click="handleEdit(row)">编辑</el-button>
+              <el-button type="danger" size="small" @click="handleDelete(row)">删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+
+        <!-- 分页 -->
+        <div class="pagination-wrapper">
+          <el-pagination
+            v-model:current-page="pagination.page"
+            v-model:page-size="pagination.pageSize"
+            :total="pagination.total"
+            :page-sizes="[10, 20, 50, 100]"
+            layout="total, sizes, prev, pager, next, jumper"
+            @size-change="loadApps"
+            @current-change="loadApps"
+          />
+        </div>
+      </div>
+    </div>
+
+    <!-- 模板选择对话框 -->
+    <el-dialog v-model="showTemplates" title="选择应用模板" width="800px">
+      <div class="template-grid">
+        <div
+          v-for="tpl in templates"
+          :key="tpl.code"
+          class="template-card"
+          @click="handleSelectTemplate(tpl)"
+        >
+          <div class="template-icon">
+            <img v-if="tpl.icon" :src="tpl.icon" :alt="tpl.name" />
+            <el-icon v-else :size="28"><Grid /></el-icon>
           </div>
-        </template>
-      </el-table-column>
-      <el-table-column label="分类" width="120">
-        <template #default="{ row }">
-          <el-tag size="small" class="category-tag">{{ getCategoryLabel(row.category) }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="url" label="访问地址" min-width="200" show-overflow-tooltip />
-      <el-table-column label="SSO类型" width="100">
-        <template #default="{ row }">
-          {{ row.ssoType || '-' }}
-        </template>
-      </el-table-column>
-      <el-table-column label="状态" width="80">
-        <template #default="{ row }">
-          <el-tag :type="row.enabled ? 'success' : 'info'" size="small">
-            {{ row.enabled ? '启用' : '禁用' }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="排序" width="80" prop="sort" />
-      <el-table-column label="操作" width="200" fixed="right">
-        <template #default="{ row }">
-          <el-button type="primary" link @click="handleEdit(row)">编辑</el-button>
-          <el-button type="primary" link @click="handlePermission(row)">权限</el-button>
-          <el-button type="danger" link @click="handleDelete(row)">删除</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
-
-    <!-- 分页 -->
-    <el-pagination
-      v-model:current-page="pagination.page"
-      v-model:page-size="pagination.pageSize"
-      :total="pagination.total"
-      :page-sizes="[10, 20, 50, 100]"
-      layout="total, sizes, prev, pager, next, jumper"
-      @size-change="loadApps"
-      @current-change="loadApps"
-      style="margin-top: 20px; justify-content: center"
-    />
+          <div class="template-info">
+            <div class="template-name">{{ tpl.name }}</div>
+            <div class="template-desc">{{ tpl.description }}</div>
+          </div>
+        </div>
+      </div>
+    </el-dialog>
 
     <!-- 新增/编辑对话框 -->
     <el-dialog
@@ -94,33 +138,31 @@
       width="650px"
       @close="handleDialogClose"
     >
-      <el-form :model="formData" :rules="rules" ref="formRef" label-width="100px">
+      <el-form :model="form" :rules="rules" ref="formRef" label-width="100px">
         <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item label="应用名称" prop="name">
-              <el-input v-model="formData.name" placeholder="请输入应用名称" />
+              <el-input v-model="form.name" placeholder="请输入应用名称" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="应用编码" prop="code">
-              <el-input v-model="formData.code" placeholder="请输入应用编码" :disabled="isEdit" />
+              <el-input v-model="form.code" placeholder="请输入应用编码" />
             </el-form-item>
           </el-col>
         </el-row>
         <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item label="分类" prop="category">
-              <el-select v-model="formData.category" placeholder="请选择分类" style="width: 100%">
+              <el-select v-model="form.category" placeholder="请选择分类" style="width: 100%">
                 <el-option v-for="cat in categories" :key="cat.value" :label="cat.label" :value="cat.value" />
               </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="SSO类型">
-              <el-select v-model="formData.ssoType" placeholder="请选择" style="width: 100%">
-                <el-option label="无" value="" />
+            <el-form-item label="SSO类型" prop="ssoType">
+              <el-select v-model="form.ssoType" placeholder="请选择" style="width: 100%">
                 <el-option label="OAuth2" value="oauth2" />
-                <el-option label="OIDC" value="oidc" />
                 <el-option label="SAML" value="saml" />
                 <el-option label="表单代填" value="form" />
                 <el-option label="Token" value="token" />
@@ -128,83 +170,69 @@
             </el-form-item>
           </el-col>
         </el-row>
-        <el-form-item label="访问地址" prop="url">
-          <el-input v-model="formData.url" placeholder="请输入访问地址" />
+        <el-form-item label="应用URL" prop="url">
+          <el-input v-model="form.url" placeholder="请输入应用URL" />
         </el-form-item>
-        <el-form-item label="图标URL">
-          <el-input v-model="formData.icon" placeholder="请输入图标URL" />
+        <el-form-item label="图标URL" prop="icon">
+          <el-input v-model="form.icon" placeholder="请输入图标URL" />
         </el-form-item>
-        <el-form-item label="描述">
-          <el-input v-model="formData.description" type="textarea" :rows="2" placeholder="请输入描述" />
+        <el-form-item label="描述" prop="description">
+          <el-input v-model="form.description" type="textarea" :rows="2" placeholder="请输入描述" />
+        </el-form-item>
+        <el-form-item label="SSO配置" prop="ssoConfig">
+          <el-input v-model="form.ssoConfig" type="textarea" :rows="3" placeholder="请输入JSON格式的SSO配置" />
         </el-form-item>
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="启用状态">
-              <el-switch v-model="formData.enabled" />
+            <el-form-item label="排序" prop="sort">
+              <el-input-number v-model="form.sort" :min="0" :max="999" style="width: 100%" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="排序">
-              <el-input-number v-model="formData.sort" :min="0" />
+            <el-form-item label="启用" prop="enabled">
+              <el-switch v-model="form.enabled" />
             </el-form-item>
           </el-col>
         </el-row>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button class="black-button" @click="handleSubmit">确定</el-button>
+        <el-button class="black-button" @click="handleSubmit" :loading="submitLoading">确定</el-button>
       </template>
-    </el-dialog>
-
-    <!-- 模板选择对话框 -->
-    <el-dialog v-model="showTemplates" title="选择应用模板" width="800px">
-      <div class="template-grid">
-        <div
-          v-for="template in templates"
-          :key="template.code"
-          class="template-card"
-          @click="handleSelectTemplate(template)"
-        >
-          <div class="template-icon">
-            <img v-if="template.icon" :src="template.icon" :alt="template.name" />
-            <el-icon v-else :size="32"><Grid /></el-icon>
-          </div>
-          <div class="template-info">
-            <h4>{{ template.name }}</h4>
-            <p>{{ template.description }}</p>
-            <el-tag size="small">{{ template.ssoType }}</el-tag>
-          </div>
-        </div>
-      </div>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { Grid } from '@element-plus/icons-vue'
-import { useRouter } from 'vue-router'
+import { ref, reactive, onMounted } from 'vue'
+import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { Grid, Plus, Search, Files } from '@element-plus/icons-vue'
 import {
   getSSOApplications,
-  getAppTemplates,
-  getAppCategories,
   createSSOApplication,
   updateSSOApplication,
   deleteSSOApplication,
-  type SSOApplication,
-  type AppTemplate
+  getAppTemplates,
+  type SSOApplication
 } from '@/api/identity'
 
-const router = useRouter()
-const loading = ref(false)
 const appList = ref<SSOApplication[]>([])
-const templates = ref<AppTemplate[]>([])
-const categories = ref<{ value: string; label: string }[]>([])
+const templates = ref<any[]>([])
+const loading = ref(false)
 const dialogVisible = ref(false)
 const showTemplates = ref(false)
+const dialogTitle = ref('新增应用')
+const submitLoading = ref(false)
+const formRef = ref<FormInstance>()
 const isEdit = ref(false)
-const formRef = ref()
+
+const categories = [
+  { value: 'cicd', label: 'CI/CD' },
+  { value: 'code', label: '代码管理' },
+  { value: 'monitor', label: '监控告警' },
+  { value: 'registry', label: '镜像仓库' },
+  { value: 'other', label: '其他' }
+]
 
 const searchForm = reactive({
   keyword: '',
@@ -218,7 +246,7 @@ const pagination = reactive({
   total: 0
 })
 
-const formData = reactive({
+const form = reactive({
   id: 0,
   name: '',
   code: '',
@@ -232,21 +260,16 @@ const formData = reactive({
   sort: 0
 })
 
-const rules = {
+const rules: FormRules = {
   name: [{ required: true, message: '请输入应用名称', trigger: 'blur' }],
-  code: [{ required: true, message: '请输入应用编码', trigger: 'blur' }],
-  url: [{ required: true, message: '请输入访问地址', trigger: 'blur' }],
-  category: [{ required: true, message: '请选择分类', trigger: 'change' }]
+  url: [{ required: true, message: '请输入应用URL', trigger: 'blur' }]
 }
 
-const dialogTitle = computed(() => isEdit.value ? '编辑应用' : '新增应用')
-
-const getCategoryLabel = (category: string) => {
-  const cat = categories.value.find(c => c.value === category)
-  return cat?.label || category
+const getCategoryLabel = (cat: string) => {
+  const found = categories.find(c => c.value === cat)
+  return found?.label || cat || '未分类'
 }
 
-// 加载应用列表
 const loadApps = async () => {
   loading.value = true
   try {
@@ -262,27 +285,20 @@ const loadApps = async () => {
       pagination.total = res.data.data?.total || 0
     }
   } catch (error) {
-    console.error('加载应用列表失败:', error)
+    console.error('加载应用失败:', error)
   } finally {
     loading.value = false
   }
 }
 
-// 加载模板和分类
-const loadTemplatesAndCategories = async () => {
+const loadTemplates = async () => {
   try {
-    const [templatesRes, categoriesRes] = await Promise.all([
-      getAppTemplates(),
-      getAppCategories()
-    ])
-    if (templatesRes.data.code === 0) {
-      templates.value = templatesRes.data.data || []
-    }
-    if (categoriesRes.data.code === 0) {
-      categories.value = categoriesRes.data.data || []
+    const res = await getAppTemplates()
+    if (res.data.code === 0) {
+      templates.value = res.data.data || []
     }
   } catch (error) {
-    console.error('加载模板和分类失败:', error)
+    console.error('加载模板失败:', error)
   }
 }
 
@@ -296,85 +312,8 @@ const resetSearch = () => {
 
 const handleAdd = () => {
   isEdit.value = false
-  resetForm()
-  dialogVisible.value = true
-}
-
-const handleEdit = (app: SSOApplication) => {
-  isEdit.value = true
-  Object.assign(formData, {
-    id: app.id,
-    name: app.name,
-    code: app.code,
-    icon: app.icon,
-    description: app.description,
-    category: app.category,
-    url: app.url,
-    ssoType: app.ssoType,
-    ssoConfig: app.ssoConfig,
-    enabled: app.enabled,
-    sort: app.sort
-  })
-  dialogVisible.value = true
-}
-
-const handlePermission = (app: SSOApplication) => {
-  router.push({ path: '/identity/permissions', query: { appId: app.id } })
-}
-
-const handleDelete = async (app: SSOApplication) => {
-  try {
-    await ElMessageBox.confirm(`确定要删除应用 "${app.name}" 吗？`, '提示', {
-      type: 'warning'
-    })
-    await deleteSSOApplication(app.id)
-    ElMessage.success('删除成功')
-    loadApps()
-  } catch (error) {
-    if (error !== 'cancel') {
-      ElMessage.error('删除失败')
-    }
-  }
-}
-
-const handleSelectTemplate = (template: AppTemplate) => {
-  Object.assign(formData, {
-    name: template.name,
-    code: template.code,
-    icon: template.icon,
-    description: template.description,
-    category: template.category,
-    ssoType: template.ssoType,
-    url: template.urlTemplate
-  })
-  showTemplates.value = false
-  isEdit.value = false
-  dialogVisible.value = true
-}
-
-const handleSubmit = async () => {
-  try {
-    await formRef.value?.validate()
-    if (isEdit.value) {
-      await updateSSOApplication(formData.id, formData)
-      ElMessage.success('更新成功')
-    } else {
-      await createSSOApplication(formData)
-      ElMessage.success('创建成功')
-    }
-    dialogVisible.value = false
-    loadApps()
-  } catch (error) {
-    console.error('提交失败:', error)
-  }
-}
-
-const handleDialogClose = () => {
-  resetForm()
-}
-
-const resetForm = () => {
-  Object.assign(formData, {
+  dialogTitle.value = '新增应用'
+  Object.assign(form, {
     id: 0,
     name: '',
     code: '',
@@ -387,32 +326,145 @@ const resetForm = () => {
     enabled: true,
     sort: 0
   })
-  formRef.value?.clearValidate()
+  dialogVisible.value = true
+}
+
+const handleSelectTemplate = (tpl: any) => {
+  Object.assign(form, {
+    id: 0,
+    name: tpl.name,
+    code: tpl.code,
+    icon: tpl.icon || '',
+    description: tpl.description || '',
+    category: tpl.category || '',
+    url: '',
+    ssoType: tpl.ssoType || '',
+    ssoConfig: tpl.ssoConfig || '',
+    enabled: true,
+    sort: 0
+  })
+  showTemplates.value = false
+  dialogTitle.value = '新增应用'
+  isEdit.value = false
+  dialogVisible.value = true
+}
+
+const handleEdit = (row: SSOApplication) => {
+  isEdit.value = true
+  dialogTitle.value = '编辑应用'
+  Object.assign(form, { ...row })
+  dialogVisible.value = true
+}
+
+const handleSubmit = async () => {
+  if (!formRef.value) return
+  await formRef.value.validate(async (valid) => {
+    if (!valid) return
+    submitLoading.value = true
+    try {
+      if (isEdit.value) {
+        await updateSSOApplication(form.id, form)
+        ElMessage.success('更新成功')
+      } else {
+        await createSSOApplication(form)
+        ElMessage.success('创建成功')
+      }
+      dialogVisible.value = false
+      loadApps()
+    } catch (error) {
+      ElMessage.error('操作失败')
+    } finally {
+      submitLoading.value = false
+    }
+  })
+}
+
+const handleDelete = (row: SSOApplication) => {
+  ElMessageBox.confirm(`确定要删除应用"${row.name}"吗？`, '提示', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    type: 'warning'
+  }).then(async () => {
+    try {
+      await deleteSSOApplication(row.id)
+      ElMessage.success('删除成功')
+      loadApps()
+    } catch (error) {
+      ElMessage.error('删除失败')
+    }
+  }).catch(() => {})
+}
+
+const handleToggleEnabled = async (row: SSOApplication) => {
+  try {
+    await updateSSOApplication(row.id, { enabled: row.enabled })
+    ElMessage.success(row.enabled ? '已启用' : '已禁用')
+  } catch (error) {
+    row.enabled = !row.enabled
+    ElMessage.error('操作失败')
+  }
+}
+
+const handleDialogClose = () => {
+  formRef.value?.resetFields()
 }
 
 onMounted(() => {
   loadApps()
-  loadTemplatesAndCategories()
+  loadTemplates()
 })
 </script>
 
 <style scoped>
-.sso-apps-container {
-  padding: 20px;
+.apps-container {
+  padding: 0;
+  background-color: transparent;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .page-header {
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+  padding: 16px 20px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+.page-title-group {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.page-title-icon {
+  width: 48px;
+  height: 48px;
+  background: linear-gradient(135deg, #000 0%, #1a1a1a 100%);
+  border-radius: 10px;
+  display: flex;
   align-items: center;
-  margin-bottom: 20px;
+  justify-content: center;
+  color: #d4af37;
+  font-size: 22px;
+  border: 1px solid #d4af37;
 }
 
 .page-title {
+  margin: 0;
   font-size: 20px;
   font-weight: 600;
-  color: #1a1a1a;
-  margin: 0;
+  color: #303133;
+}
+
+.page-subtitle {
+  margin: 4px 0 0 0;
+  font-size: 13px;
+  color: #909399;
 }
 
 .header-actions {
@@ -420,21 +472,55 @@ onMounted(() => {
   gap: 12px;
 }
 
-.search-form {
-  margin-bottom: 20px;
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.filter-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+.filter-inputs {
+  display: flex;
+  gap: 12px;
+}
+
+.filter-input {
+  width: 180px;
+}
+
+.filter-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.table-wrapper {
+  background: #fff;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
 }
 
 .app-cell {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .app-icon-small {
   width: 36px;
   height: 36px;
   background: linear-gradient(135deg, #000 0%, #1a1a1a 100%);
-  border-radius: 8px;
+  border-radius: 6px;
   border: 1px solid #d4af37;
   display: flex;
   align-items: center;
@@ -443,69 +529,76 @@ onMounted(() => {
 }
 
 .app-icon-small img {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   object-fit: contain;
 }
 
 .app-icon-small .el-icon {
   color: #d4af37;
-  font-size: 16px;
+  font-size: 18px;
 }
 
-.app-text .app-name {
+.app-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.app-name {
   font-weight: 500;
   color: #303133;
 }
 
-.app-text .app-code {
+.app-code {
   font-size: 12px;
   color: #909399;
 }
 
-.category-tag {
-  background: rgba(212, 175, 55, 0.1);
-  color: #d4af37;
-  border-color: rgba(212, 175, 55, 0.3);
+.pagination-wrapper {
+  margin-top: 20px;
+  display: flex;
+  justify-content: center;
 }
 
+/* 模板网格 */
 .template-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(3, 1fr);
   gap: 16px;
 }
 
 .template-card {
-  background: #fff;
+  background: #fafafa;
   border: 1px solid #ebeef5;
-  border-radius: 12px;
+  border-radius: 8px;
   padding: 16px;
   cursor: pointer;
-  transition: all 0.3s ease;
-  text-align: center;
+  transition: all 0.3s;
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .template-card:hover {
   border-color: #d4af37;
-  box-shadow: 0 4px 16px rgba(212, 175, 55, 0.15);
+  box-shadow: 0 4px 12px rgba(212, 175, 55, 0.15);
 }
 
 .template-icon {
-  width: 56px;
-  height: 56px;
-  margin: 0 auto 12px;
+  width: 44px;
+  height: 44px;
   background: linear-gradient(135deg, #000 0%, #1a1a1a 100%);
-  border-radius: 12px;
+  border-radius: 8px;
   border: 1px solid #d4af37;
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
+  flex-shrink: 0;
 }
 
 .template-icon img {
-  width: 36px;
-  height: 36px;
+  width: 28px;
+  height: 28px;
   object-fit: contain;
 }
 
@@ -513,19 +606,23 @@ onMounted(() => {
   color: #d4af37;
 }
 
-.template-info h4 {
-  margin: 0 0 8px 0;
-  font-size: 15px;
-  font-weight: 600;
-  color: #303133;
+.template-info {
+  flex: 1;
+  min-width: 0;
 }
 
-.template-info p {
-  margin: 0 0 8px 0;
+.template-name {
+  font-weight: 500;
+  color: #303133;
+  margin-bottom: 4px;
+}
+
+.template-desc {
   font-size: 12px;
   color: #909399;
-  height: 36px;
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .black-button {
@@ -536,5 +633,6 @@ onMounted(() => {
 
 .black-button:hover {
   background-color: #1a1a1a !important;
+  border-color: #1a1a1a !important;
 }
 </style>

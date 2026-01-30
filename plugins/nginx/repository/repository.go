@@ -767,9 +767,27 @@ func (r *NginxRepository) GetHourlyStats(sourceID uint, hour time.Time) (*model.
 // ListHourlyStats 获取小时统计列表
 func (r *NginxRepository) ListHourlyStats(sourceID uint, startHour, endHour time.Time) ([]model.NginxHourlyStats, error) {
 	var stats []model.NginxHourlyStats
-	err := r.db.Where("source_id = ? AND hour >= ? AND hour <= ?", sourceID, startHour, endHour).
-		Order("hour DESC").Find(&stats).Error
-	return stats, err
+
+	// 确保使用本地时区
+	startHour = startHour.Local()
+	endHour = endHour.Local()
+
+	// 首先尝试查询指定时间范围
+	if r.tableExists("nginx_hourly_stats") {
+		err := r.db.Where("source_id = ? AND hour >= ? AND hour <= ?", sourceID, startHour, endHour).
+			Order("hour DESC").Find(&stats).Error
+		if err == nil && len(stats) > 0 {
+			return stats, nil
+		}
+
+		// 如果指定范围没数据，尝试查询最近7天的所有数据
+		sevenDaysAgo := time.Now().Local().AddDate(0, 0, -7)
+		err = r.db.Where("source_id = ? AND hour >= ?", sourceID, sevenDaysAgo).
+			Order("hour DESC").Limit(24).Find(&stats).Error
+		return stats, err
+	}
+
+	return stats, nil
 }
 
 // DeleteOldHourlyStats 删除过期小时统计
@@ -790,14 +808,17 @@ func (r *NginxRepository) GetTodayOverview() (*model.OverviewStats, error) {
 	r.db.Model(&model.NginxSource{}).Where("status = ?", 1).Count(&overview.ActiveSources)
 
 	// 获取今日聚合数据 (优先使用新表)
-	today := time.Now().Truncate(24 * time.Hour)
+	// 使用本地时区的今天日期字符串，避免时区问题
+	todayStr := time.Now().Local().Format("2006-01-02")
 	usedNewTable := false
+	foundData := false
 
 	if r.tableExists("nginx_agg_daily") {
 		var aggDaily []model.NginxAggDaily
-		err := r.db.Where("date = ?", today).Find(&aggDaily).Error
+		err := r.db.Where("DATE(date) = ?", todayStr).Find(&aggDaily).Error
 		if err == nil && len(aggDaily) > 0 {
 			usedNewTable = true
+			foundData = true
 			var totalResponseTime float64
 			var responseTimeCount int64
 			for _, agg := range aggDaily {
@@ -820,18 +841,40 @@ func (r *NginxRepository) GetTodayOverview() (*model.OverviewStats, error) {
 		}
 	}
 
-	if !usedNewTable {
+	if !usedNewTable && r.tableExists("nginx_daily_stats") {
 		// 回退到旧表
 		var dailyStats []model.NginxDailyStats
-		r.db.Where("date = ?", today).Find(&dailyStats)
-		for _, stats := range dailyStats {
-			overview.TodayRequests += stats.TotalRequests
-			overview.TodayVisitors += stats.UniqueVisitors
-			overview.TodayBandwidth += stats.TotalBandwidth
-			overview.StatusDistribution["2xx"] += stats.Status2xx
-			overview.StatusDistribution["3xx"] += stats.Status3xx
-			overview.StatusDistribution["4xx"] += stats.Status4xx
-			overview.StatusDistribution["5xx"] += stats.Status5xx
+		r.db.Where("DATE(date) = ?", todayStr).Find(&dailyStats)
+		if len(dailyStats) > 0 {
+			foundData = true
+			for _, stats := range dailyStats {
+				overview.TodayRequests += stats.TotalRequests
+				overview.TodayVisitors += stats.UniqueVisitors
+				overview.TodayBandwidth += stats.TotalBandwidth
+				overview.StatusDistribution["2xx"] += stats.Status2xx
+				overview.StatusDistribution["3xx"] += stats.Status3xx
+				overview.StatusDistribution["4xx"] += stats.Status4xx
+				overview.StatusDistribution["5xx"] += stats.Status5xx
+			}
+		}
+	}
+
+	// 如果今天没有数据，尝试获取最近7天的汇总数据
+	if !foundData {
+		sevenDaysAgo := time.Now().Local().AddDate(0, 0, -7).Format("2006-01-02")
+
+		if r.tableExists("nginx_daily_stats") {
+			var dailyStats []model.NginxDailyStats
+			r.db.Where("DATE(date) >= ?", sevenDaysAgo).Find(&dailyStats)
+			for _, stats := range dailyStats {
+				overview.TodayRequests += stats.TotalRequests
+				overview.TodayVisitors += stats.UniqueVisitors
+				overview.TodayBandwidth += stats.TotalBandwidth
+				overview.StatusDistribution["2xx"] += stats.Status2xx
+				overview.StatusDistribution["3xx"] += stats.Status3xx
+				overview.StatusDistribution["4xx"] += stats.Status4xx
+				overview.StatusDistribution["5xx"] += stats.Status5xx
+			}
 		}
 	}
 
@@ -850,7 +893,7 @@ func (r *NginxRepository) GetTodayOverview() (*model.OverviewStats, error) {
 func (r *NginxRepository) GetRequestsTrend(sourceID *uint, hours int) ([]model.TrendPoint, error) {
 	var trend []model.TrendPoint
 
-	endTime := time.Now()
+	endTime := time.Now().Local()
 	startTime := endTime.Add(-time.Duration(hours) * time.Hour)
 
 	// 优先使用新表
@@ -883,31 +926,54 @@ func (r *NginxRepository) GetRequestsTrend(sourceID *uint, hours int) ([]model.T
 	}
 
 	// 回退到旧表
-	query := r.db.Model(&model.NginxHourlyStats{}).
-		Select("hour as time, SUM(total_requests) as value").
-		Where("hour >= ? AND hour <= ?", startTime, endTime).
-		Group("hour").
-		Order("hour ASC")
+	if r.tableExists("nginx_hourly_stats") {
+		query := r.db.Model(&model.NginxHourlyStats{}).
+			Select("hour as time, SUM(total_requests) as value").
+			Where("hour >= ? AND hour <= ?", startTime, endTime).
+			Group("hour").
+			Order("hour ASC")
 
-	if sourceID != nil {
-		query = query.Where("source_id = ?", *sourceID)
-	}
+		if sourceID != nil {
+			query = query.Where("source_id = ?", *sourceID)
+		}
 
-	type Result struct {
-		Time  time.Time
-		Value int64
-	}
-	var results []Result
-	err := query.Find(&results).Error
-	if err != nil {
-		return nil, err
-	}
+		type Result struct {
+			Time  time.Time
+			Value int64
+		}
+		var results []Result
+		if err := query.Find(&results).Error; err == nil && len(results) > 0 {
+			for _, r := range results {
+				trend = append(trend, model.TrendPoint{
+					Time:  r.Time.Format("15:04"),
+					Value: r.Value,
+				})
+			}
+			return trend, nil
+		}
 
-	for _, r := range results {
-		trend = append(trend, model.TrendPoint{
-			Time:  r.Time.Format("15:04"),
-			Value: r.Value,
-		})
+		// 如果最近N小时没数据，尝试获取最近7天的所有小时数据
+		sevenDaysAgo := time.Now().Local().AddDate(0, 0, -7)
+		query2 := r.db.Model(&model.NginxHourlyStats{}).
+			Select("hour as time, SUM(total_requests) as value").
+			Where("hour >= ?", sevenDaysAgo).
+			Group("hour").
+			Order("hour ASC").
+			Limit(24) // 只取最近24个有数据的小时
+
+		if sourceID != nil {
+			query2 = query2.Where("source_id = ?", *sourceID)
+		}
+
+		var results2 []Result
+		if err := query2.Find(&results2).Error; err == nil {
+			for _, r := range results2 {
+				trend = append(trend, model.TrendPoint{
+					Time:  r.Time.Format("01-02 15:04"),
+					Value: r.Value,
+				})
+			}
+		}
 	}
 
 	return trend, nil
@@ -1015,15 +1081,19 @@ func (r *NginxRepository) GetTopIPsWithGeo(sourceID uint, startTime, endTime tim
 		}
 	}
 
-	// 回退到旧表 (没有地理信息)
-	type IPCount struct {
+	// 回退到旧表 nginx_access_logs (现在有地理信息字段)
+	type IPGeoCount struct {
 		RemoteAddr string
+		Country    string
+		Province   string
+		City       string
 		Count      int64
 	}
-	var ipCounts []IPCount
+	var ipCounts []IPGeoCount
 
+	// 使用子查询获取每个IP的地理信息（取第一条记录的地理信息）
 	err := r.db.Model(&model.NginxAccessLog{}).
-		Select("remote_addr, COUNT(*) as count").
+		Select("remote_addr, MAX(country) as country, MAX(province) as province, MAX(city) as city, COUNT(*) as count").
 		Where("source_id = ? AND timestamp >= ? AND timestamp <= ?", sourceID, startTime, endTime).
 		Group("remote_addr").
 		Order("count DESC").
@@ -1035,11 +1105,26 @@ func (r *NginxRepository) GetTopIPsWithGeo(sourceID uint, startTime, endTime tim
 	}
 
 	for _, ic := range ipCounts {
+		country := ic.Country
+		province := ic.Province
+		city := ic.City
+
+		// 如果没有地理信息，显示为 "-"
+		if country == "" {
+			country = "-"
+		}
+		if province == "" {
+			province = "-"
+		}
+		if city == "" {
+			city = "-"
+		}
+
 		results = append(results, map[string]interface{}{
 			"ip":       ic.RemoteAddr,
-			"country":  "",
-			"province": "",
-			"city":     "",
+			"country":  country,
+			"province": province,
+			"city":     city,
 			"count":    ic.Count,
 		})
 	}
@@ -1051,61 +1136,113 @@ func (r *NginxRepository) GetTopIPsWithGeo(sourceID uint, startTime, endTime tim
 func (r *NginxRepository) GetGeoDistribution(sourceID *uint, startTime, endTime time.Time, level string) ([]model.GeoStats, error) {
 	var stats []model.GeoStats
 
-	// 检查新表是否存在
-	if !r.tableExists("nginx_fact_access_logs") || !r.tableExists("nginx_dim_ip") {
-		// 新表不存在，返回空数据 (旧表没有地理信息)
-		return stats, nil
-	}
-
-	var selectField string
-	switch level {
-	case "country":
-		selectField = "i.country"
-	case "province":
-		selectField = "i.country, i.province"
-	default:
-		selectField = "i.country, i.province, i.city"
-	}
-
-	query := r.db.Table("nginx_fact_access_logs f").
-		Select(selectField+", COUNT(*) as count").
-		Joins("LEFT JOIN nginx_dim_ip i ON f.ip_id = i.id").
-		Where("f.timestamp >= ? AND f.timestamp <= ?", startTime, endTime)
-
-	if sourceID != nil {
-		query = query.Where("f.source_id = ?", *sourceID)
-	}
-
-	query = query.Group(selectField).Order("count DESC")
-
-	type GeoResult struct {
-		Country  string
-		Province string
-		City     string
-		Count    int64
-	}
-	var results []GeoResult
-	if err := query.Find(&results).Error; err != nil {
-		return nil, err
-	}
-
-	var total int64
-	for _, r := range results {
-		total += r.Count
-	}
-
-	for _, r := range results {
-		percent := float64(0)
-		if total > 0 {
-			percent = float64(r.Count) / float64(total) * 100
+	// 优先使用新表
+	if r.tableExists("nginx_fact_access_logs") && r.tableExists("nginx_dim_ip") {
+		var selectField string
+		switch level {
+		case "country":
+			selectField = "i.country"
+		case "province":
+			selectField = "i.country, i.province"
+		default:
+			selectField = "i.country, i.province, i.city"
 		}
-		stats = append(stats, model.GeoStats{
-			Country:  r.Country,
-			Province: r.Province,
-			City:     r.City,
-			Count:    r.Count,
-			Percent:  percent,
-		})
+
+		query := r.db.Table("nginx_fact_access_logs f").
+			Select(selectField+", COUNT(*) as count").
+			Joins("LEFT JOIN nginx_dim_ip i ON f.ip_id = i.id").
+			Where("f.timestamp >= ? AND f.timestamp <= ?", startTime, endTime)
+
+		if sourceID != nil {
+			query = query.Where("f.source_id = ?", *sourceID)
+		}
+
+		query = query.Group(selectField).Order("count DESC")
+
+		type GeoResult struct {
+			Country  string
+			Province string
+			City     string
+			Count    int64
+		}
+		var results []GeoResult
+		if err := query.Find(&results).Error; err == nil && len(results) > 0 {
+			var total int64
+			for _, r := range results {
+				total += r.Count
+			}
+
+			for _, r := range results {
+				percent := float64(0)
+				if total > 0 {
+					percent = float64(r.Count) / float64(total) * 100
+				}
+				stats = append(stats, model.GeoStats{
+					Country:  r.Country,
+					Province: r.Province,
+					City:     r.City,
+					Count:    r.Count,
+					Percent:  percent,
+				})
+			}
+			return stats, nil
+		}
+	}
+
+	// 回退到旧表 nginx_access_logs (现在有地理信息字段)
+	if r.tableExists("nginx_access_logs") {
+		var selectField string
+		var groupField string
+		switch level {
+		case "country":
+			selectField = "country"
+			groupField = "country"
+		case "province":
+			selectField = "country, province"
+			groupField = "country, province"
+		default:
+			selectField = "country, province, city"
+			groupField = "country, province, city"
+		}
+
+		query := r.db.Model(&model.NginxAccessLog{}).
+			Select(selectField+", COUNT(*) as count").
+			Where("timestamp >= ? AND timestamp <= ?", startTime, endTime).
+			Where("country != '' AND country IS NOT NULL")
+
+		if sourceID != nil {
+			query = query.Where("source_id = ?", *sourceID)
+		}
+
+		query = query.Group(groupField).Order("count DESC").Limit(50)
+
+		type GeoResult struct {
+			Country  string
+			Province string
+			City     string
+			Count    int64
+		}
+		var results []GeoResult
+		if err := query.Find(&results).Error; err == nil {
+			var total int64
+			for _, r := range results {
+				total += r.Count
+			}
+
+			for _, r := range results {
+				percent := float64(0)
+				if total > 0 {
+					percent = float64(r.Count) / float64(total) * 100
+				}
+				stats = append(stats, model.GeoStats{
+					Country:  r.Country,
+					Province: r.Province,
+					City:     r.City,
+					Count:    r.Count,
+					Percent:  percent,
+				})
+			}
+		}
 	}
 
 	return stats, nil
@@ -1115,48 +1252,86 @@ func (r *NginxRepository) GetGeoDistribution(sourceID *uint, startTime, endTime 
 func (r *NginxRepository) GetBrowserDistribution(sourceID *uint, startTime, endTime time.Time) ([]model.BrowserStats, error) {
 	var stats []model.BrowserStats
 
-	// 检查新表是否存在
-	if !r.tableExists("nginx_fact_access_logs") || !r.tableExists("nginx_dim_user_agent") {
-		// 新表不存在，返回空数据 (旧表没有浏览器解析信息)
-		return stats, nil
-	}
+	// 优先使用新表
+	if r.tableExists("nginx_fact_access_logs") && r.tableExists("nginx_dim_user_agent") {
+		query := r.db.Table("nginx_fact_access_logs f").
+			Select("ua.browser, COUNT(*) as count").
+			Joins("LEFT JOIN nginx_dim_user_agent ua ON f.ua_id = ua.id").
+			Where("f.timestamp >= ? AND f.timestamp <= ?", startTime, endTime).
+			Where("ua.is_bot = ?", false)
 
-	query := r.db.Table("nginx_fact_access_logs f").
-		Select("ua.browser, COUNT(*) as count").
-		Joins("LEFT JOIN nginx_dim_user_agent ua ON f.ua_id = ua.id").
-		Where("f.timestamp >= ? AND f.timestamp <= ?", startTime, endTime).
-		Where("ua.is_bot = ?", false)
-
-	if sourceID != nil {
-		query = query.Where("f.source_id = ?", *sourceID)
-	}
-
-	query = query.Group("ua.browser").Order("count DESC")
-
-	type Result struct {
-		Browser string
-		Count   int64
-	}
-	var results []Result
-	if err := query.Find(&results).Error; err != nil {
-		return nil, err
-	}
-
-	var total int64
-	for _, r := range results {
-		total += r.Count
-	}
-
-	for _, r := range results {
-		percent := float64(0)
-		if total > 0 {
-			percent = float64(r.Count) / float64(total) * 100
+		if sourceID != nil {
+			query = query.Where("f.source_id = ?", *sourceID)
 		}
-		stats = append(stats, model.BrowserStats{
-			Browser: r.Browser,
-			Count:   r.Count,
-			Percent: percent,
-		})
+
+		query = query.Group("ua.browser").Order("count DESC")
+
+		type Result struct {
+			Browser string
+			Count   int64
+		}
+		var results []Result
+		if err := query.Find(&results).Error; err == nil && len(results) > 0 {
+			var total int64
+			for _, r := range results {
+				total += r.Count
+			}
+
+			for _, r := range results {
+				percent := float64(0)
+				if total > 0 {
+					percent = float64(r.Count) / float64(total) * 100
+				}
+				stats = append(stats, model.BrowserStats{
+					Browser: r.Browser,
+					Count:   r.Count,
+					Percent: percent,
+				})
+			}
+			return stats, nil
+		}
+	}
+
+	// 回退到旧表 nginx_access_logs (现在有 browser 字段)
+	if r.tableExists("nginx_access_logs") {
+		query := r.db.Model(&model.NginxAccessLog{}).
+			Select("browser, COUNT(*) as count").
+			Where("timestamp >= ? AND timestamp <= ?", startTime, endTime).
+			Where("browser != '' AND browser IS NOT NULL")
+
+		if sourceID != nil {
+			query = query.Where("source_id = ?", *sourceID)
+		}
+
+		query = query.Group("browser").Order("count DESC").Limit(20)
+
+		type Result struct {
+			Browser string
+			Count   int64
+		}
+		var results []Result
+		if err := query.Find(&results).Error; err == nil {
+			var total int64
+			for _, r := range results {
+				total += r.Count
+			}
+
+			for _, r := range results {
+				percent := float64(0)
+				if total > 0 {
+					percent = float64(r.Count) / float64(total) * 100
+				}
+				browser := r.Browser
+				if browser == "" {
+					browser = "Other"
+				}
+				stats = append(stats, model.BrowserStats{
+					Browser: browser,
+					Count:   r.Count,
+					Percent: percent,
+				})
+			}
+		}
 	}
 
 	return stats, nil
@@ -1166,48 +1341,95 @@ func (r *NginxRepository) GetBrowserDistribution(sourceID *uint, startTime, endT
 func (r *NginxRepository) GetDeviceDistribution(sourceID *uint, startTime, endTime time.Time) ([]model.DeviceStats, error) {
 	var stats []model.DeviceStats
 
-	// 检查新表是否存在
-	if !r.tableExists("nginx_fact_access_logs") || !r.tableExists("nginx_dim_user_agent") {
-		// 新表不存在，返回空数据 (旧表没有设备解析信息)
-		return stats, nil
-	}
+	// 优先使用新表
+	if r.tableExists("nginx_fact_access_logs") && r.tableExists("nginx_dim_user_agent") {
+		query := r.db.Table("nginx_fact_access_logs f").
+			Select("ua.device_type, COUNT(*) as count").
+			Joins("LEFT JOIN nginx_dim_user_agent ua ON f.ua_id = ua.id").
+			Where("f.timestamp >= ? AND f.timestamp <= ?", startTime, endTime).
+			Where("ua.is_bot = ?", false)
 
-	query := r.db.Table("nginx_fact_access_logs f").
-		Select("ua.device_type, COUNT(*) as count").
-		Joins("LEFT JOIN nginx_dim_user_agent ua ON f.ua_id = ua.id").
-		Where("f.timestamp >= ? AND f.timestamp <= ?", startTime, endTime).
-		Where("ua.is_bot = ?", false)
-
-	if sourceID != nil {
-		query = query.Where("f.source_id = ?", *sourceID)
-	}
-
-	query = query.Group("ua.device_type").Order("count DESC")
-
-	type Result struct {
-		DeviceType string
-		Count      int64
-	}
-	var results []Result
-	if err := query.Find(&results).Error; err != nil {
-		return nil, err
-	}
-
-	var total int64
-	for _, r := range results {
-		total += r.Count
-	}
-
-	for _, r := range results {
-		percent := float64(0)
-		if total > 0 {
-			percent = float64(r.Count) / float64(total) * 100
+		if sourceID != nil {
+			query = query.Where("f.source_id = ?", *sourceID)
 		}
-		stats = append(stats, model.DeviceStats{
-			DeviceType: r.DeviceType,
-			Count:      r.Count,
-			Percent:    percent,
-		})
+
+		query = query.Group("ua.device_type").Order("count DESC")
+
+		type Result struct {
+			DeviceType string
+			Count      int64
+		}
+		var results []Result
+		if err := query.Find(&results).Error; err == nil && len(results) > 0 {
+			var total int64
+			for _, r := range results {
+				total += r.Count
+			}
+
+			for _, r := range results {
+				percent := float64(0)
+				if total > 0 {
+					percent = float64(r.Count) / float64(total) * 100
+				}
+				stats = append(stats, model.DeviceStats{
+					DeviceType: r.DeviceType,
+					Count:      r.Count,
+					Percent:    percent,
+				})
+			}
+			return stats, nil
+		}
+	}
+
+	// 回退到旧表 nginx_access_logs (现在有 device_type 字段)
+	if r.tableExists("nginx_access_logs") {
+		query := r.db.Model(&model.NginxAccessLog{}).
+			Select("device_type, COUNT(*) as count").
+			Where("timestamp >= ? AND timestamp <= ?", startTime, endTime).
+			Where("device_type != '' AND device_type IS NOT NULL")
+
+		if sourceID != nil {
+			query = query.Where("source_id = ?", *sourceID)
+		}
+
+		query = query.Group("device_type").Order("count DESC")
+
+		type Result struct {
+			DeviceType string
+			Count      int64
+		}
+		var results []Result
+		if err := query.Find(&results).Error; err == nil {
+			var total int64
+			for _, r := range results {
+				total += r.Count
+			}
+
+			// 设备类型映射为中文
+			deviceNameMap := map[string]string{
+				"desktop": "桌面设备",
+				"mobile":  "移动设备",
+				"tablet":  "平板设备",
+				"bot":     "爬虫/机器人",
+				"unknown": "未知",
+			}
+
+			for _, r := range results {
+				percent := float64(0)
+				if total > 0 {
+					percent = float64(r.Count) / float64(total) * 100
+				}
+				deviceType := r.DeviceType
+				if name, ok := deviceNameMap[deviceType]; ok {
+					deviceType = name
+				}
+				stats = append(stats, model.DeviceStats{
+					DeviceType: deviceType,
+					Count:      r.Count,
+					Percent:    percent,
+				})
+			}
+		}
 	}
 
 	return stats, nil
@@ -1267,49 +1489,49 @@ func (r *NginxRepository) GetTimeSeries(sourceID *uint, startTime, endTime time.
 		}
 
 		// 回退到旧表
-		query := r.db.Model(&model.NginxHourlyStats{}).
-			Select(`hour as time,
-				SUM(total_requests) as requests,
-				SUM(total_bandwidth) as bandwidth,
-				SUM(unique_visitors) as unique_ips,
-				AVG(avg_response_time) as avg_response_time,
-				SUM(status_4xx) + SUM(status_5xx) as errors,
-				SUM(total_requests) as total`).
-			Where("hour >= ? AND hour <= ?", startTime, endTime).
-			Group("hour").
-			Order("hour ASC")
+		if r.tableExists("nginx_hourly_stats") {
+			query := r.db.Model(&model.NginxHourlyStats{}).
+				Select(`hour as time,
+					SUM(total_requests) as requests,
+					SUM(total_bandwidth) as bandwidth,
+					SUM(unique_visitors) as unique_ips,
+					AVG(avg_response_time) as avg_response_time,
+					SUM(status_4xx) + SUM(status_5xx) as errors,
+					SUM(total_requests) as total`).
+				Where("hour >= ? AND hour <= ?", startTime, endTime).
+				Group("hour").
+				Order("hour ASC")
 
-		if sourceID != nil {
-			query = query.Where("source_id = ?", *sourceID)
-		}
-
-		type Result struct {
-			Time            time.Time
-			Requests        int64
-			Bandwidth       int64
-			UniqueIPs       int64
-			AvgResponseTime float64
-			Errors          int64
-			Total           int64
-		}
-		var results []Result
-		if err := query.Find(&results).Error; err != nil {
-			return nil, err
-		}
-
-		for _, r := range results {
-			errorRate := float64(0)
-			if r.Total > 0 {
-				errorRate = float64(r.Errors) / float64(r.Total) * 100
+			if sourceID != nil {
+				query = query.Where("source_id = ?", *sourceID)
 			}
-			points = append(points, model.TimeSeriesPoint{
-				Time:            r.Time.Format("2006-01-02 15:04"),
-				Requests:        r.Requests,
-				Bandwidth:       r.Bandwidth,
-				UniqueIPs:       r.UniqueIPs,
-				AvgResponseTime: r.AvgResponseTime,
-				ErrorRate:       errorRate,
-			})
+
+			type Result struct {
+				Time            time.Time
+				Requests        int64
+				Bandwidth       int64
+				UniqueIPs       int64
+				AvgResponseTime float64
+				Errors          int64
+				Total           int64
+			}
+			var results []Result
+			if err := query.Find(&results).Error; err == nil {
+				for _, r := range results {
+					errorRate := float64(0)
+					if r.Total > 0 {
+						errorRate = float64(r.Errors) / float64(r.Total) * 100
+					}
+					points = append(points, model.TimeSeriesPoint{
+						Time:            r.Time.Format("2006-01-02 15:04"),
+						Requests:        r.Requests,
+						Bandwidth:       r.Bandwidth,
+						UniqueIPs:       r.UniqueIPs,
+						AvgResponseTime: r.AvgResponseTime,
+						ErrorRate:       errorRate,
+					})
+				}
+			}
 		}
 	} else {
 		// 日级别聚合
@@ -1361,49 +1583,49 @@ func (r *NginxRepository) GetTimeSeries(sourceID *uint, startTime, endTime time.
 		}
 
 		// 回退到旧表
-		query := r.db.Model(&model.NginxDailyStats{}).
-			Select(`date as time,
-				SUM(total_requests) as requests,
-				SUM(total_bandwidth) as bandwidth,
-				SUM(unique_visitors) as unique_ips,
-				AVG(avg_response_time) as avg_response_time,
-				SUM(status_4xx) + SUM(status_5xx) as errors,
-				SUM(total_requests) as total`).
-			Where("date >= ? AND date <= ?", startTime, endTime).
-			Group("date").
-			Order("date ASC")
+		if r.tableExists("nginx_daily_stats") {
+			query := r.db.Model(&model.NginxDailyStats{}).
+				Select(`date as time,
+					SUM(total_requests) as requests,
+					SUM(total_bandwidth) as bandwidth,
+					SUM(unique_visitors) as unique_ips,
+					AVG(avg_response_time) as avg_response_time,
+					SUM(status_4xx) + SUM(status_5xx) as errors,
+					SUM(total_requests) as total`).
+				Where("date >= ? AND date <= ?", startTime, endTime).
+				Group("date").
+				Order("date ASC")
 
-		if sourceID != nil {
-			query = query.Where("source_id = ?", *sourceID)
-		}
-
-		type Result struct {
-			Time            time.Time
-			Requests        int64
-			Bandwidth       int64
-			UniqueIPs       int64
-			AvgResponseTime float64
-			Errors          int64
-			Total           int64
-		}
-		var results []Result
-		if err := query.Find(&results).Error; err != nil {
-			return nil, err
-		}
-
-		for _, r := range results {
-			errorRate := float64(0)
-			if r.Total > 0 {
-				errorRate = float64(r.Errors) / float64(r.Total) * 100
+			if sourceID != nil {
+				query = query.Where("source_id = ?", *sourceID)
 			}
-			points = append(points, model.TimeSeriesPoint{
-				Time:            r.Time.Format("2006-01-02"),
-				Requests:        r.Requests,
-				Bandwidth:       r.Bandwidth,
-				UniqueIPs:       r.UniqueIPs,
-				AvgResponseTime: r.AvgResponseTime,
-				ErrorRate:       errorRate,
-			})
+
+			type Result struct {
+				Time            time.Time
+				Requests        int64
+				Bandwidth       int64
+				UniqueIPs       int64
+				AvgResponseTime float64
+				Errors          int64
+				Total           int64
+			}
+			var results []Result
+			if err := query.Find(&results).Error; err == nil {
+				for _, r := range results {
+					errorRate := float64(0)
+					if r.Total > 0 {
+						errorRate = float64(r.Errors) / float64(r.Total) * 100
+					}
+					points = append(points, model.TimeSeriesPoint{
+						Time:            r.Time.Format("2006-01-02"),
+						Requests:        r.Requests,
+						Bandwidth:       r.Bandwidth,
+						UniqueIPs:       r.UniqueIPs,
+						AvgResponseTime: r.AvgResponseTime,
+						ErrorRate:       errorRate,
+					})
+				}
+			}
 		}
 	}
 

@@ -55,6 +55,9 @@ func RegisterRoutes(router *gin.RouterGroup, db *gorm.DB) {
 		// 日志采集
 		nginxGroup.POST("/collect", handler.CollectLogs) // 手动触发日志采集
 
+		// 回填地理位置数据
+		nginxGroup.POST("/backfill-geo", handler.BackfillGeoData) // 回填地理位置数据
+
 		// 访问明细 (旧接口保持兼容)
 		accessLogs := nginxGroup.Group("/access-logs")
 		{

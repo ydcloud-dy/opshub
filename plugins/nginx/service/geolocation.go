@@ -20,14 +20,14 @@
 package service
 
 import (
-	"encoding/json"
 	"fmt"
 	"net"
-	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
-	"sync"
-	"time"
 
+	"github.com/oschwald/geoip2-golang"
+	"github.com/phuslu/iploc"
 	lru "github.com/hashicorp/golang-lru/v2"
 )
 
@@ -41,22 +41,88 @@ type GeoInfo struct {
 
 // GeolocationService 地理位置服务
 type GeolocationService struct {
-	cache       *lru.Cache[string, *GeoInfo]
-	httpClient  *http.Client
-	rateLimiter *time.Ticker
-	rateMutex   sync.Mutex
+	cache    *lru.Cache[string, *GeoInfo]
+	cityDB   *geoip2.Reader // GeoLite2-City.mmdb
+	asnDB    *geoip2.Reader // GeoLite2-ASN.mmdb (可选，用于 ISP)
+	hasMMDB  bool
+}
+
+// mmdb 文件搜索路径
+var mmdbSearchPaths = []string{
+	"plugins/nginx/data",
+	"data",
+	"/usr/share/GeoIP",
+	"/var/lib/GeoIP",
 }
 
 // NewGeolocationService 创建地理位置服务
 func NewGeolocationService() *GeolocationService {
 	cache, _ := lru.New[string, *GeoInfo](10000)
 
-	return &GeolocationService{
-		cache: cache,
-		httpClient: &http.Client{
-			Timeout: 5 * time.Second,
-		},
-		rateLimiter: time.NewTicker(100 * time.Millisecond), // 10 req/sec for ip-api.com free tier
+	svc := &GeolocationService{
+		cache:   cache,
+		hasMMDB: false,
+	}
+
+	// 尝试加载 mmdb 文件
+	svc.loadMMDB()
+
+	return svc
+}
+
+// loadMMDB 加载 mmdb 数据库文件
+func (s *GeolocationService) loadMMDB() {
+	// 查找 City 数据库
+	cityFiles := []string{"GeoLite2-City.mmdb", "GeoIP2-City.mmdb", "city.mmdb"}
+	for _, searchPath := range mmdbSearchPaths {
+		for _, filename := range cityFiles {
+			path := filepath.Join(searchPath, filename)
+			if _, err := os.Stat(path); err == nil {
+				db, err := geoip2.Open(path)
+				if err == nil {
+					s.cityDB = db
+					s.hasMMDB = true
+					fmt.Printf("Loaded GeoIP City database: %s\n", path)
+					break
+				}
+			}
+		}
+		if s.cityDB != nil {
+			break
+		}
+	}
+
+	// 查找 ASN 数据库 (可选)
+	asnFiles := []string{"GeoLite2-ASN.mmdb", "GeoIP2-ASN.mmdb", "asn.mmdb"}
+	for _, searchPath := range mmdbSearchPaths {
+		for _, filename := range asnFiles {
+			path := filepath.Join(searchPath, filename)
+			if _, err := os.Stat(path); err == nil {
+				db, err := geoip2.Open(path)
+				if err == nil {
+					s.asnDB = db
+					fmt.Printf("Loaded GeoIP ASN database: %s\n", path)
+					break
+				}
+			}
+		}
+		if s.asnDB != nil {
+			break
+		}
+	}
+
+	if !s.hasMMDB {
+		fmt.Println("Warning: No mmdb database found, using phuslu/iploc as fallback")
+	}
+}
+
+// Close 关闭数据库连接
+func (s *GeolocationService) Close() {
+	if s.cityDB != nil {
+		s.cityDB.Close()
+	}
+	if s.asnDB != nil {
+		s.asnDB.Close()
 	}
 }
 
@@ -79,9 +145,19 @@ func (s *GeolocationService) Lookup(ip string) (*GeoInfo, error) {
 		return info, nil
 	}
 
-	// 尝试在线查询 (ip-api.com)
-	info, err := s.lookupOnline(ip)
-	if err == nil && info != nil {
+	var info *GeoInfo
+
+	// 优先使用 mmdb 数据库
+	if s.hasMMDB && s.cityDB != nil {
+		info = s.lookupMMDB(ip)
+	}
+
+	// 如果 mmdb 没有结果，使用 phuslu/iploc 作为后备
+	if info == nil || info.Country == "" {
+		info = s.lookupIploc(ip)
+	}
+
+	if info != nil && info.Country != "" {
 		s.cache.Add(ip, info)
 		return info, nil
 	}
@@ -97,6 +173,164 @@ func (s *GeolocationService) Lookup(ip string) (*GeoInfo, error) {
 	return info, nil
 }
 
+// lookupMMDB 使用 mmdb 数据库查询
+func (s *GeolocationService) lookupMMDB(ip string) *GeoInfo {
+	parsedIP := net.ParseIP(ip)
+	if parsedIP == nil {
+		return nil
+	}
+
+	info := &GeoInfo{}
+
+	// 查询城市信息
+	if s.cityDB != nil {
+		record, err := s.cityDB.City(parsedIP)
+		if err == nil {
+			// 国家 - 优先使用中文
+			if name, ok := record.Country.Names["zh-CN"]; ok {
+				info.Country = name
+			} else if name, ok := record.Country.Names["en"]; ok {
+				info.Country = name
+			}
+
+			// 省份/地区 - 优先使用中文
+			if len(record.Subdivisions) > 0 {
+				if name, ok := record.Subdivisions[0].Names["zh-CN"]; ok {
+					info.Province = name
+				} else if name, ok := record.Subdivisions[0].Names["en"]; ok {
+					info.Province = name
+				}
+			}
+
+			// 城市 - 优先使用中文
+			if name, ok := record.City.Names["zh-CN"]; ok {
+				info.City = name
+			} else if name, ok := record.City.Names["en"]; ok {
+				info.City = name
+			}
+		}
+	}
+
+	// 查询 ASN/ISP 信息
+	if s.asnDB != nil {
+		record, err := s.asnDB.ASN(parsedIP)
+		if err == nil && record.AutonomousSystemOrganization != "" {
+			info.ISP = simplifyISP(record.AutonomousSystemOrganization)
+		}
+	}
+
+	return info
+}
+
+// lookupIploc 使用 phuslu/iploc 查询 (后备方案)
+func (s *GeolocationService) lookupIploc(ip string) *GeoInfo {
+	parsedIP := net.ParseIP(ip)
+	if parsedIP == nil {
+		return nil
+	}
+
+	countryCode := iploc.Country(parsedIP)
+	if countryCode == "" {
+		return nil
+	}
+
+	return &GeoInfo{
+		Country: countryCodeToName(countryCode),
+	}
+}
+
+// simplifyISP 简化 ISP 名称
+func simplifyISP(org string) string {
+	// 常见 ISP 简化
+	ispMap := map[string]string{
+		"China Telecom":           "中国电信",
+		"China Unicom":            "中国联通",
+		"China Mobile":            "中国移动",
+		"CHINA TELECOM":           "中国电信",
+		"CHINA UNICOM":            "中国联通",
+		"CHINA MOBILE":            "中国移动",
+		"Alibaba":                 "阿里云",
+		"Tencent":                 "腾讯云",
+		"TENCENT":                 "腾讯云",
+		"Huawei":                  "华为云",
+		"Amazon":                  "AWS",
+		"Google":                  "Google Cloud",
+		"Microsoft":               "Azure",
+		"Cloudflare":              "Cloudflare",
+	}
+
+	for key, value := range ispMap {
+		if strings.Contains(org, key) {
+			return value
+		}
+	}
+
+	// 截断过长的名称
+	if len(org) > 30 {
+		return org[:30] + "..."
+	}
+	return org
+}
+
+// countryCodeToName 将国家代码转换为中文国家名
+func countryCodeToName(code string) string {
+	countryNames := map[string]string{
+		"CN": "中国",
+		"US": "美国",
+		"JP": "日本",
+		"KR": "韩国",
+		"DE": "德国",
+		"FR": "法国",
+		"GB": "英国",
+		"RU": "俄罗斯",
+		"CA": "加拿大",
+		"AU": "澳大利亚",
+		"IN": "印度",
+		"BR": "巴西",
+		"SG": "新加坡",
+		"HK": "香港",
+		"TW": "台湾",
+		"MO": "澳门",
+		"NL": "荷兰",
+		"IT": "意大利",
+		"ES": "西班牙",
+		"SE": "瑞典",
+		"CH": "瑞士",
+		"NO": "挪威",
+		"FI": "芬兰",
+		"DK": "丹麦",
+		"PL": "波兰",
+		"AT": "奥地利",
+		"BE": "比利时",
+		"IE": "爱尔兰",
+		"NZ": "新西兰",
+		"MX": "墨西哥",
+		"AR": "阿根廷",
+		"TH": "泰国",
+		"VN": "越南",
+		"MY": "马来西亚",
+		"ID": "印度尼西亚",
+		"PH": "菲律宾",
+		"ZA": "南非",
+		"EG": "埃及",
+		"AE": "阿联酋",
+		"SA": "沙特阿拉伯",
+		"IL": "以色列",
+		"TR": "土耳其",
+		"UA": "乌克兰",
+		"CZ": "捷克",
+		"RO": "罗马尼亚",
+		"HU": "匈牙利",
+		"GR": "希腊",
+		"PT": "葡萄牙",
+	}
+
+	if name, ok := countryNames[code]; ok {
+		return name
+	}
+	return code
+}
+
 // LookupBatch 批量查询 IP 地理位置
 func (s *GeolocationService) LookupBatch(ips []string) map[string]*GeoInfo {
 	results := make(map[string]*GeoInfo)
@@ -107,57 +341,6 @@ func (s *GeolocationService) LookupBatch(ips []string) map[string]*GeoInfo {
 	}
 
 	return results
-}
-
-// ipAPIResponse ip-api.com 响应
-type ipAPIResponse struct {
-	Status      string `json:"status"`
-	Country     string `json:"country"`
-	CountryCode string `json:"countryCode"`
-	Region      string `json:"region"`
-	RegionName  string `json:"regionName"`
-	City        string `json:"city"`
-	ISP         string `json:"isp"`
-	Message     string `json:"message"`
-}
-
-// lookupOnline 在线查询 IP 地理位置
-func (s *GeolocationService) lookupOnline(ip string) (*GeoInfo, error) {
-	// 速率限制
-	s.rateMutex.Lock()
-	<-s.rateLimiter.C
-	s.rateMutex.Unlock()
-
-	url := fmt.Sprintf("http://ip-api.com/json/%s?fields=status,message,country,countryCode,region,regionName,city,isp&lang=zh-CN", ip)
-
-	resp, err := s.httpClient.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	var result ipAPIResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
-	}
-
-	if result.Status != "success" {
-		return nil, fmt.Errorf("ip-api error: %s", result.Message)
-	}
-
-	info := &GeoInfo{
-		Country:  result.Country,
-		Province: result.RegionName,
-		City:     result.City,
-		ISP:      result.ISP,
-	}
-
-	// 中国地址转换
-	if result.CountryCode == "CN" {
-		info.Country = "中国"
-	}
-
-	return info, nil
 }
 
 // isPrivateIP 判断是否为内网 IP
@@ -194,30 +377,6 @@ func isPrivateIP(ipStr string) bool {
 	return false
 }
 
-// ParseIP2RegionResult 解析 ip2region 结果格式
-// 格式: 国家|区域|省份|城市|ISP
-func ParseIP2RegionResult(result string) *GeoInfo {
-	parts := strings.Split(result, "|")
-
-	info := &GeoInfo{}
-
-	if len(parts) >= 1 && parts[0] != "0" {
-		info.Country = parts[0]
-	}
-	// parts[1] is area/region, usually not needed
-	if len(parts) >= 3 && parts[2] != "0" {
-		info.Province = parts[2]
-	}
-	if len(parts) >= 4 && parts[3] != "0" {
-		info.City = parts[3]
-	}
-	if len(parts) >= 5 && parts[4] != "0" {
-		info.ISP = parts[4]
-	}
-
-	return info
-}
-
 // ClearCache 清除缓存
 func (s *GeolocationService) ClearCache() {
 	s.cache.Purge()
@@ -226,4 +385,9 @@ func (s *GeolocationService) ClearCache() {
 // CacheSize 获取缓存大小
 func (s *GeolocationService) CacheSize() int {
 	return s.cache.Len()
+}
+
+// HasMMDB 检查是否有 mmdb 数据库
+func (s *GeolocationService) HasMMDB() bool {
+	return s.hasMMDB
 }

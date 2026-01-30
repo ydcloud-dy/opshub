@@ -189,26 +189,50 @@ func (h *Handler) collectHostLogs(source *model.NginxSource) (int, error) {
 		return 0, nil
 	}
 
-	// 转换为数据库模型
+	// 转换为数据库模型，并截断超长字段以防止数据库错误
+	// 同时填充地理位置和UA信息
 	accessLogs := make([]model.NginxAccessLog, 0, len(logs))
 	for _, log := range logs {
-		accessLogs = append(accessLogs, model.NginxAccessLog{
-			SourceID:      source.ID,
-			Timestamp:     log.Timestamp,
-			RemoteAddr:    log.RemoteAddr,
-			RemoteUser:    log.RemoteUser,
-			Request:       log.Request,
-			Method:        log.Method,
-			URI:           log.URI,
-			Protocol:      log.Protocol,
-			Status:        log.Status,
-			BodyBytesSent: log.BodyBytesSent,
-			HTTPReferer:   log.HTTPReferer,
-			HTTPUserAgent: log.HTTPUserAgent,
-			RequestTime:   log.RequestTime,
-			Host:          log.Host,
-			CreatedAt:     time.Now(),
-		})
+		// 解析地理位置
+		geoInfo, _ := h.geoSvc.Lookup(log.RemoteAddr)
+
+		// 解析 User-Agent
+		uaInfo := h.uaParser.Parse(log.HTTPUserAgent)
+
+		accessLog := model.NginxAccessLog{
+			SourceID:       source.ID,
+			Timestamp:      log.Timestamp,
+			RemoteAddr:     truncateString(log.RemoteAddr, 50),
+			RemoteUser:     truncateString(log.RemoteUser, 100),
+			Request:        truncateString(log.Request, 2000),
+			Method:         truncateString(log.Method, 20),
+			URI:            truncateString(log.URI, 1000),
+			Protocol:       truncateString(log.Protocol, 50),
+			Status:         log.Status,
+			BodyBytesSent:  log.BodyBytesSent,
+			HTTPReferer:    truncateString(log.HTTPReferer, 1000),
+			HTTPUserAgent:  truncateString(log.HTTPUserAgent, 500),
+			RequestTime:    log.RequestTime,
+			Host:           truncateString(log.Host, 255),
+			CreatedAt:      time.Now(),
+		}
+
+		// 填充地理位置信息
+		if geoInfo != nil {
+			accessLog.Country = truncateString(geoInfo.Country, 50)
+			accessLog.Province = truncateString(geoInfo.Province, 50)
+			accessLog.City = truncateString(geoInfo.City, 50)
+			accessLog.ISP = truncateString(geoInfo.ISP, 100)
+		}
+
+		// 填充 UA 解析信息 (uaInfo 是值类型，不需要判空)
+		accessLog.Browser = truncateString(uaInfo.Browser, 50)
+		accessLog.BrowserVersion = truncateString(uaInfo.BrowserVersion, 20)
+		accessLog.OS = truncateString(uaInfo.OS, 50)
+		accessLog.OSVersion = truncateString(uaInfo.OSVersion, 20)
+		accessLog.DeviceType = truncateString(uaInfo.DeviceType, 20)
+
+		accessLogs = append(accessLogs, accessLog)
 	}
 
 	// 批量插入日志
@@ -245,7 +269,8 @@ func (h *Handler) updateStats(sourceID uint, logs []model.NginxAccessLog) error 
 
 		// 初始化日统计
 		if _, ok := dailyStats[dateKey]; !ok {
-			date, _ := time.Parse("2006-01-02", dateKey)
+			// 使用本地时区解析日期，确保与查询时的时区一致
+			date, _ := time.ParseInLocation("2006-01-02", dateKey, time.Local)
 			dailyStats[dateKey] = &model.NginxDailyStats{
 				SourceID: sourceID,
 				Date:     date,
@@ -255,7 +280,8 @@ func (h *Handler) updateStats(sourceID uint, logs []model.NginxAccessLog) error 
 
 		// 初始化小时统计
 		if _, ok := hourlyStats[hourKey]; !ok {
-			hour, _ := time.Parse("2006-01-02 15:04:05", hourKey+":00")
+			// 使用本地时区解析小时，确保与查询时的时区一致
+			hour, _ := time.ParseInLocation("2006-01-02 15:04:05", hourKey+":00", time.Local)
 			hourlyStats[hourKey] = &model.NginxHourlyStats{
 				SourceID: sourceID,
 				Hour:     hour,
@@ -456,6 +482,14 @@ func parseNginxLogLine(line string, format string) (NginxLogEntry, error) {
 	entry.Host = extractHost(entry.URI, entry.HTTPReferer)
 
 	return entry, nil
+}
+
+// truncateString 截断字符串到指定长度
+func truncateString(s string, maxLen int) string {
+	if len(s) > maxLen {
+		return s[:maxLen]
+	}
+	return s
 }
 
 // extractHost 从URI或Referer提取主机名
