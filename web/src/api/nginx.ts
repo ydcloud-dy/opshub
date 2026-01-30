@@ -14,8 +14,16 @@ export interface NginxSource {
   clusterId?: number
   namespace?: string
   ingressName?: string
+  k8sPodSelector?: string
+  k8sContainerName?: string
+  logFormatConfig?: string
+  geoEnabled?: boolean
+  sessionEnabled?: boolean
   collectInterval: number
   retentionDays: number
+  lastCollectAt?: string
+  lastCollectLogs?: number
+  lastError?: string
   createdAt?: string
   updatedAt?: string
 }
@@ -40,6 +48,26 @@ export interface NginxAccessLog {
   ingressName?: string
   serviceName?: string
   createdAt: string
+}
+
+export interface AccessLogView {
+  id: number
+  timestamp: string
+  remoteAddr: string
+  country?: string
+  city?: string
+  method: string
+  uri: string
+  host: string
+  protocol: string
+  status: number
+  bodyBytesSent: number
+  requestTime: number
+  httpReferer?: string
+  browser?: string
+  os?: string
+  deviceType?: string
+  isBot?: boolean
 }
 
 export interface NginxDailyStats {
@@ -83,7 +111,9 @@ export interface OverviewStats {
   todayRequests: number
   todayVisitors: number
   todayBandwidth: number
+  todayPv?: number
   todayErrorRate: number
+  avgResponseTime?: number
   requestsTrend?: TrendPoint[]
   bandwidthTrend?: TrendPoint[]
   statusDistribution: Record<string, number>
@@ -92,6 +122,44 @@ export interface OverviewStats {
 export interface TrendPoint {
   time: string
   value: number
+}
+
+export interface TimeSeriesPoint {
+  time: string
+  requests: number
+  bandwidth: number
+  uniqueIps: number
+  avgResponseTime: number
+  errorRate: number
+}
+
+export interface GeoStats {
+  country: string
+  province?: string
+  city?: string
+  count: number
+  percent: number
+}
+
+export interface BrowserStats {
+  browser: string
+  version?: string
+  count: number
+  percent: number
+}
+
+export interface DeviceStats {
+  deviceType: string
+  count: number
+  percent: number
+}
+
+export interface TopIPWithGeo {
+  ip: string
+  country?: string
+  province?: string
+  city?: string
+  count: number
 }
 
 // ==================== 数据源管理 ====================
@@ -165,6 +233,22 @@ export const getNginxAccessLogs = (params: {
   return request.get('/api/v1/plugins/nginx/access-logs', { params })
 }
 
+// 获取带维度信息的访问日志
+export const getNginxLogs = (params: {
+  sourceId: number
+  page?: number
+  pageSize?: number
+  startTime?: string
+  endTime?: string
+  remoteAddr?: string
+  uri?: string
+  status?: number
+  method?: string
+  host?: string
+}) => {
+  return request.get('/api/v1/plugins/nginx/logs', { params })
+}
+
 // 获取 Top URI
 export const getNginxTopURIs = (params: { sourceId: number; startTime?: string; endTime?: string; limit?: number }) => {
   return request.get('/api/v1/plugins/nginx/access-logs/top-uris', { params })
@@ -173,6 +257,56 @@ export const getNginxTopURIs = (params: { sourceId: number; startTime?: string; 
 // 获取 Top IP
 export const getNginxTopIPs = (params: { sourceId: number; startTime?: string; endTime?: string; limit?: number }) => {
   return request.get('/api/v1/plugins/nginx/access-logs/top-ips', { params })
+}
+
+// ==================== 统计分析 ====================
+
+// 获取时间序列数据
+export const getNginxTimeSeries = (params?: {
+  sourceId?: number
+  startTime?: string
+  endTime?: string
+  interval?: 'hour' | 'day'
+}) => {
+  return request.get('/api/v1/plugins/nginx/stats/timeseries', { params })
+}
+
+// 获取地理分布统计
+export const getNginxGeoDistribution = (params?: {
+  sourceId?: number
+  startTime?: string
+  endTime?: string
+  level?: 'country' | 'province' | 'city'
+}) => {
+  return request.get('/api/v1/plugins/nginx/stats/geo', { params })
+}
+
+// 获取浏览器分布统计
+export const getNginxBrowserDistribution = (params?: {
+  sourceId?: number
+  startTime?: string
+  endTime?: string
+}) => {
+  return request.get('/api/v1/plugins/nginx/stats/browsers', { params })
+}
+
+// 获取设备分布统计
+export const getNginxDeviceDistribution = (params?: {
+  sourceId?: number
+  startTime?: string
+  endTime?: string
+}) => {
+  return request.get('/api/v1/plugins/nginx/stats/devices', { params })
+}
+
+// 获取 Top URLs (新接口)
+export const getNginxTopURLs = (params: { sourceId: number; startTime?: string; endTime?: string; limit?: number }) => {
+  return request.get('/api/v1/plugins/nginx/stats/top-urls', { params })
+}
+
+// 获取 Top IPs 带地理信息
+export const getNginxTopIPsWithGeo = (params: { sourceId: number; startTime?: string; endTime?: string; limit?: number }) => {
+  return request.get('/api/v1/plugins/nginx/stats/top-ips', { params })
 }
 
 // ==================== 日志采集 ====================

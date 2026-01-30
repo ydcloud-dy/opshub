@@ -256,11 +256,10 @@ const getResponseTimeClass = (time: number) => {
 const loadSources = async () => {
   try {
     const res = await getNginxSources({ status: 1 })
-    if (res.data.code === 0) {
-      sources.value = res.data.data.list || []
-      if (sources.value.length > 0 && !filterForm.value.sourceId) {
-        filterForm.value.sourceId = sources.value[0].id
-      }
+    // request.ts 拦截器已解包响应
+    sources.value = res.list || res || []
+    if (sources.value.length > 0 && !filterForm.value.sourceId) {
+      filterForm.value.sourceId = sources.value[0].id
     }
   } catch (error) {
     console.error('获取数据源列表失败:', error)
@@ -298,12 +297,9 @@ const loadData = async () => {
     }
 
     const res = await getNginxAccessLogs(params)
-    if (res.data.code === 0) {
-      tableData.value = res.data.data.list || []
-      pagination.value.total = res.data.data.total || 0
-    } else {
-      ElMessage.error(res.data.message || '获取访问日志失败')
-    }
+    // request.ts 拦截器已解包响应
+    tableData.value = res.list || []
+    pagination.value.total = res.total || 0
   } catch (error) {
     console.error('获取访问日志失败:', error)
   } finally {
@@ -327,9 +323,8 @@ const loadTopURIs = async () => {
     }
 
     const res = await getNginxTopURIs(params)
-    if (res.data.code === 0) {
-      topURIs.value = res.data.data || []
-    }
+    // request.ts 拦截器已解包响应
+    topURIs.value = res || []
   } catch (error) {
     console.error('获取 Top URI 失败:', error)
   }
@@ -347,9 +342,8 @@ const loadTopIPs = async () => {
     }
 
     const res = await getNginxTopIPs(params)
-    if (res.data.code === 0) {
-      topIPs.value = res.data.data || []
-    }
+    // request.ts 拦截器已解包响应
+    topIPs.value = res || []
   } catch (error) {
     console.error('获取 Top IP 失败:', error)
   }

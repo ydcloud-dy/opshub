@@ -184,9 +184,31 @@
           </el-form-item>
 
           <el-form-item label="Ingress名称" prop="ingressName">
-            <el-input v-model="formData.ingressName" placeholder="nginx-ingress-controller" />
+            <el-input v-model="formData.ingressName" placeholder="nginx-ingress-controller (可选)" />
+          </el-form-item>
+
+          <el-form-item label="Pod选择器">
+            <el-input
+              v-model="formData.k8sPodSelector"
+              placeholder="app.kubernetes.io/name=ingress-nginx,app.kubernetes.io/component=controller"
+            />
+            <div class="form-tip">用于选择 Ingress Controller Pod 的标签选择器</div>
+          </el-form-item>
+
+          <el-form-item label="容器名称">
+            <el-input v-model="formData.k8sContainerName" placeholder="controller" />
+            <div class="form-tip">Ingress Controller 容器的名称，默认为 controller</div>
+          </el-form-item>
+
+          <el-form-item label="日志格式" prop="logFormat">
+            <el-select v-model="formData.logFormat" placeholder="请选择日志格式" style="width: 100%">
+              <el-option label="combined" value="combined" />
+              <el-option label="json" value="json" />
+            </el-select>
           </el-form-item>
         </template>
+
+        <el-divider content-position="left">通用配置</el-divider>
 
         <el-form-item label="采集间隔" prop="collectInterval">
           <el-input-number
@@ -215,6 +237,26 @@
             active-text="启用"
             inactive-text="禁用"
           />
+        </el-form-item>
+
+        <el-divider content-position="left">高级选项</el-divider>
+
+        <el-form-item label="地理位置解析">
+          <el-switch
+            v-model="formData.geoEnabled"
+            active-text="启用"
+            inactive-text="禁用"
+          />
+          <div class="form-tip">启用后将解析访问者 IP 的地理位置信息</div>
+        </el-form-item>
+
+        <el-form-item label="会话跟踪">
+          <el-switch
+            v-model="formData.sessionEnabled"
+            active-text="启用"
+            inactive-text="禁用"
+          />
+          <div class="form-tip">启用后将跟踪用户会话，用于更精确的 UV 统计</div>
         </el-form-item>
       </el-form>
 
@@ -274,6 +316,10 @@ const defaultFormData: NginxSource = {
   clusterId: undefined,
   namespace: 'ingress-nginx',
   ingressName: '',
+  k8sPodSelector: '',
+  k8sContainerName: 'controller',
+  geoEnabled: true,
+  sessionEnabled: false,
   collectInterval: 60,
   retentionDays: 30,
 }
@@ -626,5 +672,18 @@ const loadClusters = async () => {
 .config-dialog :deep(.el-select .el-input.is-focus .el-input__wrapper) {
   border-color: #d4af37 !important;
   box-shadow: 0 2px 12px rgba(212, 175, 55, 0.25) !important;
+}
+
+.form-tip {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 4px;
+  line-height: 1.5;
+}
+
+.config-dialog :deep(.el-divider__text) {
+  font-size: 13px;
+  font-weight: 500;
+  color: #606266;
 }
 </style>

@@ -12,7 +12,7 @@
         </div>
       </div>
       <div class="header-actions">
-        <el-button @click="loadData">
+        <el-button @click="loadData" :loading="loading">
           <el-icon style="margin-right: 6px;"><Refresh /></el-icon>
           刷新
         </el-button>
@@ -71,7 +71,7 @@
         </el-table-column>
         <el-table-column label="平均响应时间" prop="avgResponseTime" width="140" align="right">
           <template #default="{ row }">
-            {{ row.avgResponseTime.toFixed(3) }}s
+            {{ (row.avgResponseTime || 0).toFixed(3) }}s
           </template>
         </el-table-column>
         <el-table-column label="2xx" prop="status2xx" width="100" align="right">
@@ -132,8 +132,10 @@ let trendChart: echarts.ECharts | null = null
 
 // 格式化日期
 const formatDate = (dateStr: string) => {
-  const date = new Date(dateStr)
-  return date.toLocaleDateString('zh-CN')
+  if (!dateStr) return ''
+  // 处理 "2026-01-30" 或 "2026-01-30T00:00:00+08:00" 格式
+  const dateOnly = dateStr.split('T')[0]
+  return dateOnly
 }
 
 // 格式化数字
@@ -175,9 +177,8 @@ const getErrorRateClass = (row: NginxDailyStats) => {
 const loadSources = async () => {
   try {
     const res = await getNginxSources({ status: 1 })
-    if (res.data.code === 0) {
-      sources.value = res.data.data.list || []
-    }
+    // request.ts 拦截器已解包响应
+    sources.value = res.list || res || []
   } catch (error) {
     console.error('获取数据源列表失败:', error)
   }
@@ -197,13 +198,10 @@ const loadData = async () => {
     }
 
     const res = await getNginxDailyReport(params)
-    if (res.data.code === 0) {
-      tableData.value = res.data.data || []
-      await nextTick()
-      initTrendChart()
-    } else {
-      ElMessage.error(res.data.message || '获取日报数据失败')
-    }
+    // request.ts 拦截器已解包响应，直接返回数组
+    tableData.value = res || []
+    await nextTick()
+    initTrendChart()
   } catch (error) {
     console.error('获取日报数据失败:', error)
     ElMessage.error('获取日报数据失败')

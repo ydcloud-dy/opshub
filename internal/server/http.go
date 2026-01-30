@@ -33,6 +33,7 @@ import (
 	"github.com/ydcloud-dy/opshub/internal/plugin"
 	assetserver "github.com/ydcloud-dy/opshub/internal/server/asset"
 	auditserver "github.com/ydcloud-dy/opshub/internal/server/audit"
+	identityserver "github.com/ydcloud-dy/opshub/internal/server/identity"
 	"github.com/ydcloud-dy/opshub/internal/server/rbac"
 	"github.com/ydcloud-dy/opshub/internal/service"
 	appLogger "github.com/ydcloud-dy/opshub/pkg/logger"
@@ -41,9 +42,9 @@ import (
 	monitorplugin "github.com/ydcloud-dy/opshub/plugins/monitor"
 	nginxplugin "github.com/ydcloud-dy/opshub/plugins/nginx"
 	taskplugin "github.com/ydcloud-dy/opshub/plugins/task"
+	testplugin "github.com/ydcloud-dy/opshub/plugins/test"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
-	testplugin "github.com/ydcloud-dy/opshub/plugins/test"
 )
 
 // HTTPServer HTTP服务器
@@ -170,6 +171,14 @@ func (s *HTTPServer) registerRoutes(router *gin.Engine, jwtSecret string) {
 
 		// 注册 Asset 路由
 		assetServer.RegisterRoutes(v1)
+
+		// 注册 Identity 路由
+		identityServer, err := identityserver.NewIdentityServices(s.db)
+		if err != nil {
+			appLogger.Error("创建Identity服务失败", zap.Error(err))
+		} else {
+			identityServer.RegisterRoutes(v1)
+		}
 
 		// 上传接口
 		v1.POST("/upload/avatar", s.uploadSrv.UploadAvatar)

@@ -177,11 +177,10 @@ const formatHour = (hourStr: string) => {
 const loadSources = async () => {
   try {
     const res = await getNginxSources({ status: 1 })
-    if (res.data.code === 0) {
-      sources.value = res.data.data.list || []
-      if (sources.value.length > 0 && !filterForm.value.sourceId) {
-        filterForm.value.sourceId = sources.value[0].id
-      }
+    // request.ts 拦截器已解包响应
+    sources.value = res.list || res || []
+    if (sources.value.length > 0 && !filterForm.value.sourceId) {
+      filterForm.value.sourceId = sources.value[0].id
     }
   } catch (error) {
     console.error('获取数据源列表失败:', error)
@@ -198,13 +197,10 @@ const loadData = async () => {
       sourceId: filterForm.value.sourceId,
       hours: filterForm.value.hours,
     })
-    if (res.data.code === 0) {
-      hourlyData.value = res.data.data || []
-      await nextTick()
-      initCharts()
-    } else {
-      ElMessage.error(res.data.message || '获取实时数据失败')
-    }
+    // request.ts 拦截器已解包响应
+    hourlyData.value = res || []
+    await nextTick()
+    initCharts()
   } catch (error) {
     console.error('获取实时数据失败:', error)
   } finally {

@@ -75,6 +75,24 @@
         </div>
       </div>
       <div class="stat-card">
+        <div class="stat-icon stat-icon-info">
+          <el-icon><Document /></el-icon>
+        </div>
+        <div class="stat-content">
+          <div class="stat-label">今日PV</div>
+          <div class="stat-value">{{ formatNumber(overview.todayPv || 0) }}</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon stat-icon-warning">
+          <el-icon><Timer /></el-icon>
+        </div>
+        <div class="stat-content">
+          <div class="stat-label">平均响应时间</div>
+          <div class="stat-value">{{ formatResponseTime(overview.avgResponseTime || 0) }}</div>
+        </div>
+      </div>
+      <div class="stat-card">
         <div class="stat-icon stat-icon-danger">
           <el-icon><Warning /></el-icon>
         </div>
@@ -83,13 +101,35 @@
           <div class="stat-value">{{ overview.todayErrorRate.toFixed(2) }}%</div>
         </div>
       </div>
+    </div>
+
+    <!-- 第三排统计卡片 - 状态码 -->
+    <div class="stats-cards">
       <div class="stat-card">
         <div class="stat-icon stat-icon-success">
           <el-icon><SuccessFilled /></el-icon>
         </div>
         <div class="stat-content">
-          <div class="stat-label">2xx 响应</div>
+          <div class="stat-label">2xx 成功</div>
           <div class="stat-value">{{ formatNumber(overview.statusDistribution?.['2xx'] || 0) }}</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon stat-icon-info">
+          <el-icon><Promotion /></el-icon>
+        </div>
+        <div class="stat-content">
+          <div class="stat-label">3xx 重定向</div>
+          <div class="stat-value">{{ formatNumber(overview.statusDistribution?.['3xx'] || 0) }}</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon stat-icon-warning">
+          <el-icon><WarnTriangleFilled /></el-icon>
+        </div>
+        <div class="stat-content">
+          <div class="stat-label">4xx 客户端错误</div>
+          <div class="stat-value">{{ formatNumber(overview.statusDistribution?.['4xx'] || 0) }}</div>
         </div>
       </div>
       <div class="stat-card">
@@ -97,7 +137,7 @@
           <el-icon><CircleClose /></el-icon>
         </div>
         <div class="stat-content">
-          <div class="stat-label">5xx 错误</div>
+          <div class="stat-label">5xx 服务端错误</div>
           <div class="stat-value">{{ formatNumber(overview.statusDistribution?.['5xx'] || 0) }}</div>
         </div>
       </div>
@@ -105,11 +145,21 @@
 
     <!-- 图表区域 -->
     <div class="charts-container">
-      <div class="chart-card">
+      <div class="chart-card chart-card-wide">
         <div class="chart-header">
           <h3 class="chart-title">请求趋势（最近24小时）</h3>
         </div>
         <div class="chart-content" ref="requestsChartRef"></div>
+      </div>
+    </div>
+
+    <!-- 第二排图表 -->
+    <div class="charts-container charts-container-second">
+      <div class="chart-card">
+        <div class="chart-header">
+          <h3 class="chart-title">带宽趋势（最近24小时）</h3>
+        </div>
+        <div class="chart-content" ref="bandwidthChartRef"></div>
       </div>
       <div class="chart-card">
         <div class="chart-header">
@@ -136,6 +186,10 @@ import {
   SuccessFilled,
   CircleClose,
   Upload,
+  Document,
+  Timer,
+  Promotion,
+  WarnTriangleFilled,
 } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import { getNginxOverview, collectNginxLogs, type OverviewStats } from '@/api/nginx'
@@ -148,13 +202,17 @@ const overview = ref<OverviewStats>({
   todayRequests: 0,
   todayVisitors: 0,
   todayBandwidth: 0,
+  todayPv: 0,
   todayErrorRate: 0,
+  avgResponseTime: 0,
   statusDistribution: {},
 })
 
 const requestsChartRef = ref<HTMLElement | null>(null)
+const bandwidthChartRef = ref<HTMLElement | null>(null)
 const statusChartRef = ref<HTMLElement | null>(null)
 let requestsChart: echarts.ECharts | null = null
+let bandwidthChart: echarts.ECharts | null = null
 let statusChart: echarts.ECharts | null = null
 
 // 格式化数字
@@ -176,6 +234,13 @@ const formatBytes = (bytes: number) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
+// 格式化响应时间
+const formatResponseTime = (ms: number) => {
+  if (ms < 1) return (ms * 1000).toFixed(0) + ' μs'
+  if (ms < 1000) return ms.toFixed(0) + ' ms'
+  return (ms / 1000).toFixed(2) + ' s'
+}
+
 // 加载数据
 const loadData = async () => {
   loading.value = true
@@ -188,7 +253,9 @@ const loadData = async () => {
       todayRequests: 0,
       todayVisitors: 0,
       todayBandwidth: 0,
+      todayPv: 0,
       todayErrorRate: 0,
+      avgResponseTime: 0,
       statusDistribution: {},
     }
     await nextTick()
@@ -229,6 +296,7 @@ const handleCollect = async () => {
 // 初始化图表
 const initCharts = () => {
   initRequestsChart()
+  initBandwidthChart()
   initStatusChart()
 }
 
@@ -291,6 +359,73 @@ const initRequestsChart = () => {
   requestsChart.setOption(option)
 }
 
+// 初始化带宽趋势图表
+const initBandwidthChart = () => {
+  if (!bandwidthChartRef.value) return
+
+  if (bandwidthChart) {
+    bandwidthChart.dispose()
+  }
+
+  bandwidthChart = echarts.init(bandwidthChartRef.value)
+  const trend = overview.value.bandwidthTrend || []
+
+  const option = {
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: {
+        type: 'cross',
+      },
+      formatter: (params: any) => {
+        const time = params[0]?.axisValue || ''
+        const value = params[0]?.value || 0
+        return `${time}<br/>带宽: ${formatBytes(value)}`
+      }
+    },
+    grid: {
+      left: '3%',
+      right: '4%',
+      bottom: '3%',
+      containLabel: true,
+    },
+    xAxis: {
+      type: 'category',
+      boundaryGap: false,
+      data: trend.map(item => item.time),
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: {
+        formatter: (value: number) => formatBytes(value)
+      }
+    },
+    series: [
+      {
+        name: '带宽',
+        type: 'line',
+        smooth: true,
+        areaStyle: {
+          opacity: 0.3,
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: 'rgba(64, 158, 255, 0.5)' },
+            { offset: 1, color: 'rgba(64, 158, 255, 0.1)' }
+          ])
+        },
+        lineStyle: {
+          color: '#409eff',
+          width: 2
+        },
+        itemStyle: {
+          color: '#409eff'
+        },
+        data: trend.map(item => item.value),
+      },
+    ],
+  }
+
+  bandwidthChart.setOption(option)
+}
+
 // 初始化状态码分布图表
 const initStatusChart = () => {
   if (!statusChartRef.value) return
@@ -349,6 +484,7 @@ const initStatusChart = () => {
 // 监听窗口大小变化
 const handleResize = () => {
   requestsChart?.resize()
+  bandwidthChart?.resize()
   statusChart?.resize()
 }
 
@@ -360,6 +496,7 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
   requestsChart?.dispose()
+  bandwidthChart?.dispose()
   statusChart?.dispose()
 })
 </script>
@@ -497,8 +634,13 @@ onUnmounted(() => {
 /* 图表容器 */
 .charts-container {
   display: grid;
-  grid-template-columns: 2fr 1fr;
+  grid-template-columns: 1fr;
   gap: 12px;
+  margin-bottom: 12px;
+}
+
+.charts-container-second {
+  grid-template-columns: 1fr 1fr;
 }
 
 .chart-card {
@@ -506,6 +648,10 @@ onUnmounted(() => {
   border-radius: 8px;
   padding: 20px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+.chart-card-wide {
+  grid-column: span 1;
 }
 
 .chart-header {
@@ -533,7 +679,8 @@ onUnmounted(() => {
     grid-template-columns: repeat(2, 1fr);
   }
 
-  .charts-container {
+  .charts-container,
+  .charts-container-second {
     grid-template-columns: 1fr;
   }
 }
