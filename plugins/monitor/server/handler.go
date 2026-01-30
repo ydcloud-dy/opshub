@@ -25,6 +25,8 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -395,12 +397,12 @@ func (h *Handler) GetStats(c *gin.Context) {
 
 // CheckResult 检查结果
 type CheckResult struct {
-	Status       string      `json:"status"`        // normal, abnormal
-	ResponseTime int         `json:"responseTime"`  // 响应时间(ms)
-	SSLValid     bool        `json:"sslValid"`      // SSL是否有效
-	SSLExpiry    *time.Time  `json:"sslExpiry"`     // SSL过期时间
-	StatusCode   int         `json:"statusCode"`    // HTTP状态码
-	ErrorMessage string      `json:"errorMessage"`  // 错误信息
+	Status       string     `json:"status"`       // normal, abnormal
+	ResponseTime int        `json:"responseTime"` // 响应时间(ms)
+	SSLValid     bool       `json:"sslValid"`     // SSL是否有效
+	SSLExpiry    *time.Time `json:"sslExpiry"`    // SSL过期时间
+	StatusCode   int        `json:"statusCode"`   // HTTP状态码
+	ErrorMessage string     `json:"errorMessage"` // 错误信息
 }
 
 // performCheck 执行域名检查
@@ -414,8 +416,23 @@ func (h *Handler) performCheck(monitor *model.DomainMonitor) (*CheckResult, erro
 		ErrorMessage: "",
 	}
 
-	// 构造目标URL
-	url := fmt.Sprintf("https://%s", monitor.Domain)
+	// 解析域名和端口
+	host := monitor.Domain
+	port := 443
+	if strings.Contains(monitor.Domain, ":") {
+		parts := strings.Split(monitor.Domain, ":")
+		host = parts[0]
+		p, err := strconv.Atoi(parts[1])
+		if err == nil && p > 0 {
+			port = p
+		}
+	}
+
+	// 构造目标 URL
+	url := fmt.Sprintf("https://%s", host)
+	if port != 443 {
+		url = fmt.Sprintf("https://%s:%d", host, port)
+	}
 
 	// 记录开始时间
 	start := time.Now()
@@ -459,8 +476,10 @@ func (h *Handler) performCheck(monitor *model.DomainMonitor) (*CheckResult, erro
 	// 如果启用SSL检查，验证SSL证书
 	if monitor.EnableSSL {
 		// 重新发送请求获取证书信息
-		conn, err := tls.Dial("tcp", fmt.Sprintf("%s:443", monitor.Domain), &tls.Config{
+		addr := fmt.Sprintf("%s:%d", host, port)
+		conn, err := tls.Dial("tcp", addr, &tls.Config{
 			InsecureSkipVerify: false,
+			ServerName:         host, // 保证 SNI 正确
 		})
 		if err != nil {
 			result.SSLValid = false
