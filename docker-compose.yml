@@ -1,28 +1,40 @@
-
-
 version: '3.8'
 
 services:
-  # MySQL 数据库
   mysql:
     image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/mysql:8.0.44
     container_name: opshub-mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-123456}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-OpsHub@2026}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-opshub}
       TZ: Asia/Shanghai
     ports:
       - "${MYSQL_PORT:-3306}:3306"
     volumes:
       - mysql-data:/var/lib/mysql
-      - ./migrations/init.sh:/docker-entrypoint-initdb.d/01-init.sh
-      - ./migrations/init.sql:/docker-entrypoint-initdb.d/init.sql
     command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - opshub-network
 
-  # Redis 缓存
+  db-init:
+    image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/mysql:8.0.44
+    container_name: opshub-db-init
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - ./migrations/init.sql:/init.sql:ro,z
+    entrypoint: >
+      sh -c "mysql -h mysql -u root -p'OpsHub@2026' opshub < /init.sql && echo 'Database initialized successfully'"
+    networks:
+      - opshub-network
+
   redis:
     image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/redis:7-alpine
     container_name: opshub-redis
@@ -32,56 +44,57 @@ services:
     volumes:
       - redis-data:/data
     command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - opshub-network
 
-  # 后端服务 (开发模式)
   backend:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: dyclouds/opshub-api:latest
     container_name: opshub-backend
     restart: unless-stopped
     ports:
       - "${BACKEND_PORT:-9876}:9876"
     environment:
-      OPSHUB_SERVER_MODE: ${OPSHUB_SERVER_MODE:-debug}
+      OPSHUB_SERVER_MODE: ${OPSHUB_SERVER_MODE:-release}
       OPSHUB_SERVER_HTTP_PORT: 9876
-      OPSHUB_SERVER_JWT_SECRET: ${OPSHUB_SERVER_JWT_SECRET:-your-secret-key-change-in-production}
+      OPSHUB_SERVER_JWT_SECRET: ${OPSHUB_SERVER_JWT_SECRET:-opshub-jwt-secret-change-in-production}
+      OPSHUB_SERVER_JWT_EXPIRE: 24h
       OPSHUB_DATABASE_HOST: mysql
       OPSHUB_DATABASE_PORT: 3306
       OPSHUB_DATABASE_DATABASE: ${MYSQL_DATABASE:-opshub}
       OPSHUB_DATABASE_USERNAME: ${MYSQL_USERNAME:-root}
-      OPSHUB_DATABASE_PASSWORD: ${MYSQL_ROOT_PASSWORD:-123456}
+      OPSHUB_DATABASE_PASSWORD: ${MYSQL_ROOT_PASSWORD:-OpsHub@2026}
       OPSHUB_REDIS_HOST: redis
       OPSHUB_REDIS_PORT: 6379
       OPSHUB_REDIS_PASSWORD: ""
+      OPSHUB_REDIS_DB: 0
+      TZ: Asia/Shanghai
     depends_on:
-      - mysql
-      - redis
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
-      - ./config:/app/config
       - ./logs:/app/logs
-      - ./data:/app/data
     networks:
       - opshub-network
 
-  # 前端服务
   frontend:
-    image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/node:18-alpine
+    image: dyclouds/opshub-web:latest
     container_name: opshub-frontend
-    working_dir: /app
     restart: unless-stopped
     ports:
-      - "${FRONTEND_PORT:-5173}:5173"
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
-    volumes:
-      - ./web:/app
-      - /app/node_modules
+      - "${FRONTEND_PORT:-80}:80"
     environment:
-      - VITE_API_BASE_URL=http://backend:9876
+      - TZ=Asia/Shanghai
     depends_on:
       - backend
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
     networks:
       - opshub-network
 
