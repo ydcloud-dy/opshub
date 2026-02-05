@@ -35,6 +35,7 @@ import (
 	auditserver "github.com/ydcloud-dy/opshub/internal/server/audit"
 	identityserver "github.com/ydcloud-dy/opshub/internal/server/identity"
 	"github.com/ydcloud-dy/opshub/internal/server/rbac"
+	systemserver "github.com/ydcloud-dy/opshub/internal/server/system"
 	"github.com/ydcloud-dy/opshub/internal/service"
 	appLogger "github.com/ydcloud-dy/opshub/pkg/logger"
 	"github.com/ydcloud-dy/opshub/pkg/middleware"
@@ -43,7 +44,6 @@ import (
 	nginxplugin "github.com/ydcloud-dy/opshub/plugins/nginx"
 	sslcertplugin "github.com/ydcloud-dy/opshub/plugins/ssl-cert"
 	taskplugin "github.com/ydcloud-dy/opshub/plugins/task"
-	testplugin "github.com/ydcloud-dy/opshub/plugins/test"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
@@ -149,6 +149,13 @@ func (s *HTTPServer) registerRoutes(router *gin.Engine, jwtSecret string) {
 	rbacServer := rbac.NewHTTPServer(userService, roleService, departmentService, menuService, positionService, captchaService, assetPermissionService, authMiddleware)
 	rbacServer.RegisterRoutes(router)
 
+	// 创建 System 服务
+	uploadDir := "./web/public/uploads"
+	configService, configUseCase := systemserver.NewSystemServices(s.db, uploadDir)
+
+	// 设置配置用例到用户服务（用于密码验证和登录锁定）
+	userService.SetConfigUseCase(configUseCase)
+
 	// 创建 Audit 服务
 	operationLogService, loginLogService, dataLogService := auditserver.NewAuditServices(s.db)
 
@@ -161,6 +168,12 @@ func (s *HTTPServer) registerRoutes(router *gin.Engine, jwtSecret string) {
 
 	// Asset 路由
 	assetServer := assetserver.NewHTTPServer(assetGroupService, hostService, terminalManager, s.db, authMiddleware)
+
+	// API v1 - 公开接口(不需要认证)
+	public := router.Group("/api/v1/public")
+	{
+		public.GET("/example", s.svc.Example)
+	}
 
 	// API v1 - 需要认证的接口
 	v1 := router.Group("/api/v1")
@@ -184,12 +197,10 @@ func (s *HTTPServer) registerRoutes(router *gin.Engine, jwtSecret string) {
 		// 上传接口
 		v1.POST("/upload/avatar", s.uploadSrv.UploadAvatar)
 		v1.PUT("/profile/avatar", s.uploadSrv.UpdateUserAvatar)
-	}
 
-	// API v1 - 公开接口(不需要认证)
-	public := router.Group("/api/v1/public")
-	{
-		public.GET("/example", s.svc.Example)
+		// 系统配置路由
+		systemHTTPServer := systemserver.NewHTTPServer(configService)
+		systemHTTPServer.RegisterRoutes(v1, public)
 	}
 
 	// 插件路由

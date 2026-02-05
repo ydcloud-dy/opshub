@@ -263,9 +263,21 @@ const topIPs = ref<{ ip: string; count: number }[]>([])
 // 标记是否是初始化加载
 const isInitialLoad = ref(true)
 
+// 获取今天的时间范围
+const getTodayRange = (): string[] => {
+  const now = new Date()
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0)
+  const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59)
+  const format = (d: Date) => {
+    const pad = (n: number) => n.toString().padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  }
+  return [format(todayStart), format(todayEnd)]
+}
+
 const filterForm = ref({
   sourceId: undefined as number | undefined,
-  timeRange: [] as string[],
+  timeRange: getTodayRange(),  // 默认显示当天数据
   remoteAddr: '',
   uri: '',
   status: undefined as number | undefined,
@@ -484,7 +496,7 @@ const loadTopIPs = async () => {
 const handleReset = () => {
   filterForm.value = {
     sourceId: filterForm.value.sourceId,
-    timeRange: [],
+    timeRange: getTodayRange(),  // 重置为当天
     remoteAddr: '',
     uri: '',
     status: undefined,

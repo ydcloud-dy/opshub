@@ -21,6 +21,7 @@ package rbac
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -28,8 +29,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/ydcloud-dy/opshub/internal/biz/audit"
 	"github.com/ydcloud-dy/opshub/internal/biz/rbac"
-	"github.com/ydcloud-dy/opshub/pkg/response"
+	"github.com/ydcloud-dy/opshub/internal/biz/system"
 	appLogger "github.com/ydcloud-dy/opshub/pkg/logger"
+	"github.com/ydcloud-dy/opshub/pkg/response"
 	"go.uber.org/zap"
 )
 
@@ -38,6 +40,7 @@ type UserService struct {
 	authService     *AuthService
 	captchaService  *CaptchaService
 	loginLogUseCase *audit.LoginLogUseCase
+	configUseCase   *system.ConfigUseCase
 }
 
 func NewUserService(userUseCase *rbac.UserUseCase, authService *AuthService) *UserService {
@@ -57,18 +60,23 @@ func (s *UserService) SetLoginLogUseCase(loginLogUseCase *audit.LoginLogUseCase)
 	s.loginLogUseCase = loginLogUseCase
 }
 
+// SetConfigUseCase 设置配置用例（通过依赖注入）
+func (s *UserService) SetConfigUseCase(configUseCase *system.ConfigUseCase) {
+	s.configUseCase = configUseCase
+}
+
 // LoginRequest 登录请求
 type LoginRequest struct {
-	Username   string `json:"username" binding:"required"`
-	Password   string `json:"password" binding:"required"`
-	CaptchaId  string `json:"captchaId"`
-	CaptchaId2 string `json:"captchaId2"` // 兼容前端可能的字段名
+	Username    string `json:"username" binding:"required"`
+	Password    string `json:"password" binding:"required"`
+	CaptchaId   string `json:"captchaId"`
+	CaptchaId2  string `json:"captchaId2"` // 兼容前端可能的字段名
 	CaptchaCode string `json:"captchaCode"`
 }
 
 // LoginResponse 登录响应
 type LoginResponse struct {
-	Token string       `json:"token"`
+	Token string        `json:"token"`
 	User  *rbac.SysUser `json:"user"`
 }
 
@@ -105,32 +113,56 @@ func (s *UserService) Login(c *gin.Context) {
 	clientIP := c.ClientIP()
 	userAgent := c.Request.UserAgent()
 
-	// 验证验证码
-	captchaId := req.CaptchaId
-	if captchaId == "" {
-		captchaId = req.CaptchaId2
+	// 检查账户是否被锁定
+	if s.configUseCase != nil {
+		locked, remainingSeconds, err := s.configUseCase.CheckLoginAttempt(c.Request.Context(), req.Username)
+		if err != nil {
+			appLogger.Error("检查登录锁定失败", zap.Error(err))
+		}
+		appLogger.Info("检查账户锁定状态", zap.String("username", req.Username), zap.Bool("locked", locked), zap.Int("remainingSeconds", remainingSeconds))
+		if locked {
+			s.recordLoginLog(req.Username, "web", "failed", clientIP, userAgent, "账户已锁定", 0)
+			response.ErrorCode(c, http.StatusOK, fmt.Sprintf("账户已锁定，请在 %d 秒后重试", remainingSeconds))
+			return
+		}
+	} else {
+		appLogger.Warn("configUseCase未设置，跳过账户锁定检查")
 	}
 
-	if captchaId == "" || req.CaptchaCode == "" {
-		// 记录登录日志 - 验证码为空
-		s.recordLoginLog(req.Username, "web", "failed", clientIP, userAgent, "验证码为空", 0)
-		response.ErrorCode(c, http.StatusOK, "请输入验证码")
-		return
+	// 检查是否需要验证码
+	captchaEnabled := true
+	if s.configUseCase != nil {
+		captchaEnabled = s.configUseCase.IsCaptchaEnabled(c.Request.Context())
 	}
 
-	// 使用验证码服务验证
-	if s.captchaService == nil {
-		s.recordLoginLog(req.Username, "web", "failed", clientIP, userAgent, "验证码服务未初始化", 0)
-		response.ErrorCode(c, http.StatusOK, "验证码服务未初始化")
-		return
-	}
+	if captchaEnabled {
+		// 验证验证码
+		captchaId := req.CaptchaId
+		if captchaId == "" {
+			captchaId = req.CaptchaId2
+		}
 
-	if !s.captchaService.VerifyCaptchaDirect(captchaId, req.CaptchaCode) {
-		appLogger.Info("验证码验证失败", zap.String("username", req.Username), zap.String("captchaId", captchaId))
-		// 记录登录日志 - 验证码错误
-		s.recordLoginLog(req.Username, "web", "failed", clientIP, userAgent, "验证码错误", 0)
-		response.ErrorCode(c, http.StatusOK, "验证码错误，请重新输入")
-		return
+		if captchaId == "" || req.CaptchaCode == "" {
+			// 记录登录日志 - 验证码为空
+			s.recordLoginLog(req.Username, "web", "failed", clientIP, userAgent, "验证码为空", 0)
+			response.ErrorCode(c, http.StatusOK, "请输入验证码")
+			return
+		}
+
+		// 使用验证码服务验证
+		if s.captchaService == nil {
+			s.recordLoginLog(req.Username, "web", "failed", clientIP, userAgent, "验证码服务未初始化", 0)
+			response.ErrorCode(c, http.StatusOK, "验证码服务未初始化")
+			return
+		}
+
+		if !s.captchaService.VerifyCaptchaDirect(captchaId, req.CaptchaCode) {
+			appLogger.Info("验证码验证失败", zap.String("username", req.Username), zap.String("captchaId", captchaId))
+			// 记录登录日志 - 验证码错误
+			s.recordLoginLog(req.Username, "web", "failed", clientIP, userAgent, "验证码错误", 0)
+			response.ErrorCode(c, http.StatusOK, "验证码错误，请重新输入")
+			return
+		}
 	}
 
 	user, err := s.userUseCase.ValidatePassword(c.Request.Context(), req.Username, req.Password)
@@ -138,6 +170,17 @@ func (s *UserService) Login(c *gin.Context) {
 		appLogger.Error("登录失败", zap.String("username", req.Username), zap.Error(err))
 		// 记录登录日志 - 用户名或密码错误
 		s.recordLoginLog(req.Username, "web", "failed", clientIP, userAgent, err.Error(), 0)
+		// 记录登录失败次数
+		if s.configUseCase != nil {
+			appLogger.Info("记录登录失败次数", zap.String("username", req.Username))
+			if recordErr := s.configUseCase.RecordLoginFailure(c.Request.Context(), req.Username); recordErr != nil {
+				appLogger.Error("记录登录失败次数失败", zap.Error(recordErr))
+			} else {
+				appLogger.Info("登录失败次数记录成功", zap.String("username", req.Username))
+			}
+		} else {
+			appLogger.Warn("configUseCase未设置，无法记录登录失败次数")
+		}
 		response.ErrorCode(c, http.StatusOK, err.Error())
 		return
 	}
@@ -155,6 +198,13 @@ func (s *UserService) Login(c *gin.Context) {
 		s.recordLoginLog(req.Username, "web", "failed", clientIP, userAgent, "生成token失败", user.ID)
 		response.ErrorCode(c, http.StatusInternalServerError, "生成token失败")
 		return
+	}
+
+	// 登录成功，重置登录失败次数
+	if s.configUseCase != nil {
+		if resetErr := s.configUseCase.ResetLoginAttempt(c.Request.Context(), req.Username); resetErr != nil {
+			appLogger.Error("重置登录失败次数失败", zap.Error(resetErr))
+		}
 	}
 
 	// 清空密码字段，防止返回给前端
@@ -305,6 +355,16 @@ func (s *UserService) ChangePassword(c *gin.Context) {
 		return
 	}
 
+	// 验证密码长度
+	minLength := 6
+	if s.configUseCase != nil {
+		minLength = s.configUseCase.GetPasswordMinLength(c.Request.Context())
+	}
+	if len(req.NewPassword) < minLength {
+		response.ErrorCode(c, http.StatusBadRequest, fmt.Sprintf("密码长度不能少于 %d 位", minLength))
+		return
+	}
+
 	if err := s.userUseCase.UpdatePassword(c.Request.Context(), userID, req.OldPassword, req.NewPassword); err != nil {
 		response.ErrorCode(c, http.StatusInternalServerError, err.Error())
 		return
@@ -327,6 +387,16 @@ func (s *UserService) CreateUser(c *gin.Context) {
 	var req rbac.SysUser
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.ErrorCode(c, http.StatusBadRequest, "参数错误: "+err.Error())
+		return
+	}
+
+	// 验证密码长度
+	minLength := 6
+	if s.configUseCase != nil {
+		minLength = s.configUseCase.GetPasswordMinLength(c.Request.Context())
+	}
+	if len(req.Password) < minLength {
+		response.ErrorCode(c, http.StatusBadRequest, fmt.Sprintf("密码长度不能少于 %d 位", minLength))
 		return
 	}
 
@@ -466,13 +536,36 @@ func (s *UserService) ListUsers(c *gin.Context) {
 		return
 	}
 
-	// 清空所有用户的密码字段，防止返回给前端
+	// 构建用户响应，包含锁定状态
+	type UserWithLockStatus struct {
+		*rbac.SysUser
+		IsLocked         bool   `json:"isLocked"`
+		LockedUntil      string `json:"lockedUntil,omitempty"`
+		RemainingSeconds int    `json:"remainingSeconds,omitempty"`
+	}
+
+	result := make([]UserWithLockStatus, 0, len(users))
 	for _, user := range users {
-		user.Password = ""
+		user.Password = "" // 清空密码
+
+		userResp := UserWithLockStatus{
+			SysUser: user,
+		}
+
+		// 检查用户是否被锁定
+		if s.configUseCase != nil {
+			locked, remainingSeconds, _ := s.configUseCase.CheckLoginAttempt(c.Request.Context(), user.Username)
+			if locked {
+				userResp.IsLocked = true
+				userResp.RemainingSeconds = remainingSeconds
+			}
+		}
+
+		result = append(result, userResp)
 	}
 
 	response.Success(c, gin.H{
-		"list":     users,
+		"list":     result,
 		"total":    total,
 		"page":     page,
 		"pageSize": pageSize,
@@ -585,10 +678,56 @@ func (s *UserService) ResetPassword(c *gin.Context) {
 		return
 	}
 
+	// 验证密码长度
+	minLength := 6
+	if s.configUseCase != nil {
+		minLength = s.configUseCase.GetPasswordMinLength(c.Request.Context())
+	}
+	if len(req.Password) < minLength {
+		response.ErrorCode(c, http.StatusBadRequest, fmt.Sprintf("密码长度不能少于 %d 位", minLength))
+		return
+	}
+
 	if err := s.userUseCase.ResetPassword(c.Request.Context(), uint(id), req.Password); err != nil {
 		response.ErrorCode(c, http.StatusInternalServerError, "重置密码失败: "+err.Error())
 		return
 	}
 
 	response.SuccessWithMessage(c, "密码重置成功", nil)
+}
+
+// UnlockUser 解锁用户
+// @Summary 解锁用户
+// @Description 解锁因登录失败次数过多而被锁定的用户
+// @Tags 用户管理
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Param id path int true "用户ID"
+// @Success 200 {object} response.Response "解锁成功"
+// @Router /api/v1/users/{id}/unlock [post]
+func (s *UserService) UnlockUser(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		response.ErrorCode(c, http.StatusBadRequest, "无效的用户ID")
+		return
+	}
+
+	// 获取用户信息
+	user, err := s.userUseCase.GetByID(c.Request.Context(), uint(id))
+	if err != nil {
+		response.ErrorCode(c, http.StatusNotFound, "用户不存在")
+		return
+	}
+
+	// 重置登录失败次数
+	if s.configUseCase != nil {
+		if err := s.configUseCase.ResetLoginAttempt(c.Request.Context(), user.Username); err != nil {
+			response.ErrorCode(c, http.StatusInternalServerError, "解锁失败: "+err.Error())
+			return
+		}
+	}
+
+	response.SuccessWithMessage(c, "用户已解锁", nil)
 }

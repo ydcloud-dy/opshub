@@ -40,6 +40,11 @@ export const resetUserPassword = (id: number, password: string) => {
   return request.put(`/api/v1/users/${id}/reset-password`, { password })
 }
 
+// 解锁用户
+export const unlockUser = (id: number) => {
+  return request.post(`/api/v1/users/${id}/unlock`)
+}
+
 // 修改自己的密码
 export const changePassword = (oldPassword: string, newPassword: string) => {
   return request.put('/api/v1/profile/password', { oldPassword, newPassword })

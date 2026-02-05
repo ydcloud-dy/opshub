@@ -295,6 +295,23 @@ export const getOverviewDevices = (sourceId: number) => {
   return request.get('/api/v1/plugins/nginx/overview/devices', { params: { sourceId } })
 }
 
+// 获取概况页所有数据（组合接口，提升性能）
+export interface OverviewAllData {
+  activeVisitors: number | null
+  coreMetrics: CoreMetrics | null
+  trend: OverviewTrendPoint[] | null
+  visitors: VisitorComparison | null
+  topReferers: RefererItem[] | null
+  topPages: PageItem[] | null
+  topEntryPages: PageItem[] | null
+  geo: GeoStats[] | null
+  devices: DeviceStats[] | null
+}
+
+export const getOverviewAll = (params: { sourceId: number; trendMode?: 'hour' | 'day'; trendDate?: string; refresh?: boolean }) => {
+  return request.get<OverviewAllData>('/api/v1/plugins/nginx/overview/all', { params })
+}
+
 // ==================== 数据日报 ====================
 
 // 获取日报数据

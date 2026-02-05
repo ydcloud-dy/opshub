@@ -49,6 +49,7 @@ func RegisterRoutes(router *gin.RouterGroup, db *gorm.DB) {
 		// 概况页面新增接口
 		overview := nginxGroup.Group("/overview")
 		{
+			overview.GET("/all", handler.GetOverviewAll)                 // 组合接口（所有数据）
 			overview.GET("/active-visitors", handler.GetActiveVisitors)  // 活跃访客
 			overview.GET("/core-metrics", handler.GetCoreMetrics)        // 核心指标
 			overview.GET("/overview-trend", handler.GetOverviewTrend)    // UV+PV趋势
