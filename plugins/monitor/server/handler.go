@@ -466,8 +466,15 @@ func (h *Handler) performCheck(monitor *model.DomainMonitor) (*CheckResult, erro
 
 	// 如果启用SSL检查，验证SSL证书
 	if monitor.EnableSSL {
+		// 解析域名和端口
+		tlsHost := monitor.Domain
+		// 如果域名不包含端口，默认使用443
+		if !strings.Contains(tlsHost, ":") {
+			tlsHost = fmt.Sprintf("%s:443", tlsHost)
+		}
+
 		// 重新发送请求获取证书信息
-		conn, err := tls.Dial("tcp", fmt.Sprintf("%s:443", monitor.Domain), &tls.Config{
+		conn, err := tls.Dial("tcp", tlsHost, &tls.Config{
 			InsecureSkipVerify: false,
 		})
 		if err != nil {

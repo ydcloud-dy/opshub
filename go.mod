@@ -13,8 +13,11 @@ require (
 	github.com/go-sql-driver/mysql v1.8.1
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
+	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/huaweicloud/huaweicloud-sdk-go-v3 v0.1.186
 	github.com/mojocn/base64Captcha v1.3.8
+	github.com/oschwald/geoip2-golang v1.13.0
+	github.com/phuslu/iploc v1.0.20260115
 	github.com/pkg/sftp v1.13.10
 	github.com/redis/go-redis/v9 v9.17.2
 	github.com/spf13/cobra v1.10.2
@@ -24,8 +27,6 @@ require (
 	github.com/swaggo/swag v1.16.6
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.42
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cvm v1.3.30
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/dnspod v1.3.24
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/ssl v1.3.42
 	github.com/xuri/excelize/v2 v2.10.0
 	github.com/ydcloud-dy/opshub/plugins/kubernetes v0.0.0-00010101000000-000000000000
 	go.uber.org/zap v1.27.1
@@ -109,6 +110,7 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/mxk/go-flowrate v0.0.0-20140419014527-cca7078d478f // indirect
 	github.com/opentracing/opentracing-go v1.2.1-0.20220228012449-10b1cf09e00b // indirect
+	github.com/oschwald/maxminddb-golang v1.13.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
 	github.com/quic-go/quic-go v0.58.0 // indirect
