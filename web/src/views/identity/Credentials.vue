@@ -108,15 +108,15 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Lock, Plus, Key } from '@element-plus/icons-vue'
 import {
-  getCredentials,
-  createCredential,
-  updateCredential,
-  deleteCredential,
+  getUserCredentials,
+  createUserCredential,
+  updateUserCredential,
+  deleteUserCredential,
   getSSOApplications,
-  type Credential
+  type UserCredential
 } from '@/api/identity'
 
-const credentialList = ref<Credential[]>([])
+const credentialList = ref<UserCredential[]>([])
 const appList = ref<any[]>([])
 const loading = ref(false)
 const dialogVisible = ref(false)
@@ -141,7 +141,7 @@ const rules: FormRules = {
 const loadCredentials = async () => {
   loading.value = true
   try {
-    const res = await getCredentials()
+    const res = await getUserCredentials()
     if (res.data.code === 0) {
       credentialList.value = res.data.data || []
     }
@@ -196,10 +196,10 @@ const handleSubmit = async () => {
     submitLoading.value = true
     try {
       if (isEdit.value) {
-        await updateCredential(form.id, form)
+        await updateUserCredential(form.id, form)
         ElMessage.success('更新成功')
       } else {
-        await createCredential(form)
+        await createUserCredential(form)
         ElMessage.success('添加成功')
       }
       dialogVisible.value = false
@@ -219,7 +219,7 @@ const handleDelete = (cred: Credential) => {
     type: 'warning'
   }).then(async () => {
     try {
-      await deleteCredential(cred.id)
+      await deleteUserCredential(cred.id)
       ElMessage.success('删除成功')
       loadCredentials()
     } catch (error) {
