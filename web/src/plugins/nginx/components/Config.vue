@@ -698,45 +698,6 @@ const loadClusters = async () => {
   justify-content: flex-end;
 }
 
-/* 对话框样式 */
-.config-dialog :deep(.el-dialog) {
-  border-radius: 12px;
-  overflow: hidden;
-  max-width: 800px;
-}
-
-.config-dialog :deep(.el-dialog__header) {
-  background: linear-gradient(135deg, #000 0%, #1a1a1a 100%);
-  padding: 16px 24px;
-  margin-right: 0;
-}
-
-.config-dialog :deep(.el-dialog__title) {
-  font-size: 16px;
-  font-weight: 600;
-  color: #fff;
-}
-
-.config-dialog :deep(.el-dialog__headerbtn .el-dialog__close) {
-  color: #fff;
-}
-
-.config-dialog :deep(.el-dialog__headerbtn:hover .el-dialog__close) {
-  color: #d4af37;
-}
-
-.config-dialog :deep(.el-dialog__body) {
-  padding: 0;
-  max-height: 65vh;
-  overflow-y: auto;
-}
-
-.config-dialog :deep(.el-dialog__footer) {
-  border-top: 1px solid #f0f0f0;
-  padding: 16px 24px;
-  background: #fafafa;
-}
-
 /* 表单样式 */
 .dialog-form {
   padding: 0;
@@ -918,5 +879,45 @@ const loadClusters = async () => {
   font-size: 13px;
   font-weight: 500;
   color: #606266;
+}
+</style>
+
+<!-- 非 scoped 样式：弹窗被传送到 body，scoped 样式无法作用 -->
+<style>
+.config-dialog .el-dialog {
+  border-radius: 12px;
+  max-width: 800px;
+}
+
+.config-dialog .el-dialog__header {
+  background: linear-gradient(135deg, #000 0%, #1a1a1a 100%);
+  padding: 16px 24px;
+  margin-right: 0;
+}
+
+.config-dialog .el-dialog__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.config-dialog .el-dialog__headerbtn .el-dialog__close {
+  color: #fff;
+}
+
+.config-dialog .el-dialog__headerbtn:hover .el-dialog__close {
+  color: #d4af37;
+}
+
+.config-dialog .el-dialog__body {
+  padding: 0;
+  max-height: calc(80vh - 130px);
+  overflow-y: auto;
+}
+
+.config-dialog .el-dialog__footer {
+  border-top: 1px solid #f0f0f0;
+  padding: 16px 24px;
+  background: #fafafa;
 }
 </style>
