@@ -2,7 +2,10 @@
   <el-container class="layout-container">
     <el-aside width="260px" v-if="!hideSidebar">
       <div class="logo">
-        <img :src="logoImage" alt="OpsHub Logo" class="logo-image" />
+        <!-- 始终显示文字Logo（系统名称） -->
+        <span class="logo-text">
+          <span class="logo-ops">{{ systemNameFirst }}</span><span class="logo-hub">{{ systemNameSecond }}</span>
+        </span>
       </div>
 
       <el-menu
@@ -106,6 +109,7 @@
 import { computed, ref, onMounted, onUnmounted, shallowRef } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
+import { useSystemStore } from '@/stores/system'
 import { ElMessage } from 'element-plus'
 import NoPermission from '@/views/NoPermission.vue'
 import {
@@ -137,13 +141,36 @@ import {
 import { getUserMenu } from '@/api/menu'
 import { pluginManager } from '@/plugins/manager'
 
-// Logo 和 Header 图片路径（来自 public 文件夹）
-const logoImage = '/logo.png'
+// Header 图片路径（来自 public 文件夹）
 const headerImage = '/header.png'
 
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
+const systemStore = useSystemStore()
+
+// 系统名称分割（用于文字Logo显示）
+const systemNameFirst = computed(() => {
+  const name = systemStore.systemName || 'OpsHub'
+  // 尝试智能分割：如果名字有明显的大写字母分隔
+  const match = name.match(/^([A-Z][a-z]*)(.*)$/)
+  if (match && match[2]) {
+    return match[1]
+  }
+  // 否则取前半部分
+  const mid = Math.ceil(name.length / 2)
+  return name.substring(0, mid)
+})
+
+const systemNameSecond = computed(() => {
+  const name = systemStore.systemName || 'OpsHub'
+  const match = name.match(/^([A-Z][a-z]*)(.*)$/)
+  if (match && match[2]) {
+    return match[2]
+  }
+  const mid = Math.ceil(name.length / 2)
+  return name.substring(mid)
+})
 
 const activeMenu = computed(() => {
   // 如果路由 meta 中指定了 activeMenu，使用指定的菜单路径
@@ -539,6 +566,11 @@ const handleLogout = () => {
 }
 
 onMounted(async () => {
+  // 加载系统配置
+  if (!systemStore.loaded) {
+    await systemStore.loadFullConfig()
+  }
+
   // 如果用户信息为空，先获取用户信息
   if (!userStore.userInfo) {
     try {
@@ -584,8 +616,7 @@ onMounted(async () => {
 }
 
 .logo {
-  height: 120px;
-  line-height: 120px;
+  height: 80px;
   text-align: center;
   background: #000000;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -595,16 +626,34 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 10px 0;
 }
 
 .logo-image {
-  max-height: 100px;
-  max-width: 240px;
-  width: auto;
-  height: auto;
+  max-height: 60px;
+  max-width: 200px;
   object-fit: contain;
-  mix-blend-mode: lighten;
+}
+
+.logo-text {
+  display: inline-flex;
+  align-items: center;
+  font-size: 32px;
+  font-weight: 600;
+  font-style: italic;
+  line-height: 1;
+}
+
+.logo-ops {
+  color: #ffffff;
+}
+
+.logo-hub {
+  background-color: #FFAF35;
+  color: #000000;
+  padding: 4px 10px;
+  border-radius: 6px;
+  margin-left: 2px;
+  line-height: 1;
 }
 
 /* 用户信息区域 */

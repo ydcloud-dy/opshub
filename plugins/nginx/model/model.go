@@ -202,34 +202,34 @@ func (NginxFactAccessLog) TableName() string {
 // NginxAccessLog Nginx 访问日志 (旧表，保持兼容)
 type NginxAccessLog struct {
 	ID            uint64    `gorm:"primarykey" json:"id"`
-	SourceID      uint      `gorm:"index;not null" json:"sourceId"`
-	Timestamp     time.Time `gorm:"type:datetime;index;not null" json:"timestamp"`
-	RemoteAddr    string    `gorm:"type:varchar(50);index" json:"remoteAddr"`
+	SourceID      uint      `gorm:"index:idx_source_time,priority:1;not null" json:"sourceId"`
+	Timestamp     time.Time `gorm:"type:datetime;index:idx_source_time,priority:2;not null" json:"timestamp"`
+	RemoteAddr    string    `gorm:"type:varchar(50);index:idx_source_ip,priority:2" json:"remoteAddr"`
 	RemoteUser    string    `gorm:"type:varchar(100)" json:"remoteUser"`
 	Request       string    `gorm:"type:varchar(2000)" json:"request"`
-	Method        string    `gorm:"type:varchar(20);index" json:"method"`
+	Method        string    `gorm:"type:varchar(20)" json:"method"`
 	URI           string    `gorm:"type:varchar(1000)" json:"uri"`
 	Protocol      string    `gorm:"type:varchar(50)" json:"protocol"`
-	Status        int       `gorm:"type:int;index" json:"status"`
+	Status        int       `gorm:"type:int;index:idx_source_status,priority:2" json:"status"`
 	BodyBytesSent int64     `gorm:"type:bigint" json:"bodyBytesSent"`
 	HTTPReferer   string    `gorm:"type:varchar(1000)" json:"httpReferer"`
 	HTTPUserAgent string    `gorm:"type:varchar(500)" json:"httpUserAgent"`
 	RequestTime   float64   `gorm:"type:decimal(10,3)" json:"requestTime"`
 	UpstreamTime  float64   `gorm:"type:decimal(10,3)" json:"upstreamTime"`
-	Host          string    `gorm:"type:varchar(255);index" json:"host"`
+	Host          string    `gorm:"type:varchar(255)" json:"host"`
 
 	// 地理位置字段
-	Country  string `gorm:"type:varchar(50)" json:"country"`
+	Country  string `gorm:"type:varchar(50);index:idx_source_country,priority:2" json:"country"`
 	Province string `gorm:"type:varchar(50)" json:"province"`
 	City     string `gorm:"type:varchar(50)" json:"city"`
 	ISP      string `gorm:"type:varchar(100)" json:"isp"`
 
 	// UA 解析字段
-	Browser        string `gorm:"type:varchar(50);index" json:"browser"`
+	Browser        string `gorm:"type:varchar(50)" json:"browser"`
 	BrowserVersion string `gorm:"type:varchar(20)" json:"browserVersion"`
-	OS             string `gorm:"type:varchar(50);index" json:"os"`
+	OS             string `gorm:"type:varchar(50)" json:"os"`
 	OSVersion      string `gorm:"type:varchar(20)" json:"osVersion"`
-	DeviceType     string `gorm:"type:varchar(20);index" json:"deviceType"` // desktop, mobile, tablet, bot
+	DeviceType     string `gorm:"type:varchar(20);index:idx_source_device,priority:2" json:"deviceType"` // desktop, mobile, tablet, bot
 
 	// K8s Ingress 特有字段
 	IngressName string `gorm:"type:varchar(100)" json:"ingressName"`

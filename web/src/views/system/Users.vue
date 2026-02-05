@@ -72,18 +72,30 @@
               {{ row.department?.name || row.department?.deptName || '-' }}
             </template>
           </el-table-column>
-          <el-table-column label="状态" width="80">
+          <el-table-column label="状态" width="100">
             <template #default="{ row }">
-              <el-tag :type="row.status === 1 ? 'success' : 'danger'">
+              <el-tag v-if="row.isLocked" type="warning">
+                锁定中
+              </el-tag>
+              <el-tag v-else :type="row.status === 1 ? 'success' : 'danger'">
                 {{ row.status === 1 ? '启用' : '禁用' }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="280" fixed="right">
+          <el-table-column label="操作" width="160" fixed="right">
             <template #default="{ row }">
-              <el-button class="black-button" size="small" @click="handleEdit(row)">编辑</el-button>
-              <el-button class="black-button" size="small" @click="handleResetPassword(row)">重置密码</el-button>
-              <el-button type="danger" size="small" @click="handleDelete(row)">删除</el-button>
+              <el-tooltip v-if="row.isLocked" content="解锁" placement="top">
+                <el-button type="warning" size="small" :icon="Unlock" circle @click="handleUnlock(row)" />
+              </el-tooltip>
+              <el-tooltip content="编辑" placement="top">
+                <el-button type="primary" size="small" :icon="Edit" circle @click="handleEdit(row)" />
+              </el-tooltip>
+              <el-tooltip content="重置密码" placement="top">
+                <el-button type="info" size="small" :icon="Key" circle @click="handleResetPassword(row)" />
+              </el-tooltip>
+              <el-tooltip content="删除" placement="top">
+                <el-button type="danger" size="small" :icon="Delete" circle @click="handleDelete(row)" />
+              </el-tooltip>
             </template>
           </el-table-column>
         </el-table>
@@ -314,9 +326,9 @@ import { ref, reactive, onMounted, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox, FormInstance } from 'element-plus'
 import {
   User, Postcard, Message, Phone, Lock,
-  OfficeBuilding, Key, Document, Check
+  OfficeBuilding, Key, Document, Check, Edit, Delete, Unlock
 } from '@element-plus/icons-vue'
-import { getUserList, createUser, updateUser, deleteUser, resetUserPassword, assignUserRoles, assignUserPositions } from '@/api/user'
+import { getUserList, createUser, updateUser, deleteUser, resetUserPassword, assignUserRoles, assignUserPositions, unlockUser } from '@/api/user'
 import { getDepartmentTree } from '@/api/department'
 import { getAllRoles } from '@/api/role'
 import { getPositionList } from '@/api/position'
@@ -594,6 +606,20 @@ const handleResetPassword = (row: any) => {
   resetPasswordForm.password = ''
   resetPasswordForm.confirmPassword = ''
   resetPasswordVisible.value = true
+}
+
+const handleUnlock = async (row: any) => {
+  try {
+    await ElMessageBox.confirm(`确定要解锁用户 "${row.username}" 吗？`, '提示', {
+      type: 'warning'
+    })
+    await unlockUser(row.ID || row.id)
+    ElMessage.success('用户已解锁')
+    loadUsers()
+  } catch (error) {
+    if (error !== 'cancel') {
+    }
+  }
 }
 
 const handleResetPasswordSubmit = async () => {

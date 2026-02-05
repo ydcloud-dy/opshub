@@ -4,7 +4,7 @@
     <div class="brand-section">
       <div class="curved-divider"></div>
       <div class="brand-content">
-        <h1 class="brand-title">OpsHub 运维管理平台</h1>
+        <h1 class="brand-title">{{ systemStore.systemName }} {{ systemStore.systemDescription }}</h1>
         <div class="brand-slogan">
           <span>高效</span>
           <span>安全</span>
@@ -77,7 +77,7 @@
             />
           </el-form-item>
 
-          <el-form-item prop="captchaCode">
+          <el-form-item prop="captchaCode" v-if="captchaEnabled">
             <div class="captcha-wrapper">
               <el-input
                 v-model="loginForm.captchaCode"
@@ -115,19 +115,23 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, onMounted } from 'vue'
+import { reactive, ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, FormInstance } from 'element-plus'
 import { User, Lock, Key } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
+import { useSystemStore } from '@/stores/system'
 import request from '@/utils/request'
+import { getPublicConfig } from '@/api/system'
 
 const router = useRouter()
 const userStore = useUserStore()
+const systemStore = useSystemStore()
 const formRef = ref<FormInstance>()
 const loading = ref(false)
 const captchaImage = ref('')
 const captchaId = ref('')
+const captchaEnabled = ref(true) // 默认开启验证码
 
 const loginForm = reactive({
   username: '',
@@ -137,14 +141,39 @@ const loginForm = reactive({
   remember: false
 })
 
-const rules = {
+// 动态验证规则
+const rules = computed(() => ({
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
-  captchaCode: [{ required: true, message: '请输入验证码', trigger: 'blur' }]
+  captchaCode: captchaEnabled.value
+    ? [{ required: true, message: '请输入验证码', trigger: 'blur' }]
+    : []
+}))
+
+// 加载公开配置
+const loadPublicConfig = async () => {
+  try {
+    const res = await getPublicConfig()
+    if (res) {
+      captchaEnabled.value = res.enableCaptcha !== false
+      // 更新系统配置store（用于显示系统名称、Logo、更新页面标题和favicon）
+      systemStore.updateConfig({
+        systemName: res.systemName,
+        systemLogo: res.systemLogo,
+        systemDescription: res.systemDescription
+      })
+    }
+  } catch (error) {
+    console.error('加载公开配置失败', error)
+    // 默认开启验证码
+    captchaEnabled.value = true
+  }
 }
 
 // 获取验证码
 const refreshCaptcha = async () => {
+  if (!captchaEnabled.value) return
+
   try {
     captchaImage.value = ''
     const res: any = await request.get('/api/v1/captcha')
@@ -209,7 +238,7 @@ const handleLogin = async () => {
   })
 }
 
-onMounted(() => {
+onMounted(async () => {
   // 加载记住的用户名
   const rememberedUsername = localStorage.getItem('rememberedUsername')
   if (rememberedUsername) {
@@ -217,8 +246,13 @@ onMounted(() => {
     loginForm.remember = true
   }
 
-  // 加载验证码
-  refreshCaptcha()
+  // 加载公开配置
+  await loadPublicConfig()
+
+  // 如果开启了验证码，加载验证码
+  if (captchaEnabled.value) {
+    refreshCaptcha()
+  }
 })
 </script>
 

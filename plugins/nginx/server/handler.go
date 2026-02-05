@@ -28,7 +28,10 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+
+	lru "github.com/hashicorp/golang-lru/v2"
 
 	"github.com/gin-gonic/gin"
 	assetbiz "github.com/ydcloud-dy/opshub/internal/biz/asset"
@@ -39,11 +42,57 @@ import (
 	"gorm.io/gorm"
 )
 
+// cacheItem 缓存项
+type cacheItem struct {
+	data      interface{}
+	expiredAt time.Time
+}
+
+// overviewCache 概况数据缓存
+type overviewCache struct {
+	cache *lru.Cache[string, *cacheItem]
+	mu    sync.RWMutex
+}
+
+// newOverviewCache 创建缓存
+func newOverviewCache(size int) *overviewCache {
+	cache, _ := lru.New[string, *cacheItem](size)
+	return &overviewCache{cache: cache}
+}
+
+// get 获取缓存
+func (c *overviewCache) get(key string) (interface{}, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	item, ok := c.cache.Get(key)
+	if !ok {
+		return nil, false
+	}
+	if time.Now().After(item.expiredAt) {
+		c.cache.Remove(key)
+		return nil, false
+	}
+	return item.data, true
+}
+
+// set 设置缓存
+func (c *overviewCache) set(key string, data interface{}, ttl time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.cache.Add(key, &cacheItem{
+		data:      data,
+		expiredAt: time.Now().Add(ttl),
+	})
+}
+
 type Handler struct {
 	db       *gorm.DB
 	repo     *repository.NginxRepository
 	geoSvc   *service.GeolocationService
 	uaParser *service.UAParser
+	cache    *overviewCache // 概况数据缓存
 }
 
 func NewHandler(db *gorm.DB) *Handler {
@@ -52,6 +101,7 @@ func NewHandler(db *gorm.DB) *Handler {
 		repo:     repository.NewNginxRepository(db),
 		geoSvc:   service.NewGeolocationService(),
 		uaParser: service.NewUAParser(),
+		cache:    newOverviewCache(100), // 最多缓存100个数据源的概况
 	}
 }
 
@@ -1524,4 +1574,116 @@ func (h *Handler) GetOverviewDevices(c *gin.Context) {
 		return
 	}
 	response.Success(c, stats)
+}
+
+// GetOverviewAll 获取概况页所有数据（组合接口，提升性能）
+// @Summary 获取概况页所有数据
+// @Description 一次性获取概况页所有统计数据，避免多次API调用
+// @Tags Nginx统计-概况
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Param sourceId query int true "数据源ID"
+// @Param trendMode query string false "趋势模式: hour 或 day" default(hour)
+// @Param trendDate query string false "趋势日期(hour模式下指定)" default(今天)
+// @Param refresh query bool false "强制刷新缓存" default(false)
+// @Success 200 {object} response.Response "获取成功"
+// @Router /nginx/overview/all [get]
+func (h *Handler) GetOverviewAll(c *gin.Context) {
+	sourceID, _ := strconv.ParseUint(c.Query("sourceId"), 10, 32)
+	if sourceID == 0 {
+		response.ErrorCode(c, http.StatusBadRequest, "请指定数据源ID")
+		return
+	}
+
+	trendMode := c.DefaultQuery("trendMode", "hour")
+	trendDate := c.DefaultQuery("trendDate", time.Now().Local().Format("2006-01-02"))
+	forceRefresh := c.Query("refresh") == "true"
+
+	// 缓存键
+	cacheKey := fmt.Sprintf("overview:%d:%s:%s", sourceID, trendMode, trendDate)
+
+	// 尝试从缓存获取（非强制刷新时）
+	if !forceRefresh {
+		if cached, ok := h.cache.get(cacheKey); ok {
+			response.Success(c, cached)
+			return
+		}
+	}
+
+	// 今日时间范围
+	now := time.Now().Local()
+	todayStart, _ := time.ParseInLocation("2006-01-02", now.Format("2006-01-02"), time.Local)
+	todayEnd := todayStart.Add(24 * time.Hour)
+
+	// 使用 channel 收集结果
+	type result struct {
+		key   string
+		value interface{}
+		err   error
+	}
+	results := make(chan result, 9)
+
+	// 并行查询所有数据
+	go func() {
+		count, err := h.repo.GetActiveVisitors(uint(sourceID), 15)
+		results <- result{"activeVisitors", count, err}
+	}()
+
+	go func() {
+		metrics, err := h.repo.GetCoreMetrics(uint(sourceID))
+		results <- result{"coreMetrics", metrics, err}
+	}()
+
+	go func() {
+		trend, err := h.repo.GetOverviewTrend(uint(sourceID), trendMode, trendDate)
+		results <- result{"trend", trend, err}
+	}()
+
+	go func() {
+		visitors, err := h.repo.GetNewVsReturningVisitors(uint(sourceID))
+		results <- result{"visitors", visitors, err}
+	}()
+
+	go func() {
+		referers, err := h.repo.GetTopReferersByVisitors(uint(sourceID), todayStart, todayEnd, 10)
+		results <- result{"topReferers", referers, err}
+	}()
+
+	go func() {
+		pages, err := h.repo.GetTopVisitedPages(uint(sourceID), todayStart, todayEnd, 10)
+		results <- result{"topPages", pages, err}
+	}()
+
+	go func() {
+		entryPages, err := h.repo.GetTopEntryPages(uint(sourceID), todayStart, todayEnd, 10)
+		results <- result{"topEntryPages", entryPages, err}
+	}()
+
+	go func() {
+		geo, err := h.repo.GetOverviewGeo(uint(sourceID), todayStart, todayEnd, "global")
+		results <- result{"geo", geo, err}
+	}()
+
+	go func() {
+		devices, err := h.repo.GetOverviewDevices(uint(sourceID), todayStart, todayEnd)
+		results <- result{"devices", devices, err}
+	}()
+
+	// 收集所有结果
+	data := make(map[string]interface{})
+	for i := 0; i < 9; i++ {
+		r := <-results
+		if r.err != nil {
+			// 某个查询失败不影响其他数据，记录空值
+			data[r.key] = nil
+		} else {
+			data[r.key] = r.value
+		}
+	}
+
+	// 缓存结果（TTL: 30秒，平衡数据实时性和性能）
+	h.cache.set(cacheKey, data, 30*time.Second)
+
+	response.Success(c, data)
 }

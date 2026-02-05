@@ -31,25 +31,27 @@ import (
 	"github.com/spf13/viper"
 	"github.com/ydcloud-dy/opshub/cmd/root"
 	"github.com/ydcloud-dy/opshub/internal/biz"
+	auditmodel "github.com/ydcloud-dy/opshub/internal/biz/audit"
+	rbacmodel "github.com/ydcloud-dy/opshub/internal/biz/rbac"
+	systemmodel "github.com/ydcloud-dy/opshub/internal/biz/system"
 	"github.com/ydcloud-dy/opshub/internal/conf"
 	dataPkg "github.com/ydcloud-dy/opshub/internal/data"
+	systemdata "github.com/ydcloud-dy/opshub/internal/data/system"
 	"github.com/ydcloud-dy/opshub/internal/server"
 	"github.com/ydcloud-dy/opshub/internal/service"
-	rbacmodel "github.com/ydcloud-dy/opshub/internal/biz/rbac"
 	rbacservice "github.com/ydcloud-dy/opshub/internal/service/rbac"
-	auditmodel "github.com/ydcloud-dy/opshub/internal/biz/audit"
+	appLogger "github.com/ydcloud-dy/opshub/pkg/logger"
 	"github.com/ydcloud-dy/opshub/plugins/kubernetes/data/models"
 	k8smodel "github.com/ydcloud-dy/opshub/plugins/kubernetes/model"
-	appLogger "github.com/ydcloud-dy/opshub/pkg/logger"
 	"go.uber.org/zap"
-	"gorm.io/gorm"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 // 全局变量，用于在服务器生命周期内保持连接
 var (
-	globalData  *dataPkg.Data
-	globalRedis *dataPkg.Redis
+	globalData       *dataPkg.Data
+	globalRedis      *dataPkg.Redis
 	globalHTTPServer *server.HTTPServer
 )
 
@@ -183,6 +185,9 @@ func autoMigrate(db *gorm.DB) error {
 		&rbacmodel.SysPosition{},
 		&rbacmodel.SysUserPosition{},
 		&rbacmodel.SysRoleAssetPermission{},
+		// 系统配置相关表
+		&systemmodel.SysConfig{},
+		&systemmodel.SysUserLoginAttempt{},
 		// Kubernetes 集群相关表
 		&models.Cluster{},
 		&k8smodel.UserKubeConfig{},
@@ -271,11 +276,11 @@ func initDefaultData(db *gorm.DB) error {
 	}
 
 	adminUser := &rbacmodel.SysUser{
-		Username:    "admin",
-		Password:    string(hashedPassword),
-		RealName:    "系统管理员",
-		Email:       "admin@opshub.com",
-		Status:      1,
+		Username:     "admin",
+		Password:     string(hashedPassword),
+		RealName:     "系统管理员",
+		Email:        "admin@opshub.com",
+		Status:       1,
 		DepartmentID: dept.ID,
 	}
 	if err := db.Create(adminUser).Error; err != nil {
@@ -342,6 +347,14 @@ func initDefaultData(db *gorm.DB) error {
 	appLogger.Info("默认数据初始化完成")
 	appLogger.Info("默认管理员账号: admin")
 	appLogger.Info("默认管理员密码: 123456")
+
+	// 初始化系统默认配置
+	configRepo := systemdata.NewConfigRepo(db)
+	if err := configRepo.InitDefaultConfigs(context.Background()); err != nil {
+		appLogger.Warn("初始化系统配置失败", zap.Error(err))
+	} else {
+		appLogger.Info("系统默认配置初始化完成")
+	}
 
 	return nil
 }

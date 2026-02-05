@@ -605,35 +605,34 @@ const onSourceChange = async (newSourceId: number) => {
   }
 }
 
-// 并发加载所有数据
+// 并发加载所有数据（并行请求，各自独立返回）
 const loadAllData = async (sourceId?: number) => {
   // 如果没有传入sourceId，使用selectedSourceId.value
   const sid = sourceId ?? selectedSourceId.value
   if (!sid) return
   loading.value = true
-  try {
-    await Promise.all([
-      loadActiveVisitors(sid),
-      loadCoreMetrics(sid),
-      loadTrend(sid),
-      loadVisitors(sid),
-      loadReferers(sid),
-      loadPages(sid),
-      loadEntryPages(sid),
-      loadGeo(sid),
-      loadDevices(sid),
-    ])
 
-    // 保存数据到缓存
-    saveCachedData()
+  // 并行发起所有请求，各自独立处理结果
+  const promises = [
+    loadActiveVisitors(sid),
+    loadCoreMetrics(sid),
+    loadTrend(sid),
+    loadVisitors(sid),
+    loadReferers(sid),
+    loadPages(sid),
+    loadEntryPages(sid),
+    loadGeo(sid),
+    loadDevices(sid),
+  ]
 
-    ElMessage.success('数据加载成功')
-  } catch (error) {
-    console.error('加载数据失败:', error)
-    ElMessage.error('数据加载失败')
-  } finally {
-    loading.value = false
-  }
+  // 等待所有请求完成
+  await Promise.allSettled(promises)
+
+  // 保存数据到缓存
+  saveCachedData()
+
+  loading.value = false
+  ElMessage.success('数据加载成功')
 }
 
 const refreshAll = async () => {

@@ -22,10 +22,10 @@ package rbac
 import (
 	"github.com/gin-gonic/gin"
 	auditbiz "github.com/ydcloud-dy/opshub/internal/biz/audit"
-	auditdata "github.com/ydcloud-dy/opshub/internal/data/audit"
-	rbacService "github.com/ydcloud-dy/opshub/internal/service/rbac"
-	rbacdata "github.com/ydcloud-dy/opshub/internal/data/rbac"
 	rbacbiz "github.com/ydcloud-dy/opshub/internal/biz/rbac"
+	auditdata "github.com/ydcloud-dy/opshub/internal/data/audit"
+	rbacdata "github.com/ydcloud-dy/opshub/internal/data/rbac"
+	rbacService "github.com/ydcloud-dy/opshub/internal/service/rbac"
 	"gorm.io/gorm"
 )
 
@@ -95,6 +95,7 @@ func (s *HTTPServer) RegisterRoutes(r *gin.Engine) {
 			users.POST("/:id/roles", s.userService.AssignUserRoles)
 			users.POST("/:id/positions", s.userService.AssignUserPositions)
 			users.PUT("/:id/reset-password", s.userService.ResetPassword)
+			users.POST("/:id/unlock", s.userService.UnlockUser)
 		}
 
 		// 角色管理

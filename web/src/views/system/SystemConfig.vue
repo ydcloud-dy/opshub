@@ -8,7 +8,7 @@
         </div>
         <div>
           <h2 class="page-title">系统配置</h2>
-          <p class="page-subtitle">管理系统基础配置、安全设置与通知服务</p>
+          <p class="page-subtitle">管理系统基础配置、安全设置</p>
         </div>
       </div>
       <div class="header-actions">
@@ -54,11 +54,31 @@
               </el-input>
             </el-form-item>
             <el-form-item label="系统Logo">
-              <el-input v-model="config.systemLogo" placeholder="请输入系统Logo地址">
-                <template #prefix>
-                  <el-icon><Picture /></el-icon>
-                </template>
-              </el-input>
+              <div class="logo-upload-container">
+                <div class="logo-preview" v-if="config.systemLogo">
+                  <img :src="config.systemLogo" alt="Logo预览" />
+                  <div class="logo-actions">
+                    <el-button type="danger" size="small" @click="removeLogo">
+                      <el-icon><Delete /></el-icon>
+                      删除
+                    </el-button>
+                  </div>
+                </div>
+                <el-upload
+                  v-else
+                  class="logo-uploader"
+                  :show-file-list="false"
+                  :before-upload="beforeLogoUpload"
+                  :http-request="handleLogoUpload"
+                  accept=".png,.jpg,.jpeg,.ico,.svg"
+                >
+                  <div class="upload-trigger">
+                    <el-icon class="upload-icon"><Plus /></el-icon>
+                    <span class="upload-text">上传Logo</span>
+                  </div>
+                </el-upload>
+                <div class="upload-tip">支持 png/jpg/jpeg/ico/svg 格式，大小不超过 2MB</div>
+              </div>
             </el-form-item>
             <el-form-item label="系统描述">
               <el-input
@@ -67,13 +87,6 @@
                 :rows="3"
                 placeholder="请输入系统描述"
               />
-            </el-form-item>
-            <el-form-item label="版权信息">
-              <el-input v-model="config.copyright" placeholder="请输入版权信息">
-                <template #prefix>
-                  <el-icon><Document /></el-icon>
-                </template>
-              </el-input>
             </el-form-item>
           </el-form>
         </div>
@@ -110,105 +123,6 @@
             </el-form-item>
           </el-form>
         </div>
-
-        <!-- 邮件配置 -->
-        <div v-show="activeNav === 2" class="config-section">
-          <div class="section-header">
-            <el-icon class="section-icon"><Message /></el-icon>
-            <span>邮件配置</span>
-          </div>
-          <el-form :model="config" label-width="140px" class="config-form">
-            <el-form-item label="启用邮件通知">
-              <el-switch
-                v-model="config.enableEmailNotification"
-                active-text="开启"
-                inactive-text="关闭"
-              />
-            </el-form-item>
-            <el-form-item label="SMTP服务器">
-              <el-input v-model="config.smtpHost" placeholder="smtp.example.com">
-                <template #prefix>
-                  <el-icon><Link /></el-icon>
-                </template>
-              </el-input>
-            </el-form-item>
-            <el-form-item label="SMTP端口">
-              <el-input-number v-model="config.smtpPort" :min="1" :max="65535" />
-            </el-form-item>
-            <el-form-item label="SMTP用户名">
-              <el-input v-model="config.smtpUsername" placeholder="请输入SMTP用户名">
-                <template #prefix>
-                  <el-icon><User /></el-icon>
-                </template>
-              </el-input>
-            </el-form-item>
-            <el-form-item label="SMTP密码">
-              <el-input v-model="config.smtpPassword" type="password" show-password placeholder="请输入SMTP密码">
-                <template #prefix>
-                  <el-icon><Lock /></el-icon>
-                </template>
-              </el-input>
-            </el-form-item>
-            <el-form-item label="发件人邮箱">
-              <el-input v-model="config.smtpFrom" placeholder="noreply@example.com">
-                <template #prefix>
-                  <el-icon><Message /></el-icon>
-                </template>
-              </el-input>
-            </el-form-item>
-            <el-form-item label="发件人名称">
-              <el-input v-model="config.smtpFromName" placeholder="OpsHub System">
-                <template #prefix>
-                  <el-icon><UserFilled /></el-icon>
-                </template>
-              </el-input>
-            </el-form-item>
-            <el-form-item>
-              <el-button @click="handleTestEmail" :loading="testingEmail">
-                <el-icon style="margin-right: 4px;"><Promotion /></el-icon>
-                测试邮件
-              </el-button>
-            </el-form-item>
-          </el-form>
-        </div>
-
-        <!-- 其他配置 -->
-        <div v-show="activeNav === 3" class="config-section">
-          <div class="section-header">
-            <el-icon class="section-icon"><Tools /></el-icon>
-            <span>其他配置</span>
-          </div>
-          <el-form :model="config" label-width="140px" class="config-form">
-            <el-form-item label="开启用户注册">
-              <el-switch
-                v-model="config.enableRegister"
-                active-text="开启"
-                inactive-text="关闭"
-              />
-            </el-form-item>
-            <el-form-item label="默认用户角色">
-              <el-select v-model="config.defaultUserRole" placeholder="请选择默认角色" style="width: 200px;">
-                <el-option label="普通用户" value="user" />
-                <el-option label="访客" value="guest" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="日志保留天数">
-              <el-input-number v-model="config.logRetentionDays" :min="7" :max="365" />
-              <span class="form-tip">超过天数的日志将被自动清理</span>
-            </el-form-item>
-            <el-form-item label="文件上传限制">
-              <el-input-number v-model="config.maxUploadSize" :min="1" :max="100" />
-              <span class="form-tip">单位：MB</span>
-            </el-form-item>
-            <el-form-item label="允许上传类型">
-              <el-input v-model="config.allowedFileTypes" placeholder=".jpg,.png,.pdf,.doc,.docx">
-                <template #prefix>
-                  <el-icon><Files /></el-icon>
-                </template>
-              </el-input>
-            </el-form-item>
-          </el-form>
-        </div>
       </div>
     </div>
   </div>
@@ -218,20 +132,24 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
-  Setting, Check, HomeFilled, Lock, Message, Tools,
-  Edit, Picture, Document, Link, User, UserFilled,
-  Promotion, Files
+  Setting, Check, HomeFilled, Lock,
+  Edit, Plus, Delete
 } from '@element-plus/icons-vue'
+import {
+  getAllConfig,
+  saveBasicConfig,
+  saveSecurityConfig,
+  uploadLogo
+} from '@/api/system'
+import { useSystemStore } from '@/stores/system'
 
+const systemStore = useSystemStore()
 const saving = ref(false)
-const testingEmail = ref(false)
 const activeNav = ref(0)
 
 const navItems = [
   { label: '基础配置', icon: 'HomeFilled' },
-  { label: '安全配置', icon: 'Lock' },
-  { label: '邮件配置', icon: 'Message' },
-  { label: '其他配置', icon: 'Tools' }
+  { label: '安全配置', icon: 'Lock' }
 ]
 
 const config = reactive({
@@ -239,38 +157,33 @@ const config = reactive({
   systemName: 'OpsHub',
   systemLogo: '',
   systemDescription: '运维管理平台',
-  copyright: '© 2025 OpsHub. All rights reserved.',
 
   // 安全配置
   passwordMinLength: 8,
   sessionTimeout: 3600,
   enableCaptcha: true,
   maxLoginAttempts: 5,
-  lockoutDuration: 300,
-
-  // 邮件配置
-  enableEmailNotification: false,
-  smtpHost: '',
-  smtpPort: 587,
-  smtpUsername: '',
-  smtpPassword: '',
-  smtpFrom: '',
-  smtpFromName: 'OpsHub System',
-
-  // 其他配置
-  enableRegister: false,
-  defaultUserRole: 'user',
-  logRetentionDays: 30,
-  maxUploadSize: 10,
-  allowedFileTypes: '.jpg,.png,.gif,.pdf,.doc,.docx,.xls,.xlsx'
+  lockoutDuration: 300
 })
 
 const loadConfig = async () => {
   try {
-    // TODO: 从后端加载配置
-    const savedConfig = localStorage.getItem('system_config')
-    if (savedConfig) {
-      Object.assign(config, JSON.parse(savedConfig))
+    const res = await getAllConfig()
+    if (res) {
+      // 基础配置
+      if (res.basic) {
+        config.systemName = res.basic.systemName || 'OpsHub'
+        config.systemLogo = res.basic.systemLogo || ''
+        config.systemDescription = res.basic.systemDescription || '运维管理平台'
+      }
+      // 安全配置
+      if (res.security) {
+        config.passwordMinLength = res.security.passwordMinLength || 8
+        config.sessionTimeout = res.security.sessionTimeout || 3600
+        config.enableCaptcha = res.security.enableCaptcha !== false
+        config.maxLoginAttempts = res.security.maxLoginAttempts || 5
+        config.lockoutDuration = res.security.lockoutDuration || 300
+      }
     }
   } catch (error) {
     console.error('加载配置失败', error)
@@ -280,9 +193,29 @@ const loadConfig = async () => {
 const handleSave = async () => {
   saving.value = true
   try {
-    // TODO: 调用后端API保存配置
-    localStorage.setItem('system_config', JSON.stringify(config))
-    await new Promise(resolve => setTimeout(resolve, 500))
+    // 保存基础配置
+    await saveBasicConfig({
+      systemName: config.systemName,
+      systemLogo: config.systemLogo,
+      systemDescription: config.systemDescription
+    })
+
+    // 保存安全配置
+    await saveSecurityConfig({
+      passwordMinLength: config.passwordMinLength,
+      sessionTimeout: config.sessionTimeout,
+      enableCaptcha: config.enableCaptcha,
+      maxLoginAttempts: config.maxLoginAttempts,
+      lockoutDuration: config.lockoutDuration
+    })
+
+    // 更新全局系统配置（更新侧边栏Logo、网页标题、favicon）
+    systemStore.updateConfig({
+      systemName: config.systemName,
+      systemLogo: config.systemLogo,
+      systemDescription: config.systemDescription
+    })
+
     ElMessage.success('配置保存成功')
   } catch (error) {
     ElMessage.error('保存失败')
@@ -291,22 +224,36 @@ const handleSave = async () => {
   }
 }
 
-const handleTestEmail = async () => {
-  if (!config.smtpHost || !config.smtpFrom) {
-    ElMessage.warning('请先配置SMTP服务器和发件人邮箱')
-    return
-  }
+const beforeLogoUpload = (file: File) => {
+  const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/x-icon', 'image/svg+xml']
+  const isValidType = validTypes.includes(file.type) || file.name.endsWith('.ico') || file.name.endsWith('.svg')
+  const isLt2M = file.size / 1024 / 1024 < 2
 
-  testingEmail.value = true
-  try {
-    // TODO: 调用后端API发送测试邮件
-    await new Promise(resolve => setTimeout(resolve, 1500))
-    ElMessage.success('测试邮件发送成功，请检查收件箱')
-  } catch (error) {
-    ElMessage.error('测试邮件发送失败')
-  } finally {
-    testingEmail.value = false
+  if (!isValidType) {
+    ElMessage.error('只能上传 png/jpg/jpeg/ico/svg 格式的图片!')
+    return false
   }
+  if (!isLt2M) {
+    ElMessage.error('图片大小不能超过 2MB!')
+    return false
+  }
+  return true
+}
+
+const handleLogoUpload = async (options: any) => {
+  try {
+    const res = await uploadLogo(options.file)
+    if (res && res.url) {
+      config.systemLogo = res.url
+      ElMessage.success('Logo上传成功')
+    }
+  } catch (error) {
+    ElMessage.error('Logo上传失败')
+  }
+}
+
+const removeLogo = () => {
+  config.systemLogo = ''
 }
 
 onMounted(() => {
@@ -528,6 +475,91 @@ onMounted(() => {
 
 .form-tip {
   margin-left: 12px;
+  font-size: 12px;
+  color: #909399;
+}
+
+/* Logo上传样式 */
+.logo-upload-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.logo-preview {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  border: 1px solid #dcdfe6;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #f5f7fa;
+}
+
+.logo-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.logo-preview .logo-actions {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.logo-preview:hover .logo-actions {
+  opacity: 1;
+}
+
+.logo-uploader {
+  width: 120px;
+  height: 120px;
+}
+
+.logo-uploader :deep(.el-upload) {
+  width: 100%;
+  height: 100%;
+}
+
+.upload-trigger {
+  width: 120px;
+  height: 120px;
+  border: 2px dashed #dcdfe6;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: #fafafa;
+}
+
+.upload-trigger:hover {
+  border-color: #d4af37;
+  background: #fff;
+}
+
+.upload-icon {
+  font-size: 32px;
+  color: #909399;
+  margin-bottom: 8px;
+}
+
+.upload-text {
+  font-size: 12px;
+  color: #909399;
+}
+
+.upload-tip {
   font-size: 12px;
   color: #909399;
 }
