@@ -45,3 +45,10 @@ web/dist/
 
 web/.vite/
 web/public/uploads/*
+
+# GeoIP Database (downloaded at runtime)
+data/GeoLite2-City.mmdb
+data/*.mmdb
+
+# SQLite database
+data/*.db

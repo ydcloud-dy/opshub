@@ -33,12 +33,14 @@ import (
 	"github.com/ydcloud-dy/opshub/internal/plugin"
 	assetserver "github.com/ydcloud-dy/opshub/internal/server/asset"
 	auditserver "github.com/ydcloud-dy/opshub/internal/server/audit"
+	identityserver "github.com/ydcloud-dy/opshub/internal/server/identity"
 	"github.com/ydcloud-dy/opshub/internal/server/rbac"
 	"github.com/ydcloud-dy/opshub/internal/service"
 	appLogger "github.com/ydcloud-dy/opshub/pkg/logger"
 	"github.com/ydcloud-dy/opshub/pkg/middleware"
 	k8splugin "github.com/ydcloud-dy/opshub/plugins/kubernetes"
 	monitorplugin "github.com/ydcloud-dy/opshub/plugins/monitor"
+	nginxplugin "github.com/ydcloud-dy/opshub/plugins/nginx"
 	sslcertplugin "github.com/ydcloud-dy/opshub/plugins/ssl-cert"
 	taskplugin "github.com/ydcloud-dy/opshub/plugins/task"
 	testplugin "github.com/ydcloud-dy/opshub/plugins/test"
@@ -93,9 +95,9 @@ func NewHTTPServer(conf *conf.Config, svc *service.Service, db *gorm.DB) *HTTPSe
 		appLogger.Error("注册Monitor插件失败", zap.Error(err))
 	}
 
-	// 注册 test 插件
-	if err := pluginMgr.Register(testplugin.New()); err != nil {
-		appLogger.Error("注册test插件失败", zap.Error(err))
+	// 注册 Nginx 插件
+	if err := pluginMgr.Register(nginxplugin.New()); err != nil {
+		appLogger.Error("注册Nginx插件失败", zap.Error(err))
 	}
 
 	// 注册 ssl-cert 插件
@@ -170,6 +172,14 @@ func (s *HTTPServer) registerRoutes(router *gin.Engine, jwtSecret string) {
 
 		// 注册 Asset 路由
 		assetServer.RegisterRoutes(v1)
+
+		// 注册 Identity 路由
+		identityServer, err := identityserver.NewIdentityServices(s.db)
+		if err != nil {
+			appLogger.Error("创建Identity服务失败", zap.Error(err))
+		} else {
+			identityServer.RegisterRoutes(v1)
+		}
 
 		// 上传接口
 		v1.POST("/upload/avatar", s.uploadSrv.UploadAvatar)

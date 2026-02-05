@@ -1,0 +1,471 @@
+/* ========== Overview.vue 原始样式备份 ========== */
+/* 备份时间: 2026-02-03 */
+/* 用于恢复原始白色风格 */
+
+<style scoped>
+.nginx-overview-container {
+  padding: 0;
+  background-color: transparent;
+}
+
+/* 页面头部 */
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+  padding: 16px 20px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+.page-title-group {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.page-title-icon {
+  width: 48px;
+  height: 48px;
+  background: linear-gradient(135deg, #000 0%, #1a1a1a 100%);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #d4af37;
+  font-size: 22px;
+  flex-shrink: 0;
+  border: 1px solid #d4af37;
+}
+
+.page-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #303133;
+  line-height: 1.3;
+}
+
+.page-subtitle {
+  margin: 4px 0 0 0;
+  font-size: 13px;
+  color: #909399;
+}
+
+.header-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.empty-tip {
+  padding: 80px 0;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+/* 顶部区域: 活跃访客 + 核心指标 */
+.top-section {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.active-visitors-card {
+  background: linear-gradient(135deg, #409eff 0%, #337ecc 100%);
+  border-radius: 8px;
+  padding: 24px 20px;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 12px rgba(64, 158, 255, 0.25);
+}
+
+.av-number {
+  font-size: 42px;
+  font-weight: 700;
+  line-height: 1;
+  margin-bottom: 8px;
+}
+
+.av-label {
+  font-size: 14px;
+  opacity: 0.9;
+  margin-bottom: 4px;
+}
+
+.av-status {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.core-metrics-panel {
+  background: #fff;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+.metric-column {
+  text-align: center;
+  padding: 0 8px;
+  border-right: 1px solid #f0f0f0;
+}
+
+.metric-column:last-child {
+  border-right: none;
+}
+
+.metric-header {
+  font-size: 13px;
+  color: #909399;
+  margin-bottom: 8px;
+}
+
+.metric-main {
+  font-size: 28px;
+  font-weight: 700;
+  color: #303133;
+  margin-bottom: 10px;
+}
+
+.metric-sub {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  margin-bottom: 4px;
+  padding: 0 4px;
+}
+
+.sub-label {
+  color: #909399;
+}
+
+.sub-value {
+  color: #606266;
+}
+
+.predict-up {
+  color: #67c23a;
+}
+
+.predict-down {
+  color: #f56c6c;
+}
+
+.change-up {
+  color: #67c23a;
+  font-size: 11px;
+  margin-left: 6px;
+}
+
+.change-down {
+  color: #f56c6c;
+  font-size: 11px;
+  margin-left: 6px;
+}
+
+.status-4xx {
+  color: #e6a23c;
+}
+
+.status-5xx {
+  color: #f56c6c;
+}
+
+/* 中间区域: 趋势 + 新老访客 */
+.middle-section {
+  display: grid;
+  grid-template-columns: 3fr 2fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.chart-card {
+  background: #fff;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+.chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.chart-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.chart-content {
+  height: 280px;
+}
+
+.visitor-stats {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.visitor-stat-row {
+  display: flex;
+  gap: 24px;
+  justify-content: center;
+}
+
+.visitor-stat-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.vs-label { color: #909399; }
+.vs-value { font-weight: 600; color: #303133; }
+.vs-pct { color: #909399; font-size: 12px; }
+
+/* 三列区域: 来路 | 受访页 | 入口页 */
+.three-column-section {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.list-card {
+  background: #fff;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+.list-header {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.list-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.list-body {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.list-empty {
+  text-align: center;
+  color: #909399;
+  padding: 40px 0;
+  font-size: 13px;
+}
+
+.list-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid #fafafa;
+}
+
+.list-item:last-child {
+  border-bottom: none;
+}
+
+.list-item-name {
+  font-size: 13px;
+  color: #303133;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  grid-column: 1;
+}
+
+.list-item-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: #303133;
+  text-align: right;
+  grid-column: 2;
+}
+
+.list-item-bar {
+  grid-column: 1 / -1;
+  height: 4px;
+  background: #f5f7fa;
+  border-radius: 2px;
+}
+
+.list-item-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #409eff, #79bbff);
+  border-radius: 2px;
+  transition: width 0.3s;
+}
+
+/* 底部区域: 地域分布 + 终端设备 */
+.bottom-section {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.geo-list {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.geo-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 4px;
+  border-bottom: 1px solid #fafafa;
+  font-size: 13px;
+}
+
+.geo-item:last-child {
+  border-bottom: none;
+}
+
+.geo-rank {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  background: #f5f7fa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: #909399;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.geo-item:nth-child(1) .geo-rank,
+.geo-item:nth-child(2) .geo-rank,
+.geo-item:nth-child(3) .geo-rank {
+  background: #409eff;
+  color: #fff;
+}
+
+.geo-name {
+  flex: 1;
+  color: #303133;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.geo-count {
+  font-weight: 600;
+  color: #303133;
+}
+
+.geo-pct {
+  color: #909399;
+  width: 50px;
+  text-align: right;
+}
+
+.device-stats {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.device-stat-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 13px;
+}
+
+.ds-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.ds-label {
+  flex: 1;
+  color: #606266;
+}
+
+.ds-value {
+  font-weight: 600;
+  color: #303133;
+}
+
+.ds-pct {
+  color: #909399;
+  font-size: 12px;
+}
+
+/* 响应式 */
+@media (max-width: 1200px) {
+  .top-section {
+    grid-template-columns: 1fr;
+  }
+
+  .middle-section,
+  .bottom-section {
+    grid-template-columns: 1fr;
+  }
+
+  .three-column-section {
+    grid-template-columns: 1fr;
+  }
+
+  .metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .metrics-grid {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
+
+/* ========== ECharts 原始配置 ========== */
+/* 趋势图配色 */
+trendChart colors: ['#409eff', '#e6a23c']
+line areaStyle: rgba(64, 158, 255, 0.1), rgba(230, 162, 60, 0.1)
+axisLine lineStyle: #e0e0e0
+splitLine lineStyle: #f0f0f0
+
+/* 新老访客图配色 */
+visitorChart colors: ['#409eff', '#67c23a']
+
+/* 终端设备图配色 */
+deviceColors: ['#409eff', '#67c23a', '#e6a23c', '#f56c6c', '#909399']
