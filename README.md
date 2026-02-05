@@ -74,7 +74,10 @@ OpsHub 是一个功能强大的**插件化运维管理平台**，采用前后端
       <td><img src="./docs/images/xj.png" alt="集群巡检"/></td>
       <td><img src="./docs/images/ym.png" alt="域名监控"/></td>
     </tr>
-
+    <tr>
+      <td><img src="./docs/images/Nginx-overview.png" alt="集群巡检"/></td>
+      <td><img src="./docs/images/nginx_ips.png" alt="域名监控"/></td>
+    </tr>
   </table>
 
 ---
@@ -131,6 +134,17 @@ OpsHub 是一个功能强大的**插件化运维管理平台**，采用前后端
 |:-----|:-----|
 | 域名监控 | SSL 证书监控、到期提醒 |
 | 告警管理 | 告警规则配置、多渠道通知 |
+
+#### 📈 Nginx 日志分析
+
+| 功能 | 描述                     |
+|:-----|:-----------------------|
+| 数据源管理 | 支持主机 Nginx             |
+| 概况统计 | 实时访客、PV/UV、今昨对比、趋势图表   |
+| Top 分析 | 来路排行、受访页面、入口页面、地域分布    |
+| 数据日报 | 每日请求数、UV、带宽、响应时间汇总     |
+| 访问明细 | 访问日志查询、地理位置、设备信息       |
+| IP 地理解析 | 使用 GeoLite2 解析 IP 地理位置 |
 
 ---
 
@@ -257,6 +271,7 @@ docker-compose up -d
 | 📙 任务中心插件 | [docs/plugins/task.md](docs/plugins/task.md) |
 | 📕 监控中心插件 | [docs/plugins/monitor.md](docs/plugins/monitor.md) |
 | 🔐 SSL证书插件 | [docs/plugins/ssl-cert.md](docs/plugins/ssl-cert.md) |
+| 📈 Nginx日志分析插件 | [docs/plugins/nginx.md](docs/plugins/nginx.md) |
 
 ---
 
@@ -281,7 +296,8 @@ opshub/
 │   ├── kubernetes/        # K8S 管理插件
 │   ├── task/              # 任务中心插件
 │   ├── monitor/           # 监控中心插件
-│   └── ssl-cert/          # SSL证书管理插件
+│   ├── ssl-cert/          # SSL证书管理插件
+│   └── nginx/             # Nginx日志分析插件
 ├── migrations/             # 数据库脚本
 ├── web/                    # 前端代码
 │   ├── src/
