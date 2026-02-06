@@ -50,9 +50,9 @@ body.el-popup-parent--hidden {
   height: 0 !important;
 }
 
-/* 弹窗wrapper也隐藏滚动条 */
+/* 弹窗wrapper允许滚动，但隐藏滚动条 */
 .el-overlay-dialog {
-  overflow: hidden !important;
+  overflow: auto !important;
   scrollbar-width: none !important;
   -ms-overflow-style: none !important;
 }
