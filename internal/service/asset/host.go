@@ -35,10 +35,10 @@ import (
 )
 
 type HostService struct {
-	hostUseCase              *asset.HostUseCase
-	credentialUseCase        *asset.CredentialUseCase
-	cloudUseCase             *asset.CloudAccountUseCase
-	assetPermissionUseCase   *rbac.AssetPermissionUseCase
+	hostUseCase            *asset.HostUseCase
+	credentialUseCase      *asset.CredentialUseCase
+	cloudUseCase           *asset.CloudAccountUseCase
+	assetPermissionUseCase *rbac.AssetPermissionUseCase
 }
 
 func NewHostService(hostUseCase *asset.HostUseCase, credentialUseCase *asset.CredentialUseCase, cloudUseCase *asset.CloudAccountUseCase, assetPermissionUseCase *rbac.AssetPermissionUseCase) *HostService {
@@ -174,6 +174,7 @@ func (s *HostService) GetHost(c *gin.Context) {
 // @Param pageSize query int false "每页数量" default(10)
 // @Param keyword query string false "搜索关键字"
 // @Param groupId query int false "分组ID"
+// @Param status query int false "主机状态(1:在线 0:离线 -1:未知)"
 // @Success 200 {object} response.Response{} "获取成功"
 // @Router /api/v1/hosts [get]
 func (s *HostService) ListHosts(c *gin.Context) {
@@ -191,6 +192,15 @@ func (s *HostService) ListHosts(c *gin.Context) {
 		}
 	}
 
+	// 支持状态筛选
+	var status *int
+	if statusStr := c.Query("status"); statusStr != "" {
+		s, err := strconv.Atoi(statusStr)
+		if err == nil {
+			status = &s
+		}
+	}
+
 	// 获取用户ID并检查权限
 	var accessibleHostIDs []uint
 	userID := rbacService.GetUserID(c)
@@ -205,16 +215,16 @@ func (s *HostService) ListHosts(c *gin.Context) {
 		}
 	}
 
-	hosts, total, err := s.hostUseCase.List(c.Request.Context(), page, pageSize, keyword, groupID, accessibleHostIDs)
+	hosts, total, err := s.hostUseCase.List(c.Request.Context(), page, pageSize, keyword, groupID, accessibleHostIDs, status)
 	if err != nil {
 		response.ErrorCode(c, http.StatusInternalServerError, "查询失败: "+err.Error())
 		return
 	}
 
 	response.Success(c, gin.H{
-		"list":  hosts,
-		"total": total,
-		"page":  page,
+		"list":     hosts,
+		"total":    total,
+		"page":     page,
 		"pageSize": pageSize,
 	})
 }

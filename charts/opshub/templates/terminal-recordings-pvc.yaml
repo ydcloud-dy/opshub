@@ -1,0 +1,20 @@
+{{- if .Values.backend.terminalRecordings.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "opshub.fullname" . }}-terminal-recordings
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "opshub.backend.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    {{- toYaml .Values.backend.terminalRecordings.persistence.accessModes | nindent 4 }}
+  {{- if .Values.backend.terminalRecordings.persistence.storageClass }}
+  storageClassName: {{ .Values.backend.terminalRecordings.persistence.storageClass | quote }}
+  {{- else if .Values.global.storageClass }}
+  storageClassName: {{ .Values.global.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.backend.terminalRecordings.persistence.size }}
+{{- end }}

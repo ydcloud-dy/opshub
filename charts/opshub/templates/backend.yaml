@@ -125,6 +125,10 @@ spec:
           volumeMounts:
             - name: geoip-data
               mountPath: /app/data
+            {{- if .Values.backend.terminalRecordings.persistence.enabled }}
+            - name: terminal-recordings
+              mountPath: /app/data/terminal-recordings
+            {{- end }}
           {{- if .Values.backend.livenessProbe.enabled }}
           livenessProbe:
             httpGet:
@@ -158,6 +162,11 @@ spec:
       volumes:
         - name: geoip-data
           emptyDir: {}
+        {{- if .Values.backend.terminalRecordings.persistence.enabled }}
+        - name: terminal-recordings
+          persistentVolumeClaim:
+            claimName: {{ include "opshub.fullname" . }}-terminal-recordings
+        {{- end }}
 ---
 apiVersion: v1
 kind: Service

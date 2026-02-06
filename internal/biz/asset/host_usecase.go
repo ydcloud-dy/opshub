@@ -31,8 +31,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aliyun/alibaba-cloud-sdk-go/services/ecs"
 	"github.com/aliyun/alibaba-cloud-sdk-go/sdk/requests"
+	"github.com/aliyun/alibaba-cloud-sdk-go/services/ecs"
 	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common"
 	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/profile"
 	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cvm/v20170312"
@@ -132,7 +132,7 @@ func (uc *HostUseCase) GetByID(ctx context.Context, id uint) (*HostInfoVO, error
 }
 
 // List 分页查询主机列表
-func (uc *HostUseCase) List(ctx context.Context, page, pageSize int, keyword string, groupID *uint, accessibleHostIDs []uint) ([]*HostInfoVO, int64, error) {
+func (uc *HostUseCase) List(ctx context.Context, page, pageSize int, keyword string, groupID *uint, accessibleHostIDs []uint, status *int) ([]*HostInfoVO, int64, error) {
 	// 如果指定了分组ID，获取所有子孙分组ID
 	var groupIDs []uint
 	if groupID != nil && *groupID > 0 {
@@ -144,7 +144,7 @@ func (uc *HostUseCase) List(ctx context.Context, page, pageSize int, keyword str
 		}
 	}
 
-	hosts, total, err := uc.hostRepo.List(ctx, page, pageSize, keyword, groupIDs, accessibleHostIDs)
+	hosts, total, err := uc.hostRepo.List(ctx, page, pageSize, keyword, groupIDs, accessibleHostIDs, status)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -216,39 +216,39 @@ func (uc *HostUseCase) toInfoVO(host *Host) *HostInfoVO {
 	}
 
 	return &HostInfoVO{
-		ID:               host.ID,
-		Name:             host.Name,
-		GroupID:          host.GroupID,
-		Type:             host.Type,
-		TypeText:         typeText,
-		CloudProvider:    host.CloudProvider,
+		ID:                host.ID,
+		Name:              host.Name,
+		GroupID:           host.GroupID,
+		Type:              host.Type,
+		TypeText:          typeText,
+		CloudProvider:     host.CloudProvider,
 		CloudProviderText: cloudProviderText,
-		CloudInstanceID:  host.CloudInstanceID,
-		SSHUser:          host.SSHUser,
-		IP:               host.IP,
-		Port:             host.Port,
-		CredentialID:     host.CredentialID,
-		Tags:             tags,
-		Description:      host.Description,
-		Status:           host.Status,
-		StatusText:       statusText,
-		LastSeen:         lastSeen,
-		OS:               host.OS,
-		Kernel:           host.Kernel,
-		Arch:             host.Arch,
-		CreateTime:       host.CreatedAt.Format("2006-01-02 15:04:05"),
-		UpdateTime:       host.UpdatedAt.Format("2006-01-02 15:04:05"),
+		CloudInstanceID:   host.CloudInstanceID,
+		SSHUser:           host.SSHUser,
+		IP:                host.IP,
+		Port:              host.Port,
+		CredentialID:      host.CredentialID,
+		Tags:              tags,
+		Description:       host.Description,
+		Status:            host.Status,
+		StatusText:        statusText,
+		LastSeen:          lastSeen,
+		OS:                host.OS,
+		Kernel:            host.Kernel,
+		Arch:              host.Arch,
+		CreateTime:        host.CreatedAt.Format("2006-01-02 15:04:05"),
+		UpdateTime:        host.UpdatedAt.Format("2006-01-02 15:04:05"),
 		// 扩展信息
-		CPUCores:         host.CPUCores,
-		CPUUsage:         host.CPUUsage,
-		MemoryTotal:      host.MemoryTotal,
-		MemoryUsed:       host.MemoryUsed,
-		MemoryUsage:      host.MemoryUsage,
-		DiskTotal:        host.DiskTotal,
-		DiskUsed:         host.DiskUsed,
-		DiskUsage:        host.DiskUsage,
-		Uptime:           host.Uptime,
-		Hostname:         host.Hostname,
+		CPUCores:    host.CPUCores,
+		CPUUsage:    host.CPUUsage,
+		MemoryTotal: host.MemoryTotal,
+		MemoryUsed:  host.MemoryUsed,
+		MemoryUsage: host.MemoryUsage,
+		DiskTotal:   host.DiskTotal,
+		DiskUsed:    host.DiskUsed,
+		DiskUsage:   host.DiskUsage,
+		Uptime:      host.Uptime,
+		Hostname:    host.Hostname,
 	}
 }
 
@@ -1046,11 +1046,11 @@ func (uc *CloudAccountUseCase) listAliyunInstances(account *CloudAccount, region
 
 			allInstances = append(allInstances, CloudInstance{
 				InstanceID: instance.InstanceId,
-				Name:      instance.InstanceName,
-				PublicIP:  publicIP,
-				PrivateIP: privateIP,
-				OS:        instance.OSName,
-				Status:    instance.Status,
+				Name:       instance.InstanceName,
+				PublicIP:   publicIP,
+				PrivateIP:  privateIP,
+				OS:         instance.OSName,
+				Status:     instance.Status,
 			})
 		}
 
@@ -1147,7 +1147,6 @@ func (uc *CloudAccountUseCase) listTencentInstances(account *CloudAccount, regio
 
 	return allInstances, nil
 }
-
 
 // listJDCloudInstances 获取京东云实例列表
 func (uc *CloudAccountUseCase) listJDCloudInstances(account *CloudAccount, region string) ([]CloudInstance, error) {
@@ -1492,7 +1491,6 @@ func (uc *HostUseCase) ImportFromExcelWithType(ctx context.Context, excelData []
 
 	return result, nil
 }
-
 
 // ListFiles 列出主机目录下的文件
 func (uc *HostUseCase) ListFiles(ctx context.Context, hostID uint, remotePath string) ([]*sshclient.FileInfo, error) {

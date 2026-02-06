@@ -38,6 +38,21 @@ backend:
       memory: "512Mi"
       cpu: "500m"
 
+  # 终端录像存储配置（多副本部署时必须启用共享存储）
+  # 需要支持 ReadWriteMany (RWX) 的存储类，如 NFS、CephFS、云厂商共享文件存储
+  terminalRecordings:
+    # 是否启用持久化存储（多副本部署时建议启用）
+    persistence:
+      enabled: false
+      # 存储类（需支持 RWX 访问模式）
+      # 示例: nfs-client, cephfs, alicloud-nas, tencentcloud-cfs
+      storageClass: ""
+      # 存储大小
+      size: 10Gi
+      # 访问模式（多副本必须使用 ReadWriteMany）
+      accessModes:
+        - ReadWriteMany
+
   # 健康检查
   livenessProbe:
     enabled: true

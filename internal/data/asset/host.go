@@ -99,7 +99,7 @@ func (r *hostRepo) GetByID(ctx context.Context, id uint) (*asset.Host, error) {
 }
 
 // List 列表查询
-func (r *hostRepo) List(ctx context.Context, page, pageSize int, keyword string, groupIDs []uint, accessibleHostIDs []uint) ([]*asset.Host, int64, error) {
+func (r *hostRepo) List(ctx context.Context, page, pageSize int, keyword string, groupIDs []uint, accessibleHostIDs []uint, status *int) ([]*asset.Host, int64, error) {
 	var hosts []*asset.Host
 	var total int64
 
@@ -112,6 +112,11 @@ func (r *hostRepo) List(ctx context.Context, page, pageSize int, keyword string,
 	// 添加分组ID筛选（支持多个分组ID）
 	if len(groupIDs) > 0 {
 		query = query.Where("group_id IN ?", groupIDs)
+	}
+
+	// 添加状态筛选
+	if status != nil {
+		query = query.Where("status = ?", *status)
 	}
 
 	// 添加可访问主机ID筛选
@@ -177,7 +182,7 @@ func (r *hostRepo) CountByCredentialID(ctx context.Context, credentialID uint) (
 
 // credentialRepo 凭证仓库
 type credentialRepo struct {
-	db           *gorm.DB
+	db            *gorm.DB
 	encryptionKey []byte
 }
 
@@ -186,7 +191,7 @@ func NewCredentialRepo(db *gorm.DB) asset.CredentialRepo {
 	// AES-256要求密钥长度必须是32字节（256位）
 	encryptionKey := []byte("opshub-enc-key-32-bytes-long!!!!")
 	return &credentialRepo{
-		db:           db,
+		db:            db,
 		encryptionKey: encryptionKey,
 	}
 }
