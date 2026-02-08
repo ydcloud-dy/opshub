@@ -399,7 +399,10 @@
       class="beauty-dialog"
       destroy-on-close
     >
-      <CertificateUpload @submit="handleCertificateUploaded" />
+      <CertificateUpload 
+        v-if="importDialogVisible"
+        v-model:visible="importDialogVisible"
+        @submit="handleCertificateUploaded" />
     </el-dialog>
 
     <!-- 编辑对话框 -->
