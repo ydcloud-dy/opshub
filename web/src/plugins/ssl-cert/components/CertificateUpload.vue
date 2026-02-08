@@ -209,6 +209,8 @@ interface CertInfo {
 
 const emit = defineEmits<{
   submit: [data: CertInfo]
+  cancel: []
+  'update:visible': [visible: boolean]
 }>()
 
 const activeTab = ref('upload')
@@ -431,6 +433,8 @@ const handleUploadCancel = () => {
   uploadForm.keyFile = null
   if (certFileInput.value) certFileInput.value.value = ''
   if (keyFileInput.value) keyFileInput.value.value = ''
+  emit('update:visible', false)
+  emit('cancel')
 }
 
 // 取消粘贴
