@@ -285,7 +285,7 @@
           />
           <div class="form-grid">
             <el-form-item label="启用写入">
-              <el-switch v-model="form.writeRuleEnabled" />
+              <el-switch v-model="form.writeRuleEnabled" @change="handleWriteToggle" />
             </el-form-item>
             <el-form-item label="写入数据源" prop="dataSourceId">
               <el-select
@@ -295,6 +295,7 @@
                 placeholder="请选择 Prometheus / VictoriaMetrics"
                 style="width: 100%"
                 :disabled="!form.writeRuleEnabled"
+                @change="formRef?.validateField('dataSourceId')"
               >
                 <el-option
                   v-for="item in writableSourceOptions"
@@ -458,7 +459,28 @@ const protocolOptions = [
 const rules: FormRules = {
   name: [{ required: true, message: '请输入任务名称', trigger: 'blur' }],
   protocol: [{ required: true, message: '请选择拨测类型', trigger: 'change' }],
-  endpoint: [{ required: true, message: '请输入拨测端点', trigger: 'blur' }]
+  endpoint: [{ required: true, message: '请输入拨测端点', trigger: 'blur' }],
+  dataSourceId: [
+    {
+      validator: (_rule, value, callback) => {
+        if (!form.writeRuleEnabled) {
+          callback()
+          return
+        }
+        if (!value) {
+          callback(new Error('请选择写入数据源'))
+          return
+        }
+        const source = dataSources.value.find(item => item.id === value)
+        if (!source || !source.remoteWriteEnabled || !isPromCompatible(source.type)) {
+          callback(new Error('请选择已开启远程写入的 Prometheus / VictoriaMetrics 数据源'))
+          return
+        }
+        callback()
+      },
+      trigger: 'change'
+    }
+  ]
 }
 
 const enabledCount = computed(() => tableData.value.filter(item => item.enabled).length)
@@ -562,6 +584,13 @@ const handleProtocolChange = () => {
   form.headers = ''
   form.body = ''
   form.method = 'GET'
+}
+
+const handleWriteToggle = () => {
+  if (form.writeRuleEnabled && !form.dataSourceId) {
+    form.dataSourceId = remoteWriteSources.value[0]?.id
+  }
+  formRef.value?.validateField('dataSourceId').catch(() => undefined)
 }
 
 const buildPayload = (): MonitorProbeTask => ({

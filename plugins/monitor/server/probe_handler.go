@@ -529,6 +529,9 @@ func (h *DataSourceHandler) validateProbeTask(task *model.ProbeTask) error {
 		if !ds.RemoteWriteEnabled {
 			return fmt.Errorf("数据源未开启远程写入，无法创建拨测任务")
 		}
+		if strings.TrimSpace(ds.RemoteWriteURL) == "" {
+			return fmt.Errorf("数据源已开启远程写入，但远程写入地址为空")
+		}
 	}
 	return nil
 }

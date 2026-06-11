@@ -11,6 +11,8 @@ bin/
 
 # Dependency directories
 vendor/
+.gocache/
+.gomodcache/
 
 # IDE
 .idea/

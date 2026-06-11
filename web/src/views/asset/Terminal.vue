@@ -221,25 +221,21 @@ const treeData = computed(() => {
 
   const buildTree = (groups: any[]): any[] => {
     return groups.map((group: any) => {
+      const groupChildren = group.children ? buildTree(group.children) : []
+      const groupHosts = allHosts.value.filter((h: any) => h.groupId === group.id)
+      const hostNodes = groupHosts.map((host: any) => ({
+        ...host,
+        type: 'host',
+        label: host.name
+      }))
+      const childHostCount = groupChildren.reduce((total: number, child: any) => total + (child.hostCount || 0), 0)
+
       const node: any = {
         ...group,
         type: 'group',
         label: group.name,
-        children: group.children ? buildTree(group.children) : []
-      }
-
-      // 添加该分组下的主机
-      const groupHosts = allHosts.value.filter((h: any) => h.groupId === group.id)
-      if (groupHosts.length > 0) {
-        const hostNodes = groupHosts.map((host: any) => ({
-          ...host,
-          type: 'host',
-          label: host.name
-        }))
-        node.children = [...node.children, ...hostNodes]
-        node.hostCount = hostNodes.length
-      } else {
-        node.hostCount = 0
+        children: [...groupChildren, ...hostNodes],
+        hostCount: childHostCount + hostNodes.length
       }
 
       return node
