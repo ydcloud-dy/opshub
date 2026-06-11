@@ -975,7 +975,7 @@
           class="agent-command-input"
         />
         <div class="agent-install-tips">
-          <span>如果提示二进制不存在，请先在 OpsHub 服务器执行 <code>make agent-binaries</code>。</span>
+          <span>如果下载失败，请确认目标主机能访问 OpsHub 或 Agent Gateway 的 <code>/api/v1/public/agents</code> 接口。</span>
         </div>
       </div>
       <template #footer>

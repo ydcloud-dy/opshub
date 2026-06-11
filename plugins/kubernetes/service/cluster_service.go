@@ -109,6 +109,7 @@ type ClusterDetailResponse struct {
 	Version     string `json:"version"`
 	Status      int    `json:"status"`
 	NodeCount   int    `json:"nodeCount"` // 节点数量
+	PodCount    int    `json:"podCount"`  // Pod数量
 	Region      string `json:"region"`
 	Provider    string `json:"provider"`
 	Description string `json:"description"`
@@ -723,6 +724,7 @@ func (s *ClusterService) toClusterResponse(cluster *models.Cluster) *ClusterDeta
 		Version:     cluster.Version,
 		Status:      cluster.Status,
 		NodeCount:   cluster.NodeCount,
+		PodCount:    cluster.PodCount,
 		Region:      cluster.Region,
 		Provider:    cluster.Provider,
 		Description: cluster.Description,

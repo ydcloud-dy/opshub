@@ -465,7 +465,7 @@ const getFailureSuggestion = (item: any) => {
     return '处理建议：一键安装需要目标用户为 root，或具备免密 sudo 权限。'
   }
   if (text.includes('agent二进制') || text.includes('binary') || text.includes('404')) {
-    return '处理建议：在 OpsHub 服务器执行 make agent-binaries，确认 Agent 二进制已生成。'
+    return '处理建议：检查上方“Agent访问地址”是否是目标主机可访问的 OpsHub 或 Agent Gateway 地址，并确认该地址可以下载 /api/v1/public/agents/binaries/opshub-agent-linux-amd64。'
   }
   if (text.includes('ssh')) {
     return '处理建议：检查主机 SSH 凭据、端口、防火墙和网络连通性。'

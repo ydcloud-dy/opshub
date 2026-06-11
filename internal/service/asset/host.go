@@ -23,7 +23,6 @@ import (
 	"bytes"
 	"fmt"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -55,14 +54,14 @@ func NewHostService(hostUseCase *asset.HostUseCase, credentialUseCase *asset.Cre
 // DownloadAgentBinary 下载Agent二进制文件
 func (s *HostService) DownloadAgentBinary(c *gin.Context) {
 	filename := filepath.Base(c.Param("filename"))
-	if filename == "." || !strings.HasPrefix(filename, "opshub-agent-") {
+	if err := validateAgentBinaryFilename(filename); err != nil {
 		c.String(http.StatusBadRequest, "无效的Agent二进制文件名")
 		return
 	}
 
-	binaryPath := filepath.Join("data", "agent-binaries", filename)
-	if _, err := os.Stat(binaryPath); err != nil {
-		c.String(http.StatusNotFound, "Agent二进制不存在，请先执行 make agent-binaries 构建")
+	binaryPath, err := ensureAgentBinary(filename)
+	if err != nil {
+		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -77,11 +76,19 @@ func (s *HostService) CreateAgentInstallCommand(c *gin.Context) {
 		response.ErrorCode(c, http.StatusBadRequest, "无效的主机ID")
 		return
 	}
+	if err := ensureLinuxAgentBinaries(); err != nil {
+		response.ErrorCode(c, http.StatusInternalServerError, "准备Agent二进制失败: "+err.Error())
+		return
+	}
 
 	interval, _ := strconv.Atoi(c.DefaultQuery("interval", "30"))
 	serverURL := c.Query("server")
 	if serverURL == "" {
 		serverURL = getRequestBaseURL(c)
+	}
+	if err := validateAgentServerBinaries(serverURL); err != nil {
+		response.ErrorCode(c, http.StatusBadRequest, err.Error())
+		return
 	}
 
 	command, err := s.hostUseCase.CreateAgentInstallCommand(c.Request.Context(), uint(id), serverURL, interval)
@@ -101,11 +108,19 @@ func (s *HostService) InstallHostAgent(c *gin.Context) {
 		response.ErrorCode(c, http.StatusBadRequest, "无效的主机ID")
 		return
 	}
+	if err := ensureLinuxAgentBinaries(); err != nil {
+		response.ErrorCode(c, http.StatusInternalServerError, "准备Agent二进制失败: "+err.Error())
+		return
+	}
 
 	interval, _ := strconv.Atoi(c.DefaultQuery("interval", "30"))
 	serverURL := c.Query("server")
 	if serverURL == "" {
 		serverURL = getRequestBaseURL(c)
+	}
+	if err := validateAgentServerBinaries(serverURL); err != nil {
+		response.ErrorCode(c, http.StatusBadRequest, err.Error())
+		return
 	}
 
 	result, err := s.hostUseCase.InstallAgentViaSSH(c.Request.Context(), uint(id), serverURL, interval)

@@ -47,7 +47,7 @@ BINARY_URL="${SERVER_URL}/api/v1/public/agents/binaries/opshub-agent-linux-${ARC
 
 echo "下载 OpsHub Agent: ${BINARY_URL}"
 if ! curl -fsSL "${BINARY_URL}" -o "${BIN_PATH}.tmp"; then
-  echo "下载 Agent 二进制失败。请先在 OpsHub 服务器上执行: make agent-binaries" >&2
+  echo "下载 Agent 二进制失败。请检查 Agent访问地址是否能访问 OpsHub 或 Agent Gateway，并确认 /api/v1/public/agents/binaries/opshub-agent-linux-${ARCH} 可下载" >&2
   exit 1
 fi
 chmod 755 "${BIN_PATH}.tmp"

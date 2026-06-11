@@ -7,6 +7,7 @@ AGENT_GATEWAY_NAME=opshub-agent-gateway
 BUILD_DIR=bin
 AGENT_BUILD_DIR=data/agent-binaries
 CONFIG_FILE=config/config.yaml
+GOCACHE_DIR=$(CURDIR)/.gocache
 GO_FILES=$(shell find . -name '*.go' -type f)
 LDFLAGS=-ldflags "-X main.Version=1.0.0 -X main.GitCommit=$(shell git rev-parse --short HEAD 2>/dev/null || echo 'unknown') -X main.BuildTime=$(shell date -u '+%Y-%m-%d_%H:%M:%S')"
 AGENT_LDFLAGS=-ldflags "-X main.version=0.1.0"
@@ -15,7 +16,7 @@ AGENT_LDFLAGS=-ldflags "-X main.version=0.1.0"
 all: swagger build
 
 # 编译
-build:
+build: agent-binaries
 	@echo "编译中..."
 	@mkdir -p $(BUILD_DIR)
 	@go build $(LDFLAGS) -o $(BUILD_DIR)/$(APP_NAME) main.go
@@ -25,8 +26,9 @@ build:
 agent-binaries:
 	@echo "编译 OpsHub Agent 二进制..."
 	@mkdir -p $(AGENT_BUILD_DIR)
-	@GOOS=linux GOARCH=amd64 go build $(AGENT_LDFLAGS) -o $(AGENT_BUILD_DIR)/$(AGENT_NAME)-linux-amd64 ./cmd/opshub-agent
-	@GOOS=linux GOARCH=arm64 go build $(AGENT_LDFLAGS) -o $(AGENT_BUILD_DIR)/$(AGENT_NAME)-linux-arm64 ./cmd/opshub-agent
+	@mkdir -p $(GOCACHE_DIR)
+	@GOCACHE=$(GOCACHE_DIR) GOOS=linux GOARCH=amd64 go build $(AGENT_LDFLAGS) -o $(AGENT_BUILD_DIR)/$(AGENT_NAME)-linux-amd64 ./cmd/opshub-agent
+	@GOCACHE=$(GOCACHE_DIR) GOOS=linux GOARCH=arm64 go build $(AGENT_LDFLAGS) -o $(AGENT_BUILD_DIR)/$(AGENT_NAME)-linux-arm64 ./cmd/opshub-agent
 	@echo "Agent 二进制已生成到: $(AGENT_BUILD_DIR)"
 
 # 编译 Agent Gateway
@@ -40,8 +42,9 @@ agent-gateway:
 agent-gateway-binaries:
 	@echo "编译 OpsHub Agent Gateway Linux 二进制..."
 	@mkdir -p $(BUILD_DIR)
-	@GOOS=linux GOARCH=amd64 go build -o $(BUILD_DIR)/$(AGENT_GATEWAY_NAME)-linux-amd64 ./cmd/opshub-agent-gateway
-	@GOOS=linux GOARCH=arm64 go build -o $(BUILD_DIR)/$(AGENT_GATEWAY_NAME)-linux-arm64 ./cmd/opshub-agent-gateway
+	@mkdir -p $(GOCACHE_DIR)
+	@GOCACHE=$(GOCACHE_DIR) GOOS=linux GOARCH=amd64 go build -o $(BUILD_DIR)/$(AGENT_GATEWAY_NAME)-linux-amd64 ./cmd/opshub-agent-gateway
+	@GOCACHE=$(GOCACHE_DIR) GOOS=linux GOARCH=arm64 go build -o $(BUILD_DIR)/$(AGENT_GATEWAY_NAME)-linux-arm64 ./cmd/opshub-agent-gateway
 	@echo "Agent Gateway Linux 二进制已生成到: $(BUILD_DIR)"
 
 # 运行服务
