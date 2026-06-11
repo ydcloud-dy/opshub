@@ -304,20 +304,20 @@ onMounted(async () => {
 
 .page-title-group {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 16px;
 }
 
 .page-title-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #000 0%, #1a1a1a 100%);
-  border: 1px solid #d4af37;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  background: #f5f3ff;
+  border: 1px solid #ddd6fe;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #d4af37;
+  color: #7c3aed;
   font-size: 22px;
   flex-shrink: 0;
 }
@@ -377,21 +377,21 @@ onMounted(async () => {
     font-size: 28px;
 
     &.total {
-      background: linear-gradient(135deg, #000 0%, #1a1a1a 100%);
-      border: 1px solid #d4af37;
-      color: #d4af37;
+      background: #f5f3ff;
+      border: 1px solid #ddd6fe;
+      color: #7c3aed;
     }
 
     &.enabled {
-      background: linear-gradient(135deg, #000 0%, #1a1a1a 100%);
-      border: 1px solid #67c23a;
-      color: #67c23a;
+      background: #ecfdf3;
+      border: 1px solid #bbf7d0;
+      color: #16a34a;
     }
 
     &.disabled {
-      background: linear-gradient(135deg, #000 0%, #1a1a1a 100%);
-      border: 1px solid #909399;
-      color: #909399;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      color: #64748b;
     }
   }
 
@@ -428,12 +428,12 @@ onMounted(async () => {
       width: 40px;
       height: 40px;
       border-radius: 8px;
-      background: linear-gradient(135deg, #000 0%, #1a1a1a 100%);
-      border: 1px solid #d4af37;
+      background: #f5f3ff;
+      border: 1px solid #ddd6fe;
       display: flex;
       align-items: center;
       justify-content: center;
-      color: #d4af37;
+      color: #7c3aed;
       font-size: 20px;
       flex-shrink: 0;
     }

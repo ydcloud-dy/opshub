@@ -959,7 +959,7 @@
           type="info"
           :closable="false"
           show-icon
-          title="在目标主机上执行下方命令，Agent 会自动注册为 systemd 服务并持续上报主机信息。"
+          title="在目标主机上执行下方命令，Agent 会优先注册为 systemd 服务；老系统不支持 systemd 时会直接后台启动并尝试写入开机自启。"
         />
         <div class="agent-target" v-if="agentInstallTarget">
           <span class="agent-target-name">{{ agentInstallTarget.name }}</span>

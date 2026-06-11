@@ -306,20 +306,20 @@ const handleBackToList = () => {
 
 .page-title-group {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 16px;
 }
 
 .page-title-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #000 0%, #1a1a1a 100%);
-  border: 1px solid #d4af37;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  background: #f5f3ff;
+  border: 1px solid #ddd6fe;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #d4af37;
+  color: #7c3aed;
   font-size: 22px;
   flex-shrink: 0;
 }

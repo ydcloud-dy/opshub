@@ -201,7 +201,12 @@
               <span class="form-tip">测试环境可开启，生产环境建议关闭</span>
             </el-form-item>
             <el-form-item>
-              <el-button @click="handleTestLDAP" :loading="ldapTesting" type="primary" plain>
+              <el-button
+                class="ldap-test-button"
+                @click="handleTestLDAP"
+                :loading="ldapTesting"
+                type="primary"
+              >
                 测试连接
               </el-button>
               <div v-if="ldapTestResult" :class="['ldap-test-result', ldapTestResult.success ? 'success' : 'error']">
@@ -940,6 +945,35 @@ onMounted(() => {
 }
 
 /* LDAP 测试结果 */
+.ldap-test-button {
+  min-width: 112px;
+  height: 38px;
+  border-radius: 8px;
+  border-color: #111827 !important;
+  background: #111827 !important;
+  color: #ffffff !important;
+  font-weight: 600;
+  box-shadow: 0 8px 16px rgba(17, 24, 39, 0.12);
+}
+
+.ldap-test-button:hover,
+.ldap-test-button:focus {
+  border-color: #1f2937 !important;
+  background: #1f2937 !important;
+  color: #ffffff !important;
+}
+
+.ldap-test-button.is-loading,
+.ldap-test-button.is-disabled {
+  border-color: #374151 !important;
+  background: #374151 !important;
+  color: rgba(255, 255, 255, 0.82) !important;
+}
+
+.ldap-test-button :deep(.el-icon) {
+  color: currentColor;
+}
+
 .ldap-test-result {
   display: inline-flex;
   align-items: center;

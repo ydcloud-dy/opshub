@@ -609,22 +609,22 @@ onMounted(() => {
 
 .page-title-group {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 16px;
 }
 
 .page-title-icon {
-  width: 48px;
-  height: 48px;
-  background: linear-gradient(135deg, #000 0%, #1a1a1a 100%);
-  border-radius: 10px;
+  width: 42px;
+  height: 42px;
+  background: #ecfeff;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #d4af37;
+  color: #0891b2;
   font-size: 22px;
   flex-shrink: 0;
-  border: 1px solid #d4af37;
+  border: 1px solid #a5f3fc;
 }
 
 .page-title {

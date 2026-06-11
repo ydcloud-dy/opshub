@@ -322,8 +322,21 @@ const hostOnlineRate = computed(() => {
   if (!hostTotalCount.value) return 0
   return Math.round((hostOnlineCount.value / hostTotalCount.value) * 100)
 })
-const totalNodeCount = computed(() => clusters.value.reduce((sum, item: any) => sum + Number(item.nodeCount || 0), 0))
-const totalPodCount = computed(() => clusters.value.reduce((sum, item: any) => sum + Number(item.podCount || 0), 0))
+const pickNumber = (source: Record<string, any>, keys: string[]) => {
+  for (const key of keys) {
+    const raw = source?.[key]
+    if (Array.isArray(raw)) return raw.length
+    if (raw === undefined || raw === null || raw === '') continue
+
+    const value = Number(raw)
+    if (Number.isFinite(value)) return value
+  }
+  return 0
+}
+const getNodeCount = (cluster: any) => pickNumber(cluster, ['nodeCount', 'node_count', 'totalNodes', 'nodes'])
+const getPodCount = (cluster: any) => pickNumber(cluster, ['podCount', 'pod_count', 'totalPods', 'pods'])
+const totalNodeCount = computed(() => clusters.value.reduce((sum, item: any) => sum + getNodeCount(item), 0))
+const totalPodCount = computed(() => clusters.value.reduce((sum, item: any) => sum + getPodCount(item), 0))
 const alertTodayCount = computed(() => alertEventStats.value.todayEvents || 0)
 const alertPendingCount = computed(() => alertEventStats.value.pendingRules || 0)
 
@@ -521,8 +534,8 @@ const renderK8sResourceChart = () => {
   if (!chart) return
 
   const clusterNames = clusters.value.map(c => c.name || '未命名')
-  const nodeCounts = clusters.value.map(c => c.nodeCount || 0)
-  const podCounts = clusters.value.map(c => c.podCount || 0)
+  const nodeCounts = clusters.value.map(getNodeCount)
+  const podCounts = clusters.value.map(getPodCount)
 
   const option = {
     color: ['#2563eb', '#16a34a'],

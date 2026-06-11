@@ -32,7 +32,9 @@ INTERVAL={{INTERVAL}}
 CONFIG_DIR="/etc/opshub-agent"
 CONFIG_FILE="${CONFIG_DIR}/agent.json"
 BIN_PATH="/usr/local/bin/opshub-agent"
+START_SCRIPT="/usr/local/bin/opshub-agent-start"
 SERVICE_FILE="/etc/systemd/system/opshub-agent.service"
+LOG_FILE="/var/log/opshub-agent.log"
 
 detect_arch() {
   case "$(uname -m)" in
@@ -64,7 +66,38 @@ cat > "${CONFIG_FILE}" <<EOF
 EOF
 chmod 600 "${CONFIG_FILE}"
 
-if command -v systemctl >/dev/null 2>&1; then
+cat > "${START_SCRIPT}" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+if command -v pkill >/dev/null 2>&1; then
+  pkill -f "${BIN_PATH} --config ${CONFIG_FILE}" || true
+fi
+nohup "${BIN_PATH}" --config "${CONFIG_FILE}" >>"${LOG_FILE}" 2>&1 &
+echo \$! > /var/run/opshub-agent.pid
+EOF
+chmod 755 "${START_SCRIPT}"
+
+systemd_available() {
+  command -v systemctl >/dev/null 2>&1 || return 1
+  [ -d /run/systemd/system ] || return 1
+  systemctl list-units >/dev/null 2>&1 || return 1
+}
+
+install_cron_reboot() {
+  command -v crontab >/dev/null 2>&1 || return 1
+  local cron_line="@reboot ${START_SCRIPT} >/dev/null 2>&1"
+  local current_cron
+  current_cron="$(crontab -l 2>/dev/null || true)"
+  if printf '%s\n' "${current_cron}" | grep -Fq "${START_SCRIPT}"; then
+    return 0
+  fi
+  {
+    printf '%s\n' "${current_cron}"
+    printf '%s\n' "${cron_line}"
+  } | sed '/^$/d' | crontab -
+}
+
+install_systemd() {
   cat > "${SERVICE_FILE}" <<EOF
 [Unit]
 Description=OpsHub Host Agent
@@ -80,18 +113,31 @@ RestartSec=10
 [Install]
 WantedBy=multi-user.target
 EOF
-  systemctl daemon-reload
+  systemctl daemon-reload || return 1
   if systemctl is-active --quiet opshub-agent; then
-    systemctl restart opshub-agent
+    systemctl restart opshub-agent || return 1
   else
-    systemctl enable --now opshub-agent
+    systemctl enable --now opshub-agent || return 1
   fi
-  echo "OpsHub Agent 已安装并启动: systemctl status opshub-agent"
+}
+
+start_direct_agent() {
+  "${START_SCRIPT}"
+  if install_cron_reboot; then
+    echo "OpsHub Agent 已在非 systemd 模式下启动，并已写入 crontab @reboot 自启"
+  else
+    echo "OpsHub Agent 已在非 systemd 模式下后台启动；当前系统没有可用 crontab，重启后需要再次执行 ${START_SCRIPT}"
+  fi
+}
+
+if systemd_available; then
+  if install_systemd; then
+    echo "OpsHub Agent 已安装并启动: systemctl status opshub-agent"
+  else
+    echo "systemd 服务安装或启动失败，自动降级为后台进程模式" >&2
+    start_direct_agent
+  fi
 else
-  if command -v pkill >/dev/null 2>&1; then
-    pkill -f "${BIN_PATH} --config ${CONFIG_FILE}" || true
-  fi
-  nohup "${BIN_PATH}" --config "${CONFIG_FILE}" >/var/log/opshub-agent.log 2>&1 &
-  echo "OpsHub Agent 已安装并以后台进程启动"
+  start_direct_agent
 fi
 `

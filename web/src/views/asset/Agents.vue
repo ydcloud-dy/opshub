@@ -232,7 +232,7 @@
         type="info"
         :closable="false"
         show-icon
-        title="如果一键安装失败，可以复制命令到目标主机手动执行。"
+        title="如果一键安装失败，可以复制命令到目标主机手动执行；脚本会优先使用 systemd，老系统会自动降级为后台进程模式。"
       />
       <el-input v-model="manualCommand" type="textarea" :rows="5" readonly class="command-input" />
       <template #footer>
@@ -636,7 +636,10 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding: 20px;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  background-color: transparent;
 }
 
 .page-header,
@@ -802,6 +805,14 @@ onMounted(() => {
 
 .table-wrapper {
   overflow: hidden;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.modern-table {
+  flex: 1;
 }
 
 .modern-table :deep(.el-table__header th) {
@@ -1067,7 +1078,7 @@ onMounted(() => {
 
 @media (max-width: 720px) {
   .agent-page-container {
-    padding: 12px;
+    padding: 0;
   }
 
   .filter-input,
