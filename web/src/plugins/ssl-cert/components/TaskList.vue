@@ -111,15 +111,15 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="开始时间" width="150">
+        <el-table-column label="开始时间" width="190">
           <template #default="{ row }">
-            <span>{{ formatDateTime(row.started_at) || '-' }}</span>
+            <span class="task-time-text">{{ formatDateTime(row.started_at) || '-' }}</span>
           </template>
         </el-table-column>
 
-        <el-table-column label="结束时间" width="150">
+        <el-table-column label="结束时间" width="190">
           <template #default="{ row }">
-            <span>{{ formatDateTime(row.finished_at) || '-' }}</span>
+            <span class="task-time-text">{{ formatDateTime(row.finished_at) || '-' }}</span>
           </template>
         </el-table-column>
 
@@ -356,15 +356,15 @@ onMounted(() => {
 .page-title-icon {
   width: 48px;
   height: 48px;
-  background: linear-gradient(135deg, #000 0%, #1a1a1a 100%);
-  border-radius: 10px;
+  background: #f8fafc;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #d4af37;
+  color: #111827;
   font-size: 22px;
   flex-shrink: 0;
-  border: 1px solid #d4af37;
+  border: 1px solid #edf1f7;
 }
 
 .page-title {
@@ -433,6 +433,12 @@ onMounted(() => {
 
 .error-text {
   color: #f56c6c;
+}
+
+.task-time-text {
+  display: inline-block;
+  min-width: 168px;
+  white-space: nowrap;
 }
 
 .action-btn {

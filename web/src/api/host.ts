@@ -119,6 +119,19 @@ export const batchDeleteHosts = (hostIds: number[]) => {
   return request.post('/api/v1/hosts/batch-delete', { hostIds })
 }
 
+// Agent管理
+export const getAgentInstallCommand = (hostId: number, params?: { server?: string }) => {
+  return request.get(`/api/v1/hosts/${hostId}/agent/install-command`, { params })
+}
+
+export const installHostAgent = (hostId: number, params?: { server?: string }) => {
+  return request.post(`/api/v1/hosts/${hostId}/agent/install`, null, { params })
+}
+
+export const revokeHostAgent = (hostId: number) => {
+  return request.delete(`/api/v1/hosts/${hostId}/agent`)
+}
+
 // 文件管理
 export const listHostFiles = (hostId: number, path: string = '~') => {
   return request.get(`/api/v1/hosts/${hostId}/files`, { params: { path } })

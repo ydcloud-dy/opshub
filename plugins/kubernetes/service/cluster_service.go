@@ -28,13 +28,13 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	authenticationv1 "k8s.io/api/authentication/v1"
+	"k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	metricsv "k8s.io/metrics/pkg/client/clientset/versioned"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/api/core/v1"
-	authenticationv1 "k8s.io/api/authentication/v1"
 
 	rbacBiz "github.com/ydcloud-dy/opshub/internal/biz/rbac"
 	rbacData "github.com/ydcloud-dy/opshub/internal/data/rbac"
@@ -46,7 +46,15 @@ import (
 const (
 	// OpsHubAuthNamespace OpsHub 认证专用命名空间
 	OpsHubAuthNamespace = "opshub-auth"
+
+	clusterDeleteCleanupTimeout = 15 * time.Second
 )
+
+// DeleteClusterOptions 删除集群选项
+type DeleteClusterOptions struct {
+	// Force 为 true 时只删除 OpsHub 本地记录，不连接目标集群清理资源。
+	Force bool
+}
 
 // ClusterService 集群服务层
 type ClusterService struct {
@@ -100,7 +108,7 @@ type ClusterDetailResponse struct {
 	APIEndpoint string `json:"apiEndpoint"`
 	Version     string `json:"version"`
 	Status      int    `json:"status"`
-	NodeCount   int    `json:"nodeCount"`   // 节点数量
+	NodeCount   int    `json:"nodeCount"` // 节点数量
 	Region      string `json:"region"`
 	Provider    string `json:"provider"`
 	Description string `json:"description"`
@@ -152,8 +160,17 @@ func (s *ClusterService) UpdateCluster(ctx context.Context, id uint, req *Update
 	return s.toClusterResponse(cluster), nil
 }
 
-// DeleteCluster 删除集群（并行优化版本）
+// DeleteCluster 删除集群
 func (s *ClusterService) DeleteCluster(ctx context.Context, id uint) error {
+	return s.DeleteClusterWithOptions(ctx, id, DeleteClusterOptions{})
+}
+
+// DeleteClusterWithOptions 删除集群（支持强制删除本地记录）
+func (s *ClusterService) DeleteClusterWithOptions(ctx context.Context, id uint, opts DeleteClusterOptions) error {
+	if opts.Force {
+		return s.deleteClusterLocalData(ctx, id)
+	}
+
 	// 1. 获取该集群的所有用户凭据记录
 	var kubeConfigs []model.UserKubeConfig
 	err := s.db.Where("cluster_id = ?", id).Find(&kubeConfigs).Error
@@ -161,10 +178,13 @@ func (s *ClusterService) DeleteCluster(ctx context.Context, id uint) error {
 		return fmt.Errorf("查询集群凭据失败: %w", err)
 	}
 
-	var wg sync.WaitGroup
-	errChan := make(chan error, 10) // 缓冲channel用于收集错误
+	cleanupCtx, cancel := context.WithTimeout(ctx, clusterDeleteCleanupTimeout)
+	defer cancel()
 
-	// 2. 并行清理每个用户的 K8s 资源和数据库记录
+	var wg sync.WaitGroup
+	errChan := make(chan error, len(kubeConfigs)+2) // 缓冲channel用于收集错误
+
+	// 2. 并行清理每个用户的 K8s 资源
 	for _, kc := range kubeConfigs {
 		wg.Add(1)
 		go func(kc model.UserKubeConfig) {
@@ -173,13 +193,10 @@ func (s *ClusterService) DeleteCluster(ctx context.Context, id uint) error {
 			username := strings.TrimPrefix(kc.ServiceAccount, "opshub-")
 
 			// 清理 K8s 中的 ServiceAccount 和 RoleBinding
-			if err := s.cleanupClusterK8sResources(ctx, id, kc.ServiceAccount, username); err != nil {
+			if err := s.cleanupClusterK8sResources(cleanupCtx, id, kc.ServiceAccount, username); err != nil {
 				// 记录错误但继续清理其他资源
 				errChan <- fmt.Errorf("清理用户 %s 的 K8s 资源失败: %w", username, err)
 			}
-
-			// 删除数据库记录 - k8s_user_kube_configs
-			s.db.Where("cluster_id = ? AND id = ?", id, kc.ID).Delete(&model.UserKubeConfig{})
 		}(kc)
 	}
 
@@ -187,7 +204,7 @@ func (s *ClusterService) DeleteCluster(ctx context.Context, id uint) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := s.cleanupDefaultRoles(ctx, id); err != nil {
+		if err := s.cleanupDefaultRoles(cleanupCtx, id); err != nil {
 			errChan <- fmt.Errorf("清理默认角色失败: %w", err)
 		}
 	}()
@@ -196,7 +213,7 @@ func (s *ClusterService) DeleteCluster(ctx context.Context, id uint) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := s.cleanupAllRoleBindings(ctx, id); err != nil {
+		if err := s.cleanupAllRoleBindings(cleanupCtx, id); err != nil {
 			errChan <- fmt.Errorf("清理角色绑定失败: %w", err)
 		}
 	}()
@@ -205,29 +222,49 @@ func (s *ClusterService) DeleteCluster(ctx context.Context, id uint) error {
 	wg.Wait()
 	close(errChan)
 
-	// 6. 删除数据库中的角色绑定记录
-	s.db.Table("k8s_user_role_bindings").
-		Where("cluster_id = ?", id).
-		Delete(&model.K8sUserRoleBinding{})
-
-	// 7. 清除缓存
-	s.clearClientsetCache(id)
-
-	// 8. 删除集群
-	if err := s.clusterBiz.DeleteCluster(ctx, id); err != nil {
-		return err
-	}
-
-	// 9. 收集所有错误
+	// 6. 收集所有错误。普通删除只有在集群内资源清理成功后才删除本地记录。
 	var errors []error
 	for e := range errChan {
 		errors = append(errors, e)
 	}
 
-	if len(errors) > 0 {
-		return fmt.Errorf("删除集群完成，但有 %d 个清理错误: %v", len(errors), errors[0])
+	if cleanupCtx.Err() == context.DeadlineExceeded {
+		return fmt.Errorf("集群连接超时或不可达，已停止删除。请确认集群仍存在并可连接；如果集群已被删除，可选择强制删除 OpsHub 本地记录")
 	}
 
+	if len(errors) > 0 {
+		return fmt.Errorf("集群内资源清理失败，已停止删除。请确认集群仍存在并可连接；如果集群已被删除，可选择强制删除 OpsHub 本地记录。首个错误: %v", errors[0])
+	}
+
+	return s.deleteClusterLocalData(ctx, id)
+}
+
+// deleteClusterLocalData 只删除 OpsHub 本地数据，不访问目标 Kubernetes 集群。
+func (s *ClusterService) deleteClusterLocalData(ctx context.Context, id uint) error {
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("cluster_id = ?", id).Delete(&model.UserKubeConfig{}).Error; err != nil {
+			return fmt.Errorf("删除本地集群凭据失败: %w", err)
+		}
+
+		if err := tx.Where("cluster_id = ?", id).Delete(&model.K8sUserRoleBinding{}).Error; err != nil {
+			return fmt.Errorf("删除本地角色绑定失败: %w", err)
+		}
+
+		result := tx.Delete(&models.Cluster{}, id)
+		if result.Error != nil {
+			return fmt.Errorf("删除本地集群记录失败: %w", result.Error)
+		}
+		if result.RowsAffected == 0 {
+			return fmt.Errorf("集群不存在")
+		}
+
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	s.clearClientsetCache(id)
 	return nil
 }
 
@@ -625,8 +662,8 @@ func (s *ClusterService) hasK8sClusterAdminRole(ctx context.Context, clusterID, 
 	for _, binding := range bindings {
 		// 检查是否有cluster-owner、cluster-admin等管理员角色
 		if binding.RoleName == "cluster-owner" ||
-		   binding.RoleName == "cluster-admin" ||
-		   binding.RoleName == "admin" {
+			binding.RoleName == "cluster-admin" ||
+			binding.RoleName == "admin" {
 			return true, nil
 		}
 	}
@@ -784,7 +821,7 @@ func (s *ClusterService) GetClusterConfig(ctx context.Context, id uint) (string,
 // GenerateKubeConfigRequest 生成 KubeConfig 请求
 type GenerateKubeConfigRequest struct {
 	ClusterID uint   `json:"clusterId" binding:"required"`
-	Username string `json:"username" binding:"required"`
+	Username  string `json:"username" binding:"required"`
 }
 
 // GenerateUserKubeConfig 为指定用户生成 KubeConfig
@@ -1029,7 +1066,7 @@ func (s *ClusterService) createKubeConfigForUser(clientset *kubernetes.Clientset
 					Name: saName,
 					Labels: map[string]string{
 						"opshub.ydcloud-dy.com/created-by": "opshub",
-						"opshub.ydcloud-dy.com/username":  username,
+						"opshub.ydcloud-dy.com/username":   username,
 					},
 				},
 			}
@@ -1551,4 +1588,3 @@ func (s *ClusterService) GetRESTConfig(clusterID uint, userID uint) (*rest.Confi
 
 	return restConfig, nil
 }
-

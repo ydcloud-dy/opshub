@@ -21,6 +21,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -156,6 +157,9 @@ func runServer() (*conf.Config, error) {
 	if err := initDefaultData(data.DB()); err != nil {
 		return nil, fmt.Errorf("初始化默认数据失败: %w", err)
 	}
+	if err := ensureAssetAgentMenu(data.DB()); err != nil {
+		appLogger.Warn("补充资产Agent管理菜单失败", zap.Error(err))
+	}
 
 	// 初始化HTTP服务器
 	httpServer := server.NewHTTPServer(cfg, svc, data.DB())
@@ -195,6 +199,7 @@ func autoMigrate(db *gorm.DB) error {
 		&assetmodel.Credential{},
 		&assetmodel.AssetGroup{},
 		&assetmodel.CloudAccount{},
+		&assetmodel.TerminalSession{},
 		// Kubernetes 集群相关表
 		&models.Cluster{},
 		&k8smodel.UserKubeConfig{},
@@ -209,6 +214,9 @@ func autoMigrate(db *gorm.DB) error {
 		&mfamodel.TrustedDevice{},
 	); err != nil {
 		return err
+	}
+	if err := ensureSysUserNotifyColumns(db); err != nil {
+		appLogger.Warn("补充用户通知标识字段失败", zap.Error(err))
 	}
 
 	// 为用户表创建虚拟列和唯一索引
@@ -242,6 +250,89 @@ func autoMigrate(db *gorm.DB) error {
 		appLogger.Info("成功创建用户名邮箱联合唯一索引")
 	}
 
+	return nil
+}
+
+func ensureSysUserNotifyColumns(db *gorm.DB) error {
+	columns := []struct {
+		name string
+		ddl  string
+	}{
+		{"notify_user_id", "ALTER TABLE sys_user ADD COLUMN notify_user_id VARCHAR(150) NULL COMMENT '第三方通知用户标识' AFTER phone"},
+		{"feishu_user_id", "ALTER TABLE sys_user ADD COLUMN feishu_user_id VARCHAR(100) NULL COMMENT '飞书用户ID' AFTER notify_user_id"},
+		{"feishu_open_id", "ALTER TABLE sys_user ADD COLUMN feishu_open_id VARCHAR(100) NULL COMMENT '飞书OpenID' AFTER feishu_user_id"},
+		{"dingtalk_user_id", "ALTER TABLE sys_user ADD COLUMN dingtalk_user_id VARCHAR(100) NULL COMMENT '钉钉用户ID' AFTER feishu_open_id"},
+		{"wecom_user_id", "ALTER TABLE sys_user ADD COLUMN wecom_user_id VARCHAR(100) NULL COMMENT '企业微信用户ID' AFTER dingtalk_user_id"},
+	}
+	for _, column := range columns {
+		var count int64
+		if err := db.Raw("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sys_user' AND COLUMN_NAME = ?", column.name).Scan(&count).Error; err != nil {
+			return err
+		}
+		if count > 0 {
+			continue
+		}
+		if err := db.Exec(column.ddl).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ensureAssetAgentMenu(db *gorm.DB) error {
+	var assetMenu rbacmodel.SysMenu
+	if err := db.Where("code = ?", "asset-management").First(&assetMenu).Error; err != nil {
+		return err
+	}
+
+	agentMenu := rbacmodel.SysMenu{
+		Name:      "Agent管理",
+		Code:      "asset-agent-management",
+		Type:      2,
+		ParentID:  assetMenu.ID,
+		Path:      "/asset/agents",
+		Component: "asset/Agents",
+		Icon:      "Connection",
+		Sort:      2,
+		Visible:   1,
+		Status:    1,
+	}
+
+	var existing rbacmodel.SysMenu
+	err := db.Where("code = ?", agentMenu.Code).First(&existing).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		if err := db.Create(&agentMenu).Error; err != nil {
+			return err
+		}
+		existing = agentMenu
+	} else if err != nil {
+		return err
+	} else {
+		updates := map[string]interface{}{
+			"name":      agentMenu.Name,
+			"type":      agentMenu.Type,
+			"parent_id": agentMenu.ParentID,
+			"path":      agentMenu.Path,
+			"component": agentMenu.Component,
+			"icon":      agentMenu.Icon,
+			"sort":      agentMenu.Sort,
+			"visible":   agentMenu.Visible,
+			"status":    agentMenu.Status,
+		}
+		if err := db.Model(&existing).Updates(updates).Error; err != nil {
+			return err
+		}
+	}
+
+	var roles []rbacmodel.SysRole
+	if err := db.Where("code IN ?", []string{"admin", "user"}).Find(&roles).Error; err != nil {
+		return err
+	}
+	for _, role := range roles {
+		if err := db.Exec("INSERT IGNORE INTO sys_role_menu (role_id, menu_id) VALUES (?, ?)", role.ID, existing.ID).Error; err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

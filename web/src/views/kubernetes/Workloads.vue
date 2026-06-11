@@ -575,63 +575,72 @@
     >
       <div v-if="detailData" class="detail-wrapper">
         <!-- 基本信息区域 -->
-        <div class="basic-info-section">
-          <!-- 第一行：名称、命名空间、存活时间 -->
-          <div class="info-row">
-            <div class="info-item">
-              <span class="info-label">名称</span>
-              <span class="info-value">{{ detailData.workload?.metadata?.name || detailData.name }}</span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">命名空间</span>
-              <span class="info-value">{{ detailData.workload?.metadata?.namespace || detailData.namespace }}</span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">存活时间</span>
-              <span class="info-value">{{ formatAgeShort(detailData.workload?.metadata?.creationTimestamp) }}</span>
+        <div class="detail-hero">
+          <div class="detail-hero-main">
+            <div class="detail-kind-chip">{{ detailData?.type || 'Workload' }}</div>
+            <h2 class="detail-title">{{ detailData.workload?.metadata?.name || detailData.name }}</h2>
+            <div class="detail-meta">
+              <span>
+                <el-icon><FolderOpened /></el-icon>
+                {{ detailData.workload?.metadata?.namespace || detailData.namespace }}
+              </span>
+              <span>
+                <el-icon><Clock /></el-icon>
+                {{ formatAgeShort(detailData.workload?.metadata?.creationTimestamp) }}
+              </span>
+              <span>
+                <el-icon><Box /></el-icon>
+                {{ getContainerImageList(detailData.workload).length || 0 }} 个镜像
+              </span>
             </div>
           </div>
 
-          <!-- 第二行：镜像名称 -->
-          <div class="info-row" v-if="getContainerImageList(detailData.workload).length > 0">
-            <div class="info-item full-width">
-              <span class="info-label">镜像名称</span>
-              <div class="info-value images-list">
-                <div v-for="(image, idx) in getContainerImageList(detailData.workload)" :key="idx" class="image-tag">
-                  {{ image }}
-                </div>
+          <div class="detail-summary-grid">
+            <div class="detail-summary-card">
+              <span class="summary-label">期望副本</span>
+              <strong>{{ detailData.workload?.spec?.replicas ?? detailData.pods?.length ?? 0 }}</strong>
+            </div>
+            <div class="detail-summary-card">
+              <span class="summary-label">可用副本</span>
+              <strong>{{ detailData.workload?.status?.availableReplicas ?? detailData.workload?.status?.readyReplicas ?? 0 }}</strong>
+            </div>
+            <div class="detail-summary-card">
+              <span class="summary-label">关联 Pod</span>
+              <strong>{{ detailData.pods?.length || 0 }}</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="detail-meta-section">
+          <div v-if="getContainerImageList(detailData.workload).length > 0" class="detail-meta-card images-card">
+            <div class="meta-card-title">镜像</div>
+            <div class="images-list">
+              <div v-for="(image, idx) in getContainerImageList(detailData.workload)" :key="idx" class="image-tag">
+                {{ image }}
               </div>
             </div>
           </div>
 
-          <!-- 第三行：标签 -->
-          <div class="info-row" v-if="detailData.workload?.metadata?.labels && Object.keys(detailData.workload.metadata.labels).length > 0">
-            <div class="info-item full-width">
-              <span class="info-label">标签</span>
-              <div class="info-value labels-list">
-                <el-tag
-                  v-for="(value, key) in detailData.workload.metadata.labels"
-                  :key="key"
-                  size="small"
-                  class="label-tag"
-                  type="info"
-                >
-                  {{ key }}: {{ value }}
-                </el-tag>
-              </div>
+          <div v-if="detailData.workload?.metadata?.labels && Object.keys(detailData.workload.metadata.labels).length > 0" class="detail-meta-card">
+            <div class="meta-card-title">标签</div>
+            <div class="labels-list">
+              <el-tag
+                v-for="(value, key) in detailData.workload.metadata.labels"
+                :key="key"
+                size="small"
+                class="label-tag"
+                type="info"
+              >
+                {{ key }}: {{ value }}
+              </el-tag>
             </div>
           </div>
 
-          <!-- 第四行：注解 -->
-          <div class="info-row" v-if="detailData.workload?.metadata?.annotations && Object.keys(detailData.workload.metadata.annotations).length > 0">
-            <div class="info-item full-width">
-              <span class="info-label">注解</span>
-              <div class="info-value">
-                <el-tooltip :content="getAnnotationsTooltip(detailData.workload.metadata.annotations)" placement="top" effect="light" :show-after="500">
-                  <span class="annotations-text">{{ getAnnotationsText(detailData.workload.metadata.annotations) }}</span>
-                </el-tooltip>
-              </div>
-            </div>
+          <div v-if="detailData.workload?.metadata?.annotations && Object.keys(detailData.workload.metadata.annotations).length > 0" class="detail-meta-card">
+            <div class="meta-card-title">注解</div>
+            <el-tooltip :content="getAnnotationsTooltip(detailData.workload.metadata.annotations)" placement="top" effect="light" :show-after="500">
+              <span class="annotations-text">{{ getAnnotationsText(detailData.workload.metadata.annotations) }}</span>
+            </el-tooltip>
           </div>
         </div>
 
@@ -8579,6 +8588,217 @@ onMounted(() => {
   padding: 20px;
   color: #909399;
   font-size: 14px;
+}
+
+/* 容器管理美化：工作负载详情与编辑器 */
+.workloads-container {
+  --k8s-primary: #2563eb;
+  --k8s-primary-soft: #eff6ff;
+  --k8s-ink: #111827;
+  --k8s-muted: #667085;
+  --k8s-border: #e6ebf2;
+  --k8s-surface: #ffffff;
+}
+
+.detail-dialog :deep(.el-dialog) {
+  border-radius: 24px;
+  overflow: hidden;
+  background: #f7faff;
+  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.2);
+}
+
+.detail-dialog :deep(.el-dialog__header) {
+  padding: 20px 26px;
+  margin: 0;
+  background: #ffffff;
+  border-bottom: 1px solid var(--k8s-border);
+}
+
+.detail-dialog :deep(.el-dialog__title) {
+  color: var(--k8s-ink);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.detail-dialog :deep(.el-dialog__body) {
+  padding: 22px;
+  background:
+    radial-gradient(circle at top left, rgba(37, 99, 235, 0.08), transparent 32%),
+    #f7faff;
+}
+
+.detail-wrapper {
+  gap: 16px;
+}
+
+.detail-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 22px;
+  align-items: stretch;
+  padding: 24px;
+  border: 1px solid var(--k8s-border);
+  border-radius: 22px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.92)),
+    radial-gradient(circle at 92% 12%, rgba(37, 99, 235, 0.14), transparent 30%);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
+}
+
+.detail-kind-chip {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: var(--k8s-primary);
+  border: 1px solid #bfdbfe;
+  font-weight: 800;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.detail-title {
+  margin: 12px 0 10px;
+  color: var(--k8s-ink);
+  font-size: 30px;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  word-break: break-word;
+}
+
+.detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.detail-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border: 1px solid #d7e2f2;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--k8s-muted);
+  font-size: 13px;
+}
+
+.detail-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 118px);
+  gap: 10px;
+}
+
+.detail-summary-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 86px;
+  padding: 14px;
+  border: 1px solid #dbe7f5;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.summary-label {
+  color: var(--k8s-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.detail-summary-card strong {
+  margin-top: 6px;
+  color: var(--k8s-ink);
+  font-size: 28px;
+  line-height: 1;
+}
+
+.detail-meta-section {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.detail-meta-card {
+  padding: 16px;
+  border: 1px solid var(--k8s-border);
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.05);
+}
+
+.detail-meta-card.images-card {
+  grid-column: span 2;
+}
+
+.meta-card-title {
+  margin-bottom: 12px;
+  color: var(--k8s-ink);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.image-tag {
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  background: #f8fbff;
+  color: #1d4ed8;
+}
+
+.labels-list .label-tag,
+.annotations-text {
+  border-radius: 999px;
+  background: #f8fbff;
+  border-color: #dbeafe;
+  color: #344054;
+}
+
+.detail-tabs {
+  border: 1px solid var(--k8s-border);
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+}
+
+.detail-tabs :deep(.el-tabs__header) {
+  background: #ffffff;
+  border-bottom: 1px solid var(--k8s-border);
+}
+
+.detail-tabs :deep(.el-tabs__item) {
+  color: #475467;
+  font-weight: 700;
+}
+
+.detail-tabs :deep(.el-tabs__item.is-active) {
+  color: var(--k8s-primary);
+}
+
+.detail-tabs :deep(.el-tabs__content) {
+  background: #ffffff;
+}
+
+@media (max-width: 1280px) {
+  .detail-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-summary-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .detail-meta-section {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-meta-card.images-card {
+    grid-column: auto;
+  }
+
 }
 
 </style>

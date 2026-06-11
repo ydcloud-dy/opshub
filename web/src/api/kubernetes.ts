@@ -83,10 +83,11 @@ export function updateCluster(id: number, data: UpdateClusterParams) {
 /**
  * 删除集群
  */
-export function deleteCluster(id: number) {
+export function deleteCluster(id: number, force = false) {
   return request({
     url: `/api/v1/plugins/kubernetes/clusters/${id}`,
-    method: 'delete'
+    method: 'delete',
+    params: force ? { force: true } : undefined
   })
 }
 
@@ -174,6 +175,7 @@ export interface PodInfo {
   ip: string
   node: string
   labels: Record<string, string>
+  containers?: { name: string }[]
 }
 
 export interface DeploymentInfo {
@@ -2131,4 +2133,3 @@ export function deletePodDisruptionBudget(clusterId: number, namespace: string, 
     data: { clusterId }
   })
 }
-

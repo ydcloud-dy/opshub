@@ -12,7 +12,7 @@
         </div>
       </div>
       <div class="header-actions">
-        <el-button class="black-button" @click="handleAdd">
+        <el-button type="primary" @click="handleAdd">
           <el-icon style="margin-right: 6px;"><Plus /></el-icon>
           新增配置
         </el-button>
@@ -347,7 +347,7 @@
 
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button class="black-button" @click="handleSubmit" :loading="submitting">保存</el-button>
+        <el-button type="primary" @click="handleSubmit" :loading="submitting">保存</el-button>
       </template>
     </el-dialog>
   </div>
@@ -843,15 +843,15 @@ onMounted(() => {
 .page-title-icon {
   width: 48px;
   height: 48px;
-  background: linear-gradient(135deg, #000 0%, #1a1a1a 100%);
-  border-radius: 10px;
+  background: #f8fafc;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #d4af37;
+  color: #111827;
   font-size: 22px;
   flex-shrink: 0;
-  border: 1px solid #d4af37;
+  border: 1px solid #edf1f7;
 }
 
 .page-title {
@@ -938,20 +938,6 @@ onMounted(() => {
   padding: 16px;
   display: flex;
   justify-content: flex-end;
-}
-
-.black-button {
-  background-color: #000000 !important;
-  color: #ffffff !important;
-  border-color: #000000 !important;
-  border-radius: 8px;
-  padding: 10px 20px;
-  font-weight: 500;
-}
-
-.black-button:hover {
-  background-color: #333333 !important;
-  border-color: #333333 !important;
 }
 
 .form-tip {

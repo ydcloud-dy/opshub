@@ -55,6 +55,130 @@ func NewArthasHandler(clusterService *service.ClusterService, db *gorm.DB) *Arth
 	}
 }
 
+func arthasBootEnsureScript() string {
+	return `
+ARTHAS_BOOT="/tmp/arthas-boot.jar"
+ARTHAS_URL="https://arthas.aliyun.com/arthas-boot.jar"
+ARTHAS_LOCK="/tmp/opshub-arthas-download.lock"
+
+release_arthas_lock() {
+    rmdir "$ARTHAS_LOCK" 2>/dev/null || true
+    trap - EXIT INT TERM
+}
+
+ensure_arthas_boot() {
+    if [ -s "$ARTHAS_BOOT" ]; then
+        return 0
+    fi
+
+    lock_wait=0
+    while ! mkdir "$ARTHAS_LOCK" 2>/dev/null; do
+        if [ -s "$ARTHAS_BOOT" ]; then
+            return 0
+        fi
+        lock_wait=$((lock_wait + 1))
+        if [ "$lock_wait" -ge 60 ]; then
+            echo "[ERROR] Wait arthas download lock timeout"
+            return 1
+        fi
+        sleep 1
+    done
+
+    trap release_arthas_lock EXIT INT TERM
+
+    if [ -s "$ARTHAS_BOOT" ]; then
+        release_arthas_lock
+        return 0
+    fi
+
+    echo "[INFO] Downloading arthas-boot.jar..."
+    tmp_file="${ARTHAS_BOOT}.tmp.$$"
+    rm -f "$tmp_file"
+
+    if command -v curl >/dev/null 2>&1; then
+        curl -fSL -o "$tmp_file" "$ARTHAS_URL" 2>/dev/null || true
+    fi
+
+    if [ ! -s "$tmp_file" ] && command -v wget >/dev/null 2>&1; then
+        wget -q -O "$tmp_file" "$ARTHAS_URL" 2>/dev/null || true
+    fi
+
+    if [ ! -s "$tmp_file" ]; then
+        rm -f "$tmp_file"
+        release_arthas_lock
+        echo "[ERROR] Failed to download arthas-boot.jar"
+        return 1
+    fi
+
+    mv "$tmp_file" "$ARTHAS_BOOT"
+    chmod 644 "$ARTHAS_BOOT" 2>/dev/null || true
+    release_arthas_lock
+    return 0
+}
+
+ensure_arthas_boot || exit 1
+`
+}
+
+func arthasJavaEnsureScript() string {
+	return `
+find_jdk() {
+    JAVA_PATHS="/usr/lib/jvm /opt/java /opt/jdk /usr/java /opt /Library/Java/JavaVirtualMachines"
+
+    for base in $JAVA_PATHS; do
+        if [ -d "$base" ]; then
+            for java_bin in $(find "$base" -name "java" -type f 2>/dev/null | grep -E "/bin/java$" | head -10); do
+                java_home=$(dirname $(dirname "$java_bin"))
+                if [ -f "$java_home/lib/tools.jar" ] || [ -d "$java_home/jmods" ]; then
+                    echo "$java_bin"
+                    return 0
+                fi
+            done
+        fi
+    done
+
+    if [ -n "$JAVA_HOME" ]; then
+        if [ -f "$JAVA_HOME/lib/tools.jar" ] || [ -d "$JAVA_HOME/jmods" ]; then
+            echo "$JAVA_HOME/bin/java"
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+JAVA_BIN=$(find_jdk)
+if [ -z "$JAVA_BIN" ]; then
+    echo "[ERROR] 未找到 JDK 环境，Arthas 需要完整的 JDK"
+    exit 1
+fi
+
+echo "[INFO] Using Java: $JAVA_BIN"
+`
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'"
+}
+
+func summarizeArthasError(detail string) string {
+	lowerDetail := strings.ToLower(detail)
+	switch {
+	case strings.Contains(lowerDetail, "connection refused") || strings.Contains(lowerDetail, "connect to telnet server error"):
+		return "Arthas telnet 连接失败，已尝试复用/切换端口，请查看诊断详情"
+	case strings.Contains(lowerDetail, "unable to attach") || strings.Contains(lowerDetail, "attach not supported"):
+		return "当前 JVM 不支持 Arthas attach"
+	case strings.Contains(lowerDetail, "no process") || strings.Contains(lowerDetail, "can not find") || strings.Contains(lowerDetail, "process not found"):
+		return "目标 Java 进程不存在，请重新选择进程"
+	case strings.Contains(lowerDetail, "permission denied"):
+		return "权限不足，无法注入 Arthas 到目标进程"
+	case strings.Contains(lowerDetail, "未找到 jdk") || strings.Contains(lowerDetail, "jdk"):
+		return "容器中未找到完整 JDK，无法使用 Arthas"
+	default:
+		return "执行 Arthas 命令失败，请查看诊断详情"
+	}
+}
+
 // ArthasCommandRequest Arthas命令请求
 type ArthasCommandRequest struct {
 	ClusterID uint   `json:"clusterId" binding:"required"`
@@ -150,9 +274,26 @@ func (h *ArthasHandler) ListJavaProcesses(c *gin.Context) {
 		return
 	}
 
-	// 执行 jps -l 命令获取Java进程列表
-	// 如果jps不存在，则尝试用ps命令（使用 -o pid,args 格式，输出 PID 和命令行）
-	output, err := h.execCommand(c.Request.Context(), uint(clusterID), currentUserID.(uint), namespace, pod, container, []string{"sh", "-c", "jps -l 2>/dev/null || ps -eo pid,args 2>/dev/null | grep java | grep -v grep || echo ''"})
+	// 执行 jps -l 命令获取Java进程列表；如果 jps 只返回自身或不可用，再用 ps 兜底。
+	processScript := `
+jps_output=""
+if command -v jps >/dev/null 2>&1; then
+    jps_output=$(jps -l 2>/dev/null | grep -Ev '(^|[[:space:]])(Jps|sun\.tools\.jps|arthas-boot\.jar)' || true)
+fi
+
+if [ -n "$jps_output" ]; then
+    echo "$jps_output"
+    exit 0
+fi
+
+if ps -eo pid,args >/dev/null 2>&1; then
+    ps -eo pid,args 2>/dev/null | grep '[j]ava' | grep -v 'arthas-boot.jar' || true
+    exit 0
+fi
+
+ps aux 2>/dev/null | grep '[j]ava' | grep -v 'arthas-boot.jar' || true
+`
+	output, err := h.execCommand(c.Request.Context(), uint(clusterID), currentUserID.(uint), namespace, pod, container, []string{"sh", "-c", processScript})
 
 	// 如果命令执行失败（例如容器中没有sh），返回空数组而不是错误
 	if err != nil {
@@ -187,49 +328,74 @@ func parseJavaProcesses(output string) []ProcessInfo {
 
 		// jps -l 格式: PID MainClass
 		// ps -eo pid,args 格式: PID command args...
+		// ps aux 格式: USER PID ... COMMAND args...
 		parts := strings.Fields(line)
 		if len(parts) >= 2 {
-			pid := parts[0]
+			pid := ""
+			commandParts := []string{}
 
-			// 验证第一个字段是否是数字（PID）
-			if _, err := strconv.Atoi(pid); err != nil {
-				// 如果不是数字，可能是 ps aux 格式，尝试解析第二个字段作为 PID
-				if len(parts) >= 2 {
-					if _, err := strconv.Atoi(parts[1]); err == nil {
-						pid = parts[1]
-						// 跳过用户名和PID，剩余部分作为命令
-						if len(parts) > 2 {
-							parts = append([]string{pid}, parts[2:]...)
-						}
-					} else {
-						continue // 无法解析 PID，跳过此行
-					}
+			if _, err := strconv.Atoi(parts[0]); err == nil {
+				pid = parts[0]
+				commandParts = parts[1:]
+			} else if len(parts) >= 11 {
+				if _, err := strconv.Atoi(parts[1]); err == nil {
+					pid = parts[1]
+					commandParts = parts[10:]
 				}
+			} else if _, err := strconv.Atoi(parts[1]); err == nil {
+				pid = parts[1]
+				commandParts = parts[2:]
+			}
+
+			if pid == "" || len(commandParts) == 0 {
+				continue
 			}
 
 			// 跳过 jps 自身
-			mainClass := ""
-			if len(parts) >= 2 {
-				mainClass = parts[1]
-			}
+			cmdLine := strings.Join(commandParts, " ")
+			mainClass := extractJavaMainClass(commandParts)
 			if strings.Contains(mainClass, "Jps") || strings.Contains(mainClass, "sun.tools.jps") {
 				continue
 			}
 
 			// 跳过 arthas-boot.jar 进程（这些是诊断工具本身）
-			cmdLine := strings.Join(parts[1:], " ")
 			if strings.Contains(cmdLine, "arthas-boot.jar") {
 				continue
 			}
 
 			processes = append(processes, ProcessInfo{
-				PID:       pid,
-				MainClass: mainClass,
+				PID:         pid,
+				MainClass:   mainClass,
+				CommandLine: cmdLine,
 			})
 		}
 	}
 
 	return processes
+}
+
+func extractJavaMainClass(commandParts []string) string {
+	if len(commandParts) == 0 {
+		return ""
+	}
+
+	for i, part := range commandParts {
+		if part == "-jar" && i+1 < len(commandParts) {
+			return commandParts[i+1]
+		}
+		if strings.HasSuffix(part, ".jar") {
+			return part
+		}
+	}
+
+	for _, part := range commandParts {
+		if part == "java" || strings.HasSuffix(part, "/java") || strings.HasPrefix(part, "-") {
+			continue
+		}
+		return part
+	}
+
+	return commandParts[0]
 }
 
 // ExecuteArthasCommand 执行Arthas命令（一次性命令）
@@ -258,9 +424,11 @@ func (h *ArthasHandler) ExecuteArthasCommand(c *gin.Context) {
 	// 执行命令
 	output, err := h.execCommand(c.Request.Context(), req.ClusterID, currentUserID.(uint), req.Namespace, req.Pod, req.Container, arthasCmd)
 	if err != nil {
+		detail := err.Error()
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    500,
-			"message": "执行Arthas命令失败: " + err.Error(),
+			"message": summarizeArthasError(detail),
+			"data":    gin.H{"detail": detail},
 		})
 		return
 	}
@@ -276,19 +444,10 @@ func (h *ArthasHandler) ExecuteArthasCommand(c *gin.Context) {
 func (h *ArthasHandler) buildArthasCommand(processID string, command string) []string {
 	// 使用 arthas-boot.jar 执行命令
 	script := fmt.Sprintf(`
-# 下载 arthas-boot.jar 如果不存在
-if [ ! -f /tmp/arthas-boot.jar ]; then
-    echo "[INFO] Downloading arthas-boot.jar..."
-    curl -sL -o /tmp/arthas-boot.jar https://arthas.aliyun.com/arthas-boot.jar 2>/dev/null || \
-    wget -q -O /tmp/arthas-boot.jar https://arthas.aliyun.com/arthas-boot.jar 2>/dev/null
-    if [ ! -f /tmp/arthas-boot.jar ]; then
-        echo "[ERROR] Failed to download arthas-boot.jar"
-        exit 1
-    fi
-fi
+%s
 
 TARGET_PID=%s
-COMMAND='%s'
+COMMAND=%s
 echo "[INFO] Executing Arthas command on process $TARGET_PID: $COMMAND"
 
 # 查找可用的 JDK（需要有 tools.jar 或 jdk.attach 模块）
@@ -345,218 +504,123 @@ fi
 
 echo "[INFO] Using Java: $JAVA_BIN"
 
-# 使用固定端口，基于进程ID计算
-BASE_PORT=$((3658 + (TARGET_PID %% 100)))
-echo "[INFO] Using telnet port: $BASE_PORT"
+# 端口选择必须优先复用已启动的 Arthas agent；同一个 JVM 已 attach 后端口不会因为再次传参而改变。
+PORT_CACHE="/tmp/opshub-arthas-${TARGET_PID}.port"
+PORTS=""
 
-# 等待端口就绪的函数
-wait_for_port() {
-    local port=$1
-    local max_wait=15
-    local waited=0
-    while [ $waited -lt $max_wait ]; do
-        # 检查端口是否在监听
-        if (echo > /dev/tcp/127.0.0.1/$port) 2>/dev/null; then
-            echo "[INFO] Port $port is ready"
-            return 0
+add_port() {
+    port_value="$1"
+    if [ -z "$port_value" ]; then
+        return
+    fi
+    case " $PORTS " in
+        *" $port_value "*) ;;
+        *) PORTS="$PORTS $port_value" ;;
+    esac
+}
+
+if [ -s "$PORT_CACHE" ]; then
+    add_port "$(cat "$PORT_CACHE" 2>/dev/null)"
+fi
+
+add_port 3658
+add_port $((3658 + (TARGET_PID %% 100)))
+
+port_offset=0
+while [ "$port_offset" -le 20 ]; do
+    add_port $((3658 + port_offset))
+    port_offset=$((port_offset + 1))
+done
+
+echo "[INFO] Candidate telnet ports:$PORTS"
+
+is_port_used_output() {
+    echo "$1" | grep -qiE "telnet port.*is used|port .* is used|address already in use"
+}
+
+is_retryable_output() {
+    echo "$1" | grep -qiE "Connection refused|Connect.*error|Failed to connect|telnet.*connect|process detection timeout|unexpected process"
+}
+
+is_fatal_output() {
+    echo "$1" | grep -qiE "No process|Can not find|process not found|Unable to attach|attach not supported|tools.jar|not support attach|Permission denied"
+}
+
+summarize_output() {
+    echo "$1" | grep -E "Connection refused|Connect.*error|Failed to connect|telnet port.*is used|Attach process.*success|Unable to attach|No process|Can not find|process not found|Permission denied|Usage:" | head -1
+}
+
+print_failure_context() {
+    echo "[ERROR] Failed to execute Arthas command after trying ports:$PORTS"
+    echo "[ERROR] Last Arthas output:"
+    echo "$LAST_OUTPUT" | tail -120
+
+    echo "[INFO] Arthas log tail:"
+    for log_file in "$HOME/logs/arthas/arthas.log" "/root/logs/arthas/arthas.log" "/tmp/arthas/arthas.log"; do
+        if [ -f "$log_file" ]; then
+            echo "--- $log_file ---"
+            tail -80 "$log_file" 2>/dev/null || true
         fi
-        sleep 1
-        waited=$((waited + 1))
-        echo "[INFO] Waiting for port $port... ($waited/$max_wait)"
     done
-    return 1
 }
 
 # 主执行逻辑
-PORT=$BASE_PORT
-MAX_ATTEMPTS=3
-ATTEMPT=0
+MAX_ATTEMPTS_PER_PORT=4
+LAST_OUTPUT=""
 
-while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-    ATTEMPT=$((ATTEMPT + 1))
-    echo "[INFO] Attempt $ATTEMPT/$MAX_ATTEMPTS on port $PORT"
+for PORT in $PORTS; do
+    ATTEMPT=1
+    while [ "$ATTEMPT" -le "$MAX_ATTEMPTS_PER_PORT" ]; do
+        echo "[INFO] Attempt $ATTEMPT/$MAX_ATTEMPTS_PER_PORT on telnet port $PORT"
 
-    # 执行命令，使用找到的 JDK
-    OUTPUT=$($JAVA_BIN -jar /tmp/arthas-boot.jar $TARGET_PID --telnet-port $PORT --http-port -1 -c "$COMMAND" 2>&1)
+        OUTPUT=$($JAVA_BIN -jar /tmp/arthas-boot.jar $TARGET_PID --telnet-port $PORT --http-port -1 -c "$COMMAND" 2>&1)
+        STATUS=$?
+        LAST_OUTPUT="$OUTPUT"
 
-    # 检查是否成功获取到数据
-    if echo "$OUTPUT" | grep -qE "ID.*NAME|heap|nonheap|Memory|THREAD|RUNNABLE|WAITING|BLOCKED|TIMED_|@|gc\.|eden|os\.|java\.|user\.|sun\."; then
-        echo "$OUTPUT"
-        exit 0
-    fi
-
-    # 检查错误类型
-    if echo "$OUTPUT" | grep -q "telnet port.*is used"; then
-        echo "[WARN] Port $PORT already in use, trying next port..."
-        PORT=$((PORT + 1))
-        sleep 1
-        continue
-    fi
-
-    # 如果 attach 成功但连接失败，等待 telnet 服务启动
-    if echo "$OUTPUT" | grep -q "Attach process.*success"; then
-        echo "[INFO] Agent attached, waiting for telnet server to start..."
-
-        # 等待端口就绪
-        if wait_for_port $PORT; then
-            # 端口就绪后重新执行命令
-            echo "[INFO] Retrying command..."
-            OUTPUT=$($JAVA_BIN -jar /tmp/arthas-boot.jar $TARGET_PID --telnet-port $PORT --http-port -1 -c "$COMMAND" 2>&1)
-            if echo "$OUTPUT" | grep -qE "ID.*NAME|heap|nonheap|Memory|THREAD|RUNNABLE|WAITING|BLOCKED|TIMED_|@|gc\.|eden|os\.|java\.|user\.|sun\."; then
-                echo "$OUTPUT"
-                exit 0
-            fi
+        if [ "$STATUS" -eq 0 ]; then
+            echo "$PORT" > "$PORT_CACHE" 2>/dev/null || true
+            echo "$OUTPUT"
+            exit 0
         fi
 
-        # 如果还是失败，显示输出并继续尝试
-        echo "$OUTPUT"
-    else
-        echo "$OUTPUT"
-    fi
+        SUMMARY=$(summarize_output "$OUTPUT")
+        if [ -n "$SUMMARY" ]; then
+            echo "[WARN] $SUMMARY"
+        fi
 
-    # 等待一段时间后重试
-    if [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
-        echo "[INFO] Waiting before retry..."
-        sleep 5
-    fi
+        if is_fatal_output "$OUTPUT"; then
+            print_failure_context
+            exit 1
+        fi
+
+        if is_port_used_output "$OUTPUT"; then
+            echo "[WARN] Telnet port $PORT is unavailable, trying next candidate..."
+            break
+        fi
+
+        if is_retryable_output "$OUTPUT" || echo "$OUTPUT" | grep -q "Attach process.*success"; then
+            echo "[INFO] Arthas command channel is not ready, retrying..."
+            sleep 2
+            ATTEMPT=$((ATTEMPT + 1))
+            continue
+        fi
+
+        echo "[INFO] Arthas command failed, retrying..."
+        sleep 2
+        ATTEMPT=$((ATTEMPT + 1))
+    done
 done
 
-# 最后一次尝试用不同端口
-FINAL_PORT=$((BASE_PORT + 100))
-echo "[INFO] Final attempt with port $FINAL_PORT"
-OUTPUT=$($JAVA_BIN -jar /tmp/arthas-boot.jar $TARGET_PID --telnet-port $FINAL_PORT --http-port -1 -c "$COMMAND" 2>&1)
-echo "$OUTPUT"
-
-if echo "$OUTPUT" | grep -qE "ID.*NAME|heap|nonheap|Memory|THREAD|RUNNABLE|WAITING|BLOCKED|TIMED_|@|gc\.|eden|os\.|java\.|user\.|sun\."; then
-    exit 0
-fi
-
-echo "[ERROR] Failed to execute Arthas command after multiple attempts"
+print_failure_context
 exit 1
-`, processID, command)
+`, arthasBootEnsureScript(), shellQuote(processID), shellQuote(command))
 
 	return []string{"sh", "-c", script}
 }
 
 // buildArthasCommandForOgnl 构建用于 ognl 命令的 Arthas 脚本（处理特殊字符）
 func (h *ArthasHandler) buildArthasCommandForOgnl(processID string, ognlExpr string) []string {
-	// 使用 arthas-boot.jar 执行 ognl 命令
-	script := fmt.Sprintf(`
-# 下载 arthas-boot.jar 如果不存在
-if [ ! -f /tmp/arthas-boot.jar ]; then
-    echo "[INFO] Downloading arthas-boot.jar..."
-    curl -sL -o /tmp/arthas-boot.jar https://arthas.aliyun.com/arthas-boot.jar 2>/dev/null || \
-    wget -q -O /tmp/arthas-boot.jar https://arthas.aliyun.com/arthas-boot.jar 2>/dev/null
-    if [ ! -f /tmp/arthas-boot.jar ]; then
-        echo "[ERROR] Failed to download arthas-boot.jar"
-        exit 1
-    fi
-fi
-
-TARGET_PID=%s
-echo "[INFO] Executing Arthas ognl command on process $TARGET_PID"
-
-# 查找可用的 JDK
-find_jdk() {
-    JAVA_PATHS="/usr/lib/jvm /opt/java /opt/jdk /usr/java /Library/Java/JavaVirtualMachines"
-    for base in $JAVA_PATHS; do
-        if [ -d "$base" ]; then
-            for java_bin in $(find "$base" -name "java" -type f 2>/dev/null | grep -E "/bin/java$"); do
-                java_home=$(dirname $(dirname "$java_bin"))
-                if [ -f "$java_home/lib/tools.jar" ] || [ -d "$java_home/jmods" ]; then
-                    echo "$java_bin"
-                    return 0
-                fi
-            done
-        fi
-    done
-    if [ -n "$JAVA_HOME" ]; then
-        if [ -f "$JAVA_HOME/lib/tools.jar" ] || [ -d "$JAVA_HOME/jmods" ]; then
-            echo "$JAVA_HOME/bin/java"
-            return 0
-        fi
-    fi
-    echo "java"
-    return 1
-}
-
-JAVA_BIN=$(find_jdk)
-echo "[INFO] Using Java: $JAVA_BIN"
-
-# 使用固定端口，基于进程ID计算
-BASE_PORT=$((3658 + (TARGET_PID %% 100)))
-
-# 等待端口就绪的函数
-wait_for_port() {
-    local port=$1
-    local max_wait=15
-    local waited=0
-    while [ $waited -lt $max_wait ]; do
-        if (echo > /dev/tcp/127.0.0.1/$port) 2>/dev/null; then
-            return 0
-        fi
-        sleep 1
-        waited=$((waited + 1))
-    done
-    return 1
-}
-
-# 主执行逻辑
-PORT=$BASE_PORT
-MAX_ATTEMPTS=3
-ATTEMPT=0
-
-while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-    ATTEMPT=$((ATTEMPT + 1))
-    echo "[INFO] Attempt $ATTEMPT/$MAX_ATTEMPTS on port $PORT"
-
-    OUTPUT=$($JAVA_BIN -jar /tmp/arthas-boot.jar $TARGET_PID --telnet-port $PORT --http-port -1 -c "ognl '%s'" 2>&1)
-
-    # 检查是否成功
-    if echo "$OUTPUT" | grep -qE "@HashMap|@Properties|@String|@Integer|@Long"; then
-        echo "$OUTPUT"
-        exit 0
-    fi
-
-    # 端口冲突
-    if echo "$OUTPUT" | grep -q "telnet port.*is used"; then
-        PORT=$((PORT + 1))
-        sleep 1
-        continue
-    fi
-
-    # attach 成功但连接失败
-    if echo "$OUTPUT" | grep -q "Attach process.*success"; then
-        echo "[INFO] Agent attached, waiting for telnet server..."
-        if wait_for_port $PORT; then
-            OUTPUT=$($JAVA_BIN -jar /tmp/arthas-boot.jar $TARGET_PID --telnet-port $PORT --http-port -1 -c "ognl '%s'" 2>&1)
-            if echo "$OUTPUT" | grep -qE "@HashMap|@Properties|@String|@Integer|@Long"; then
-                echo "$OUTPUT"
-                exit 0
-            fi
-        fi
-        echo "$OUTPUT"
-    elif echo "$OUTPUT" | grep -qE "No process|Can not find"; then
-        echo "[ERROR] Process $TARGET_PID not found"
-        exit 1
-    elif echo "$OUTPUT" | grep -qE "Unable to attach|attach not supported|tools.jar"; then
-        echo "[ERROR] This JVM does not support Arthas attach (JDK required, not JRE)"
-        echo "$OUTPUT"
-        exit 1
-    else
-        echo "$OUTPUT"
-    fi
-
-    if [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
-        sleep 5
-    fi
-done
-
-echo "[ERROR] Failed to execute Arthas ognl command"
-exit 1
-`, processID, ognlExpr, ognlExpr)
-
-	return []string{"sh", "-c", script}
+	return h.buildArthasCommand(processID, "ognl '"+ognlExpr+"'")
 }
 
 // GetDashboard 获取控制面板信息
@@ -602,9 +666,11 @@ func (h *ArthasHandler) GetDashboard(c *gin.Context) {
 
 	output, err := h.execCommand(ctx, uint(clusterID), currentUserID.(uint), namespace, pod, container, arthasCmd)
 	if err != nil {
+		detail := err.Error()
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    500,
-			"message": "执行Arthas命令失败: " + err.Error(),
+			"message": summarizeArthasError(detail),
+			"data":    gin.H{"detail": detail},
 		})
 		return
 	}
@@ -1025,9 +1091,11 @@ func (h *ArthasHandler) GetSysEnv(c *gin.Context) {
 
 	output, err := h.execCommand(ctx, uint(clusterID), currentUserID.(uint), namespace, pod, container, arthasCmd)
 	if err != nil {
+		detail := err.Error()
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    500,
-			"message": "执行Arthas命令失败: " + err.Error(),
+			"message": summarizeArthasError(detail),
+			"data":    gin.H{"detail": detail},
 		})
 		return
 	}
@@ -1084,9 +1152,11 @@ func (h *ArthasHandler) GetSysProp(c *gin.Context) {
 
 	output, err := h.execCommand(ctx, uint(clusterID), currentUserID.(uint), namespace, pod, container, arthasCmd)
 	if err != nil {
+		detail := err.Error()
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    500,
-			"message": "执行Arthas命令失败: " + err.Error(),
+			"message": summarizeArthasError(detail),
+			"data":    gin.H{"detail": detail},
 		})
 		return
 	}
@@ -1366,9 +1436,11 @@ func (h *ArthasHandler) executeArthasCommandWithResponse(c *gin.Context, command
 
 	output, err := h.execCommand(ctx, uint(clusterID), currentUserID.(uint), namespace, pod, container, arthasCmd)
 	if err != nil {
+		detail := err.Error()
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    500,
-			"message": "执行Arthas命令失败: " + err.Error(),
+			"message": summarizeArthasError(detail),
+			"data":    gin.H{"detail": detail},
 		})
 		return
 	}
@@ -1554,14 +1626,21 @@ func (h *ArthasHandler) executeStreamingArthasCommand(ctx context.Context, conn 
 
 	// 构建执行脚本
 	script := fmt.Sprintf(`
-# 下载 arthas-boot.jar 如果不存在
-if [ ! -f /tmp/arthas-boot.jar ]; then
-    curl -sL -o /tmp/arthas-boot.jar https://arthas.aliyun.com/arthas-boot.jar 2>/dev/null || \
-    wget -q -O /tmp/arthas-boot.jar https://arthas.aliyun.com/arthas-boot.jar 2>/dev/null
+%s
+
+%s
+
+TARGET_PID=%s
+COMMAND=%s
+PORT_CACHE="/tmp/opshub-arthas-${TARGET_PID}.port"
+PORT="$(cat "$PORT_CACHE" 2>/dev/null || true)"
+if [ -z "$PORT" ]; then
+    PORT=3658
 fi
-# 使用 arthas 执行命令
-java -jar /tmp/arthas-boot.jar %s -c '%s'
-`, processID, command)
+
+echo "[INFO] Streaming Arthas command on telnet port $PORT"
+$JAVA_BIN -jar /tmp/arthas-boot.jar $TARGET_PID --telnet-port $PORT --http-port -1 -c "$COMMAND"
+`, arthasBootEnsureScript(), arthasJavaEnsureScript(), shellQuote(processID), shellQuote(command))
 
 	query := url.Values{}
 	query.Set("container", container)
@@ -1671,9 +1750,9 @@ func (h *ArthasHandler) GenerateFlameGraph(c *gin.Context) {
 	container := c.Query("container")
 	processID := c.Query("processId")
 	duration := c.DefaultQuery("duration", "30")
-	event := c.DefaultQuery("event", "cpu")      // cpu, alloc, lock, wall
-	threadId := c.Query("threadId")              // 可选，指定线程ID
-	includeThreads := c.Query("includeThreads")  // 是否按线程分组显示
+	event := c.DefaultQuery("event", "cpu")     // cpu, alloc, lock, wall
+	threadId := c.Query("threadId")             // 可选，指定线程ID
+	includeThreads := c.Query("includeThreads") // 是否按线程分组显示
 
 	if clusterIDStr == "" || namespace == "" || pod == "" || container == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -1728,9 +1807,11 @@ func (h *ArthasHandler) GenerateFlameGraph(c *gin.Context) {
 
 	output, err := h.execCommand(ctx, uint(clusterID), currentUserID.(uint), namespace, pod, container, arthasCmd)
 	if err != nil {
+		detail := err.Error()
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    500,
-			"message": "生成火焰图失败: " + err.Error(),
+			"message": summarizeArthasError(detail),
+			"data":    gin.H{"detail": detail},
 		})
 		return
 	}
@@ -1747,20 +1828,11 @@ func (h *ArthasHandler) buildArthasProfilerCommand(processID string, profilerOpt
 	// 使用 arthas-boot.jar 执行 profiler 命令
 	// profiler 命令会阻塞直到采样完成，然后输出到文件
 	script := fmt.Sprintf(`
-# 下载 arthas-boot.jar 如果不存在
-if [ ! -f /tmp/arthas-boot.jar ]; then
-    echo "[INFO] Downloading arthas-boot.jar..."
-    curl -sL -o /tmp/arthas-boot.jar https://arthas.aliyun.com/arthas-boot.jar 2>/dev/null || \
-    wget -q -O /tmp/arthas-boot.jar https://arthas.aliyun.com/arthas-boot.jar 2>/dev/null
-    if [ ! -f /tmp/arthas-boot.jar ]; then
-        echo "[ERROR] Failed to download arthas-boot.jar"
-        exit 1
-    fi
-fi
+%s
 
 TARGET_PID=%s
-PROFILER_OPTS="%s"
-OUTPUT_FILE="%s"
+PROFILER_OPTS=%s
+OUTPUT_FILE=%s
 
 echo "[INFO] Starting Arthas profiler on process $TARGET_PID with options: $PROFILER_OPTS"
 
@@ -1797,31 +1869,18 @@ echo "[INFO] Using Java: $JAVA_BIN"
 # 删除旧的输出文件
 rm -f "$OUTPUT_FILE" 2>/dev/null
 
-# 使用固定端口，基于进程ID计算
-BASE_PORT=$((3658 + (TARGET_PID %% 100)))
-
-# 等待端口就绪的函数
-wait_for_port() {
-    local port=$1
-    local max_wait=20
-    local waited=0
-    while [ $waited -lt $max_wait ]; do
-        if (echo > /dev/tcp/127.0.0.1/$port) 2>/dev/null; then
-            echo "[INFO] Port $port is ready"
-            return 0
-        fi
-        sleep 1
-        waited=$((waited + 1))
-        echo "[INFO] Waiting for telnet port $port... ($waited/$max_wait)"
-    done
-    return 1
-}
+# 优先复用连接验证阶段确认过的端口。
+PORT_CACHE="/tmp/opshub-arthas-${TARGET_PID}.port"
+BASE_PORT="$(cat "$PORT_CACHE" 2>/dev/null || true)"
+if [ -z "$BASE_PORT" ]; then
+    BASE_PORT=3658
+fi
 
 # 执行 profiler 的函数
 execute_profiler() {
-    local port=$1
-    local retry_count=0
-    local max_retries=3
+    port=$1
+    retry_count=0
+    max_retries=3
 
     while [ $retry_count -lt $max_retries ]; do
         retry_count=$((retry_count + 1))
@@ -1840,11 +1899,9 @@ execute_profiler() {
 
         # 检查是否 attach 成功但连接失败
         if echo "$OUTPUT" | grep -q "Attach process.*success" && echo "$OUTPUT" | grep -qE "Connection refused|Connect.*error"; then
-            echo "[INFO] Agent attached, waiting for telnet server..."
-            if wait_for_port $port; then
-                # 重试执行命令
-                OUTPUT=$($JAVA_BIN -jar /tmp/arthas-boot.jar $TARGET_PID --telnet-port $port --http-port -1 -c "$PROFILER_CMD" 2>&1)
-            fi
+            echo "[INFO] Agent attached, waiting for command channel..."
+            sleep 2
+            OUTPUT=$($JAVA_BIN -jar /tmp/arthas-boot.jar $TARGET_PID --telnet-port $port --http-port -1 -c "$PROFILER_CMD" 2>&1)
         fi
 
         echo "[INFO] Profiler command output:"
@@ -1852,6 +1909,7 @@ execute_profiler() {
 
         # 检查输出文件是否生成
         if [ -f "$OUTPUT_FILE" ]; then
+            echo "$port" > "$PORT_CACHE" 2>/dev/null || true
             echo "[INFO] Flame graph generated successfully"
             echo "---FLAMEGRAPH_START---"
             cat "$OUTPUT_FILE"
@@ -1865,6 +1923,7 @@ execute_profiler() {
         echo "$STOP_OUTPUT"
 
         if [ -f "$OUTPUT_FILE" ]; then
+            echo "$port" > "$PORT_CACHE" 2>/dev/null || true
             echo "[INFO] Flame graph generated via stop command"
             echo "---FLAMEGRAPH_START---"
             cat "$OUTPUT_FILE"
@@ -1889,7 +1948,7 @@ echo "  1. 容器中没有完整的 JDK 环境"
 echo "  2. Arthas telnet 服务启动失败"
 echo "  3. 目标进程不支持 profiler"
 exit 1
-`, processID, profilerOpts, outputFile)
+`, arthasBootEnsureScript(), shellQuote(processID), shellQuote(profilerOpts), shellQuote(outputFile))
 
 	return []string{"sh", "-c", script}
 }
@@ -1986,9 +2045,9 @@ exit 1
 		javaVersion = strings.TrimSpace(output)
 	}
 
-	// 检查Arthas是否已下载
-	arthasOutput, _ := h.execCommand(c.Request.Context(), uint(clusterID), currentUserID.(uint), namespace, pod, container, []string{"sh", "-c", "ls -la /tmp/arthas-boot.jar 2>/dev/null"})
-	hasArthas := strings.Contains(arthasOutput, "arthas-boot.jar")
+	// 检查Arthas是否已缓存到Pod临时目录
+	arthasOutput, _ := h.execCommand(c.Request.Context(), uint(clusterID), currentUserID.(uint), namespace, pod, container, []string{"sh", "-c", "[ -s /tmp/arthas-boot.jar ] && echo cached || true"})
+	hasArthas := strings.Contains(arthasOutput, "cached")
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
@@ -2027,12 +2086,9 @@ func (h *ArthasHandler) InstallArthas(c *gin.Context) {
 		return
 	}
 
-	// 下载Arthas
-	script := `
-cd /tmp && \
-(curl -o arthas-boot.jar https://arthas.aliyun.com/arthas-boot.jar 2>/dev/null || \
-wget -O arthas-boot.jar https://arthas.aliyun.com/arthas-boot.jar 2>/dev/null) && \
-ls -la arthas-boot.jar
+	// 下载Arthas。Pod重启后 /tmp 会清空；已有缓存时直接复用，不重复下载。
+	script := arthasBootEnsureScript() + `
+ls -la /tmp/arthas-boot.jar
 `
 
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 120*time.Second)
@@ -2040,9 +2096,11 @@ ls -la arthas-boot.jar
 
 	output, err := h.execCommand(ctx, req.ClusterID, currentUserID.(uint), req.Namespace, req.Pod, req.Container, []string{"sh", "-c", script})
 	if err != nil {
+		detail := err.Error()
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    500,
-			"message": "安装Arthas失败: " + err.Error(),
+			"message": summarizeArthasError(detail),
+			"data":    gin.H{"detail": detail},
 		})
 		return
 	}

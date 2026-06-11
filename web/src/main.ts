@@ -3,6 +3,7 @@ import { createPinia } from 'pinia'
 import ElementPlus from 'element-plus'
 import zhCn from 'element-plus/dist/locale/zh-cn.mjs'
 import 'element-plus/dist/index.css'
+import './style.css'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 import App from './App.vue'
 import router, { registerPluginRoutes } from './router'
@@ -46,7 +47,4 @@ installPlugins().then(() => {
   })
 
   app.mount('#app')
-
-  // 全局字体大小调整
-  document.documentElement.style.fontSize = '20px'
 })

@@ -152,7 +152,6 @@
 
 <script setup lang="ts">
 import { ref, watch, reactive, computed } from 'vue'
-import { ElMessage } from 'element-plus'
 import { Connection, Refresh } from '@element-plus/icons-vue'
 import { getDashboard } from '@/api/arthas'
 
@@ -165,7 +164,7 @@ const props = defineProps<{
   attached: boolean
 }>()
 
-const emit = defineEmits(['switch-tab'])
+const emit = defineEmits(['switch-tab', 'connection-error'])
 
 const loading = ref(false)
 
@@ -360,8 +359,13 @@ const loadDashboard = async () => {
     } else if (typeof res === 'string') {
       dashboardData.rawOutput = res
     }
+
+    if (hasConnectionError.value && isDataEmpty.value) {
+      emit('connection-error', errorMessage.value)
+    }
   } catch (error: any) {
-    ElMessage.error('加载Dashboard失败: ' + (error.message || '未知错误'))
+    const message = '加载Dashboard失败: ' + (error.message || '未知错误')
+    emit('connection-error', message)
   } finally {
     loading.value = false
   }

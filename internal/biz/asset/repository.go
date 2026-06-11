@@ -38,10 +38,12 @@ type HostRepo interface {
 	Update(ctx context.Context, host *Host) error
 	Delete(ctx context.Context, id uint) error
 	GetByID(ctx context.Context, id uint) (*Host, error)
-	List(ctx context.Context, page, pageSize int, keyword string, groupIDs []uint, accessibleHostIDs []uint, status *int) ([]*Host, int64, error)
+	List(ctx context.Context, page, pageSize int, keyword string, groupIDs []uint, accessibleHostIDs []uint, status *int, collectMode, agentStatus string) ([]*Host, int64, error)
 	GetByGroupID(ctx context.Context, groupID uint) ([]*Host, error)
 	GetByIP(ctx context.Context, ip string) (*Host, error)
 	GetByCloudInstanceID(ctx context.Context, instanceID string) (*Host, error)
+	GetByAgentID(ctx context.Context, agentID string) (*Host, error)
+	GetByAgentInstallTokenHash(ctx context.Context, tokenHash string) (*Host, error)
 	CountByCredentialID(ctx context.Context, credentialID uint) (int64, error)
 }
 

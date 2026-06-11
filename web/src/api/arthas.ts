@@ -1,6 +1,7 @@
 import request from '@/utils/request'
 
 const BASE_URL = '/api/v1/plugins/kubernetes/arthas'
+const ARTHAS_TIMEOUT = 120000
 
 // Java进程信息
 export interface JavaProcess {
@@ -30,7 +31,8 @@ export function listJavaProcesses(params: Omit<ArthasBaseParams, 'processId'>) {
   return request({
     url: `${BASE_URL}/java-processes`,
     method: 'get',
-    params
+    params,
+    timeout: ARTHAS_TIMEOUT
   })
 }
 
@@ -39,7 +41,8 @@ export function checkArthasInstalled(params: Omit<ArthasBaseParams, 'processId'>
   return request({
     url: `${BASE_URL}/check`,
     method: 'get',
-    params
+    params,
+    timeout: ARTHAS_TIMEOUT
   })
 }
 
@@ -48,7 +51,8 @@ export function installArthas(data: Omit<ArthasBaseParams, 'processId'>) {
   return request({
     url: `${BASE_URL}/install`,
     method: 'post',
-    data
+    data,
+    timeout: ARTHAS_TIMEOUT
   })
 }
 
@@ -57,7 +61,8 @@ export function executeArthasCommand(data: ArthasBaseParams & { command: string 
   return request({
     url: `${BASE_URL}/command`,
     method: 'post',
-    data
+    data,
+    timeout: ARTHAS_TIMEOUT
   })
 }
 
@@ -66,7 +71,8 @@ export function getDashboard(params: ArthasBaseParams) {
   return request({
     url: `${BASE_URL}/dashboard`,
     method: 'get',
-    params
+    params,
+    timeout: ARTHAS_TIMEOUT
   })
 }
 
@@ -75,7 +81,8 @@ export function getThreadList(params: ArthasBaseParams) {
   return request({
     url: `${BASE_URL}/thread`,
     method: 'get',
-    params
+    params,
+    timeout: ARTHAS_TIMEOUT
   })
 }
 
@@ -84,7 +91,8 @@ export function getThreadStack(params: ArthasBaseParams & { threadId?: string })
   return request({
     url: `${BASE_URL}/thread/stack`,
     method: 'get',
-    params
+    params,
+    timeout: ARTHAS_TIMEOUT
   })
 }
 
@@ -93,7 +101,8 @@ export function getJvmInfo(params: ArthasBaseParams) {
   return request({
     url: `${BASE_URL}/jvm`,
     method: 'get',
-    params
+    params,
+    timeout: ARTHAS_TIMEOUT
   })
 }
 
@@ -102,7 +111,8 @@ export function getSysEnv(params: ArthasBaseParams) {
   return request({
     url: `${BASE_URL}/sysenv`,
     method: 'get',
-    params
+    params,
+    timeout: ARTHAS_TIMEOUT
   })
 }
 
@@ -111,7 +121,8 @@ export function getSysProp(params: ArthasBaseParams) {
   return request({
     url: `${BASE_URL}/sysprop`,
     method: 'get',
-    params
+    params,
+    timeout: ARTHAS_TIMEOUT
   })
 }
 
@@ -120,7 +131,8 @@ export function getPerfCounter(params: ArthasBaseParams) {
   return request({
     url: `${BASE_URL}/perfcounter`,
     method: 'get',
-    params
+    params,
+    timeout: ARTHAS_TIMEOUT
   })
 }
 
@@ -129,7 +141,8 @@ export function getMemory(params: ArthasBaseParams) {
   return request({
     url: `${BASE_URL}/memory`,
     method: 'get',
-    params
+    params,
+    timeout: ARTHAS_TIMEOUT
   })
 }
 
@@ -138,7 +151,8 @@ export function decompileClass(params: ArthasBaseParams & { className: string })
   return request({
     url: `${BASE_URL}/jad`,
     method: 'get',
-    params
+    params,
+    timeout: ARTHAS_TIMEOUT
   })
 }
 
@@ -147,7 +161,8 @@ export function getStaticField(params: ArthasBaseParams & { className: string; f
   return request({
     url: `${BASE_URL}/getstatic`,
     method: 'get',
-    params
+    params,
+    timeout: ARTHAS_TIMEOUT
   })
 }
 
@@ -156,7 +171,8 @@ export function searchClass(params: ArthasBaseParams & { pattern: string }) {
   return request({
     url: `${BASE_URL}/sc`,
     method: 'get',
-    params
+    params,
+    timeout: ARTHAS_TIMEOUT
   })
 }
 
@@ -165,7 +181,8 @@ export function searchMethod(params: ArthasBaseParams & { className: string; met
   return request({
     url: `${BASE_URL}/sm`,
     method: 'get',
-    params
+    params,
+    timeout: ARTHAS_TIMEOUT
   })
 }
 

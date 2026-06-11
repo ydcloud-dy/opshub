@@ -4,17 +4,19 @@
     <div class="container-section">
       <div class="section-header">
         <span class="section-title">标准容器 (Containers)</span>
-        <el-button type="primary" :icon="Plus" size="small" @click="addContainer('containers')">添加容器</el-button>
+        <el-button class="section-add-btn" type="primary" :icon="Plus" size="small" @click="addContainer('containers')">添加容器</el-button>
       </div>
       <div class="container-list">
         <el-collapse v-model="activeContainers" accordion>
           <el-collapse-item v-for="(container, index) in containers" :key="'container-'+index" :name="index">
             <template #title>
               <div class="container-title">
-                <el-icon><Box /></el-icon>
-                <span>{{ container.name || '未命名容器' }}</span>
+                <span class="container-icon-badge">
+                  <el-icon><Box /></el-icon>
+                </span>
+                <span class="container-name">{{ container.name || '未命名容器' }}</span>
                 <el-tag size="small" type="success">{{ container.image || '无镜像' }}</el-tag>
-                <el-button type="danger" link :icon="Delete" size="small" @click.stop="removeContainer('containers', index)" class="remove-btn">删除</el-button>
+                <el-button type="danger" plain :icon="Delete" size="small" @click.stop="removeContainer('containers', index)" class="remove-btn">删除</el-button>
               </div>
             </template>
             <div class="container-detail">
@@ -59,17 +61,19 @@
     <div class="container-section">
       <div class="section-header">
         <span class="section-title">初始化容器 (Init Containers)</span>
-        <el-button type="primary" :icon="Plus" size="small" @click="addContainer('initContainers')">添加初始化容器</el-button>
+        <el-button class="section-add-btn" type="primary" :icon="Plus" size="small" @click="addContainer('initContainers')">添加初始化容器</el-button>
       </div>
       <div class="container-list">
         <el-collapse v-model="activeInitContainers" accordion>
           <el-collapse-item v-for="(container, index) in initContainers" :key="'init-container-'+index" :name="index">
             <template #title>
               <div class="container-title">
-                <el-icon><Box /></el-icon>
-                <span>{{ container.name || '未命名容器' }}</span>
+                <span class="container-icon-badge init">
+                  <el-icon><Box /></el-icon>
+                </span>
+                <span class="container-name">{{ container.name || '未命名容器' }}</span>
                 <el-tag size="small" type="warning">{{ container.image || '无镜像' }}</el-tag>
-                <el-button type="danger" link :icon="Delete" size="small" @click.stop="removeContainer('initContainers', index)" class="remove-btn">删除</el-button>
+                <el-button type="danger" plain :icon="Delete" size="small" @click.stop="removeContainer('initContainers', index)" class="remove-btn">删除</el-button>
               </div>
             </template>
             <div class="container-detail">
@@ -309,18 +313,38 @@ const updateContainerProbe = (type: 'containers' | 'initContainers', index: numb
   letter-spacing: 0.3px;
 }
 
-.section-header .el-button {
-  font-weight: 500;
-  border-radius: 8px;
-  background: #ffffff;
-  border: 1px solid #d4af37;
-  color: #d4af37;
+.section-header .section-add-btn {
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #7a5200;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  box-shadow:
+    0 8px 18px rgba(88, 60, 0, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  transition: all 0.2s ease;
 }
 
-.section-header .el-button:hover {
-  background: #fafafa;
-  border-color: #c9a227;
-  box-shadow: 0 2px 8px rgba(212, 175, 55, 0.3);
+.section-header .section-add-btn:hover {
+  background: #ffffff;
+  border-color: rgba(255, 255, 255, 0.9);
+  color: #5f4200;
+  box-shadow:
+    0 10px 22px rgba(88, 60, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  transform: translateY(-1px);
+}
+
+.section-header .section-add-btn:active {
+  transform: translateY(0);
+}
+
+.section-header .section-add-btn :deep(.el-icon) {
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .container-list {
@@ -335,19 +359,67 @@ const updateContainerProbe = (type: 'containers' | 'initContainers', index: numb
   width: 100%;
 }
 
-.container-title .el-icon {
-  color: #d4af37;
+.container-icon-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border: 1px solid rgba(212, 175, 55, 0.36);
+  border-radius: 12px;
+  background:
+    linear-gradient(135deg, rgba(255, 248, 222, 0.96), rgba(255, 255, 255, 0.92)),
+    radial-gradient(circle at 30% 20%, rgba(212, 175, 55, 0.26), transparent 55%);
+  color: #b78b11;
+  box-shadow: 0 8px 16px rgba(212, 175, 55, 0.14);
+}
+
+.container-icon-badge.init {
+  color: #b7791f;
+  background:
+    linear-gradient(135deg, rgba(255, 246, 232, 0.98), rgba(255, 255, 255, 0.92)),
+    radial-gradient(circle at 30% 20%, rgba(250, 173, 20, 0.24), transparent 55%);
+}
+
+.container-icon-badge .el-icon {
   font-size: 18px;
+}
+
+.container-name {
+  min-width: 120px;
+  color: #2f2f2f;
+  font-weight: 700;
+  word-break: break-word;
 }
 
 .remove-btn {
   margin-left: auto;
-  opacity: 0.7;
-  transition: opacity 0.3s ease;
+  height: 30px;
+  padding: 0 12px;
+  border-color: #ffd2d2;
+  border-radius: 999px;
+  background: #fff7f7;
+  color: #f05252;
+  font-weight: 700;
+  box-shadow: none;
+  transition: all 0.2s ease;
 }
 
 .remove-btn:hover {
-  opacity: 1;
+  border-color: #ff8a8a;
+  background: #fff0f0;
+  color: #d92d20;
+  box-shadow: 0 8px 18px rgba(240, 82, 82, 0.16);
+  transform: translateY(-1px);
+}
+
+.remove-btn:active {
+  transform: translateY(0);
+}
+
+.remove-btn :deep(.el-icon) {
+  font-size: 13px;
 }
 
 .container-detail {

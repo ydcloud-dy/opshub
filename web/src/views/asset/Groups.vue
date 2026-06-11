@@ -792,4 +792,141 @@ onMounted(() => {
     min-width: auto;
   }
 }
+
+/* 资产页统一视觉优化 */
+.groups-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.page-header,
+.search-bar,
+.table-wrapper {
+  border: 1px solid #e5e9f2;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+}
+
+.page-header {
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 0;
+  padding: 18px 20px;
+  border-radius: 10px;
+}
+
+.page-title-icon {
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 9px;
+  color: #111827;
+  background: rgba(255, 175, 53, 0.18);
+}
+
+.page-title {
+  color: #111827;
+  font-size: 22px;
+  font-weight: 750;
+}
+
+.page-subtitle {
+  color: #667085;
+}
+
+.header-actions,
+.search-actions,
+.search-inputs {
+  flex-wrap: wrap;
+}
+
+.search-bar {
+  margin-bottom: 0;
+  padding: 14px 16px;
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.04);
+}
+
+.search-input {
+  width: 240px;
+}
+
+.search-icon,
+.header-icon-gold {
+  color: #d97706;
+}
+
+.search-bar :deep(.el-input__wrapper),
+.search-bar :deep(.el-select__wrapper) {
+  border: 0;
+  border-radius: 7px;
+  box-shadow: 0 0 0 1px #e5e9f2 inset;
+}
+
+.search-bar :deep(.el-input__wrapper:hover),
+.search-bar :deep(.el-select__wrapper:hover) {
+  box-shadow: 0 0 0 1px #d8dee9 inset;
+}
+
+.search-bar :deep(.el-input__wrapper.is-focus),
+.search-bar :deep(.el-select__wrapper.is-focused) {
+  box-shadow: 0 0 0 1px #111827 inset, 0 0 0 3px rgba(255, 175, 53, 0.16);
+}
+
+.table-wrapper {
+  border-radius: 10px;
+}
+
+.modern-table :deep(.el-table__header th) {
+  background: #f8fafc !important;
+  color: #475467 !important;
+}
+
+.modern-table :deep(.el-table__body td) {
+  border-bottom-color: #edf1f7;
+}
+
+.group-tree-table :deep(.el-table__row:hover > td) {
+  background: #f8fafc !important;
+}
+
+.black-button {
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 7px;
+  box-shadow: 0 8px 18px rgba(17, 24, 39, 0.12);
+}
+
+.reset-btn {
+  background: #fff;
+}
+
+.action-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+}
+
+:deep(.group-edit-dialog) {
+  border-radius: 10px;
+}
+
+:deep(.group-edit-dialog .el-dialog__header) {
+  background: #fbfcfe;
+  border-bottom-color: #edf1f7;
+}
+
+@media (max-width: 900px) {
+  .page-header,
+  .search-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .search-input,
+  .search-inputs,
+  .search-actions {
+    width: 100%;
+  }
+}
 </style>

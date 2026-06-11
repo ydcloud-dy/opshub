@@ -12,12 +12,12 @@
         </div>
       </div>
       <div class="header-actions">
-        <el-button class="black-button" @click="handleAdd">
-          <el-icon style="margin-right: 6px;"><Plus /></el-icon>
+        <el-button type="primary" @click="handleAdd">
+          <el-icon><Plus /></el-icon>
           新增数据源
         </el-button>
-        <el-button @click="loadData">
-          <el-icon style="margin-right: 6px;"><Refresh /></el-icon>
+        <el-button plain @click="loadData">
+          <el-icon><Refresh /></el-icon>
           刷新
         </el-button>
       </div>
@@ -36,8 +36,8 @@
         </el-select>
       </div>
       <div class="search-actions">
-        <el-button class="black-button" @click="loadData">查询</el-button>
-        <el-button class="reset-btn" @click="handleReset">重置</el-button>
+        <el-button type="primary" @click="loadData">查询</el-button>
+        <el-button plain @click="handleReset">重置</el-button>
       </div>
     </div>
 
@@ -47,8 +47,8 @@
         <el-table-column label="名称" prop="name" min-width="150" />
         <el-table-column label="类型" prop="type" width="120" align="center">
           <template #default="{ row }">
-            <el-tag v-if="row.type === 'host'" type="primary" effect="dark">主机Nginx</el-tag>
-            <el-tag v-else type="success" effect="dark">K8s Ingress</el-tag>
+            <el-tag v-if="row.type === 'host'" type="primary">主机Nginx</el-tag>
+            <el-tag v-else type="success">K8s Ingress</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="描述" prop="description" min-width="200" show-overflow-tooltip />
@@ -312,7 +312,7 @@
       <template #footer>
         <div class="dialog-footer">
           <el-button @click="dialogVisible = false" class="cancel-btn">取消</el-button>
-          <el-button class="black-button" :loading="submitLoading" @click="handleSubmit">
+          <el-button type="primary" :loading="submitLoading" @click="handleSubmit">
             {{ isEdit ? '保存' : '创建' }}
           </el-button>
         </div>

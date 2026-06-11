@@ -21,12 +21,12 @@ package asset
 
 import (
 	"github.com/gin-gonic/gin"
-	assetService "github.com/ydcloud-dy/opshub/internal/service/asset"
-	assetdata "github.com/ydcloud-dy/opshub/internal/data/asset"
 	assetbiz "github.com/ydcloud-dy/opshub/internal/biz/asset"
-	rbacService "github.com/ydcloud-dy/opshub/internal/service/rbac"
-	rbacdata "github.com/ydcloud-dy/opshub/internal/data/rbac"
 	rbacbiz "github.com/ydcloud-dy/opshub/internal/biz/rbac"
+	assetdata "github.com/ydcloud-dy/opshub/internal/data/asset"
+	rbacdata "github.com/ydcloud-dy/opshub/internal/data/rbac"
+	assetService "github.com/ydcloud-dy/opshub/internal/service/asset"
+	rbacService "github.com/ydcloud-dy/opshub/internal/service/rbac"
 	"gorm.io/gorm"
 )
 
@@ -74,6 +74,16 @@ func (s *HTTPServer) RegisterRoutes(r *gin.RouterGroup) {
 		hosts.POST("/import", s.hostService.ImportFromExcel)
 		hosts.POST("/batch-collect", s.hostService.BatchCollectHostInfo)
 		hosts.POST("/batch-delete", s.hostService.BatchDeleteHosts)
+
+		hosts.GET("/:id/agent/install-command",
+			s.authMiddleware.RequireHostPermission(rbacbiz.PermissionEdit),
+			s.hostService.CreateAgentInstallCommand)
+		hosts.POST("/:id/agent/install",
+			s.authMiddleware.RequireHostPermission(rbacbiz.PermissionEdit),
+			s.hostService.InstallHostAgent)
+		hosts.DELETE("/:id/agent",
+			s.authMiddleware.RequireHostPermission(rbacbiz.PermissionEdit),
+			s.hostService.RevokeHostAgent)
 
 		// 查看权限 - 查看主机详情
 		hosts.GET("/:id",
@@ -154,6 +164,17 @@ func (s *HTTPServer) RegisterRoutes(r *gin.RouterGroup) {
 		terminalSessions.GET("", s.terminalAuditHandler.ListTerminalSessions)
 		terminalSessions.GET("/:id/play", s.terminalAuditHandler.PlayTerminalSession)
 		terminalSessions.DELETE("/:id", s.terminalAuditHandler.DeleteTerminalSession)
+	}
+}
+
+func (s *HTTPServer) RegisterPublicRoutes(r *gin.RouterGroup) {
+	agents := r.Group("/agents")
+	{
+		agents.GET("/install.sh", s.hostService.GetAgentInstallScript)
+		agents.GET("/binaries/:filename", s.hostService.DownloadAgentBinary)
+		agents.POST("/register", s.hostService.RegisterAgent)
+		agents.POST("/heartbeat", s.hostService.AgentHeartbeat)
+		agents.POST("/metrics", s.hostService.ReportAgentMetrics)
 	}
 }
 

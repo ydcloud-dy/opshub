@@ -23,6 +23,8 @@ import (
 	"bytes"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -48,6 +50,193 @@ func NewHostService(hostUseCase *asset.HostUseCase, credentialUseCase *asset.Cre
 		cloudUseCase:           cloudUseCase,
 		assetPermissionUseCase: assetPermissionUseCase,
 	}
+}
+
+// DownloadAgentBinary 下载Agent二进制文件
+func (s *HostService) DownloadAgentBinary(c *gin.Context) {
+	filename := filepath.Base(c.Param("filename"))
+	if filename == "." || !strings.HasPrefix(filename, "opshub-agent-") {
+		c.String(http.StatusBadRequest, "无效的Agent二进制文件名")
+		return
+	}
+
+	binaryPath := filepath.Join("data", "agent-binaries", filename)
+	if _, err := os.Stat(binaryPath); err != nil {
+		c.String(http.StatusNotFound, "Agent二进制不存在，请先执行 make agent-binaries 构建")
+		return
+	}
+
+	c.FileAttachment(binaryPath, filename)
+}
+
+// CreateAgentInstallCommand 生成主机Agent安装命令
+func (s *HostService) CreateAgentInstallCommand(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		response.ErrorCode(c, http.StatusBadRequest, "无效的主机ID")
+		return
+	}
+
+	interval, _ := strconv.Atoi(c.DefaultQuery("interval", "30"))
+	serverURL := c.Query("server")
+	if serverURL == "" {
+		serverURL = getRequestBaseURL(c)
+	}
+
+	command, err := s.hostUseCase.CreateAgentInstallCommand(c.Request.Context(), uint(id), serverURL, interval)
+	if err != nil {
+		response.ErrorCode(c, agentRuleErrorStatus(err), "生成Agent安装命令失败: "+err.Error())
+		return
+	}
+
+	response.Success(c, command)
+}
+
+// InstallHostAgent 通过SSH一键安装主机Agent
+func (s *HostService) InstallHostAgent(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		response.ErrorCode(c, http.StatusBadRequest, "无效的主机ID")
+		return
+	}
+
+	interval, _ := strconv.Atoi(c.DefaultQuery("interval", "30"))
+	serverURL := c.Query("server")
+	if serverURL == "" {
+		serverURL = getRequestBaseURL(c)
+	}
+
+	result, err := s.hostUseCase.InstallAgentViaSSH(c.Request.Context(), uint(id), serverURL, interval)
+	if err != nil {
+		response.ErrorCode(c, agentRuleErrorStatus(err), "一键安装Agent失败: "+err.Error())
+		return
+	}
+
+	response.Success(c, result)
+}
+
+// RevokeHostAgent 解除主机Agent绑定
+func (s *HostService) RevokeHostAgent(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		response.ErrorCode(c, http.StatusBadRequest, "无效的主机ID")
+		return
+	}
+
+	if err := s.hostUseCase.RevokeAgent(c.Request.Context(), uint(id)); err != nil {
+		response.ErrorCode(c, http.StatusInternalServerError, "解除Agent绑定失败: "+err.Error())
+		return
+	}
+
+	response.SuccessWithMessage(c, "解除Agent绑定成功", nil)
+}
+
+// GetAgentInstallScript 返回Agent安装脚本
+func (s *HostService) GetAgentInstallScript(c *gin.Context) {
+	token := c.Query("token")
+	if token == "" {
+		response.ErrorCode(c, http.StatusBadRequest, "缺少Agent安装令牌")
+		return
+	}
+
+	serverURL := c.Query("server")
+	if serverURL == "" {
+		serverURL = getRequestBaseURL(c)
+	}
+	interval := sanitizeAgentInterval(c.DefaultQuery("interval", "30"))
+
+	c.Header("Content-Type", "text/x-shellscript; charset=utf-8")
+	c.String(http.StatusOK, renderAgentInstallScript(serverURL, token, interval))
+}
+
+// RegisterAgent Agent首次注册
+func (s *HostService) RegisterAgent(c *gin.Context) {
+	var req asset.AgentRegisterRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.ErrorCode(c, http.StatusBadRequest, "参数错误: "+err.Error())
+		return
+	}
+
+	data, err := s.hostUseCase.RegisterAgent(c.Request.Context(), &req)
+	if err != nil {
+		response.ErrorCode(c, http.StatusUnauthorized, err.Error())
+		return
+	}
+
+	response.Success(c, data)
+}
+
+// AgentHeartbeat Agent心跳
+func (s *HostService) AgentHeartbeat(c *gin.Context) {
+	var req asset.AgentHeartbeatRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.ErrorCode(c, http.StatusBadRequest, "参数错误: "+err.Error())
+		return
+	}
+
+	if err := s.hostUseCase.HeartbeatAgent(c.Request.Context(), &req); err != nil {
+		response.ErrorCode(c, http.StatusUnauthorized, err.Error())
+		return
+	}
+
+	response.SuccessWithMessage(c, "heartbeat ok", nil)
+}
+
+// ReportAgentMetrics Agent指标上报
+func (s *HostService) ReportAgentMetrics(c *gin.Context) {
+	var req asset.AgentMetricsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.ErrorCode(c, http.StatusBadRequest, "参数错误: "+err.Error())
+		return
+	}
+
+	if err := s.hostUseCase.ReportAgentMetrics(c.Request.Context(), &req); err != nil {
+		response.ErrorCode(c, http.StatusUnauthorized, err.Error())
+		return
+	}
+
+	response.SuccessWithMessage(c, "metrics accepted", nil)
+}
+
+func getRequestBaseURL(c *gin.Context) string {
+	proto := c.GetHeader("X-Forwarded-Proto")
+	if proto == "" {
+		if c.Request.TLS != nil {
+			proto = "https"
+		} else {
+			proto = "http"
+		}
+	}
+
+	host := c.GetHeader("X-Forwarded-Host")
+	if host == "" {
+		host = c.Request.Host
+	}
+	return proto + "://" + host
+}
+
+func sanitizeAgentInterval(raw string) string {
+	interval, err := strconv.Atoi(raw)
+	if err != nil || interval <= 0 {
+		interval = 30
+	}
+	if interval < 10 {
+		interval = 10
+	}
+	if interval > 3600 {
+		interval = 3600
+	}
+	return strconv.Itoa(interval)
+}
+
+func agentRuleErrorStatus(err error) int {
+	if err != nil && strings.Contains(err.Error(), "仅支持SSH采集") {
+		return http.StatusBadRequest
+	}
+	return http.StatusInternalServerError
 }
 
 // CreateHost 创建主机
@@ -181,6 +370,8 @@ func (s *HostService) ListHosts(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "10"))
 	keyword := c.Query("keyword")
+	collectMode := c.Query("collectMode")
+	agentStatus := c.Query("agentStatus")
 
 	// 支持分组ID筛选
 	var groupID *uint
@@ -215,7 +406,7 @@ func (s *HostService) ListHosts(c *gin.Context) {
 		}
 	}
 
-	hosts, total, err := s.hostUseCase.List(c.Request.Context(), page, pageSize, keyword, groupID, accessibleHostIDs, status)
+	hosts, total, err := s.hostUseCase.List(c.Request.Context(), page, pageSize, keyword, groupID, accessibleHostIDs, status, collectMode, agentStatus)
 	if err != nil {
 		response.ErrorCode(c, http.StatusInternalServerError, "查询失败: "+err.Error())
 		return

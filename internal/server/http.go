@@ -192,18 +192,15 @@ func (s *HTTPServer) registerRoutes(router *gin.Engine, jwtSecret string) {
 	public := router.Group("/api/v1/public")
 	{
 		public.GET("/example", s.svc.Example)
+		assetServer.RegisterPublicRoutes(public)
 	}
 
-	// 身份认证模块暂不开放，如需启用请取消下方注释
-	// identityServer, err := identityserver.NewIdentityServices(s.db, s.conf)
-	// if err != nil {
-	// 	appLogger.Error("创建Identity服务失败", zap.Error(err))
-	// } else {
-	// 	// 注册 Identity 公开路由
-	// 	identityServer.RegisterPublicRoutes(public)
-	// }
-	var identityServer *identityserver.HTTPServer = nil
-	_ = identityServer
+	identityServer, err := identityserver.NewIdentityServices(s.db, s.conf)
+	if err != nil {
+		appLogger.Error("创建Identity服务失败", zap.Error(err))
+	} else {
+		identityServer.RegisterPublicRoutes(public)
+	}
 
 	// API v1 - 需要认证的接口
 	v1 := router.Group("/api/v1")
@@ -216,11 +213,10 @@ func (s *HTTPServer) registerRoutes(router *gin.Engine, jwtSecret string) {
 		// 注册 Asset 路由
 		assetServer.RegisterRoutes(v1)
 
-		// 身份认证模块暂不开放，如需启用请取消下方注释
-		// if identityServer != nil {
-		// 	identityServer.RegisterRoutes(v1)
-		// 	identityServer.RegisterOAuth2Routes(router, authMiddleware.AuthRequired, authMiddleware.OptionalAuth)
-		// }
+		if identityServer != nil {
+			identityServer.RegisterRoutes(v1)
+			identityServer.RegisterOAuth2Routes(router, authMiddleware.AuthRequired, authMiddleware.OptionalAuth)
+		}
 
 		// 上传接口
 		v1.POST("/upload/avatar", s.uploadSrv.UploadAvatar)

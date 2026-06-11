@@ -47,17 +47,22 @@ func (r *userRepo) Update(ctx context.Context, user *rbac.SysUser) error {
 	// 注意：必须使用 Select 来确保 status=0 这样的零值也能被更新
 	// 注意：password 不在此方法中更新，密码更新请使用 UpdatePassword
 	return r.db.WithContext(ctx).Model(&rbac.SysUser{}).Where("id = ?", user.ID).
-		Select("username", "real_name", "email", "phone", "status", "department_id", "avatar", "bio", "last_login_at").
+		Select("username", "real_name", "email", "phone", "notify_user_id", "feishu_user_id", "feishu_open_id", "dingtalk_user_id", "wecom_user_id", "status", "department_id", "avatar", "bio", "last_login_at").
 		Updates(map[string]interface{}{
-			"username":      user.Username,
-			"real_name":     user.RealName,
-			"email":         user.Email,
-			"phone":         user.Phone,
-			"status":        user.Status,
-			"department_id": user.DepartmentID,
-			"avatar":        user.Avatar,
-			"bio":           user.Bio,
-			"last_login_at": user.LastLoginAt,
+			"username":         user.Username,
+			"real_name":        user.RealName,
+			"email":            user.Email,
+			"phone":            user.Phone,
+			"notify_user_id":   user.NotifyUserID,
+			"feishu_user_id":   user.FeishuUserID,
+			"feishu_open_id":   user.FeishuOpenID,
+			"dingtalk_user_id": user.DingTalkUserID,
+			"wecom_user_id":    user.WeComUserID,
+			"status":           user.Status,
+			"department_id":    user.DepartmentID,
+			"avatar":           user.Avatar,
+			"bio":              user.Bio,
+			"last_login_at":    user.LastLoginAt,
 		}).Error
 }
 

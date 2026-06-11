@@ -28,20 +28,25 @@ import (
 // SysUser 用户表
 type SysUser struct {
 	gorm.Model
-	Username     string         `gorm:"type:varchar(50);not null;comment:用户名" json:"username"`
-	Password     string         `gorm:"type:varchar(255);not null;comment:密码" json:"password,omitempty"`
-	RealName     string         `gorm:"type:varchar(50);comment:真实姓名" json:"realName"`
-	Email        string         `gorm:"type:varchar(100);comment:邮箱" json:"email"`
-	Phone        string         `gorm:"type:varchar(20);comment:手机号" json:"phone"`
-	Avatar       string         `gorm:"type:varchar(255);comment:头像" json:"avatar"`
-	Status       int            `gorm:"type:tinyint;default:1;comment:状态 1:启用 0:禁用" json:"status"`
-	Source       string         `gorm:"type:varchar(20);default:'local';comment:用户来源 local:本地 ldap:LDAP" json:"source"`
-	DepartmentID uint           `gorm:"default:0;comment:部门ID" json:"departmentId"`
-	Department   *SysDepartment `gorm:"foreignKey:DepartmentID;references:ID" json:"department,omitempty"`
-	Roles        []SysRole      `gorm:"many2many:sys_user_role;joinForeignKey:UserID;joinReferences:RoleID" json:"roles"`
-	Positions    []SysPosition  `gorm:"many2many:sys_user_position;joinForeignKey:UserID;joinReferences:PositionID" json:"positions,omitempty"`
-	Bio          string         `gorm:"type:text;comment:个人简介" json:"bio"`
-	LastLoginAt  *time.Time     `gorm:"comment:最后登录时间" json:"lastLoginAt,omitempty"`
+	Username       string         `gorm:"type:varchar(50);not null;comment:用户名" json:"username"`
+	Password       string         `gorm:"type:varchar(255);not null;comment:密码" json:"password,omitempty"`
+	RealName       string         `gorm:"type:varchar(50);comment:真实姓名" json:"realName"`
+	Email          string         `gorm:"type:varchar(100);comment:邮箱" json:"email"`
+	Phone          string         `gorm:"type:varchar(20);comment:手机号" json:"phone"`
+	NotifyUserID   string         `gorm:"column:notify_user_id;type:varchar(150);comment:第三方通知用户标识" json:"notifyUserId"`
+	FeishuUserID   string         `gorm:"column:feishu_user_id;type:varchar(100);comment:飞书用户ID" json:"feishuUserId"`
+	FeishuOpenID   string         `gorm:"column:feishu_open_id;type:varchar(100);comment:飞书OpenID" json:"feishuOpenId"`
+	DingTalkUserID string         `gorm:"column:dingtalk_user_id;type:varchar(100);comment:钉钉用户ID" json:"dingtalkUserId"`
+	WeComUserID    string         `gorm:"column:wecom_user_id;type:varchar(100);comment:企业微信用户ID" json:"wecomUserId"`
+	Avatar         string         `gorm:"type:varchar(255);comment:头像" json:"avatar"`
+	Status         int            `gorm:"type:tinyint;default:1;comment:状态 1:启用 0:禁用" json:"status"`
+	Source         string         `gorm:"type:varchar(20);default:'local';comment:用户来源 local:本地 ldap:LDAP" json:"source"`
+	DepartmentID   uint           `gorm:"default:0;comment:部门ID" json:"departmentId"`
+	Department     *SysDepartment `gorm:"foreignKey:DepartmentID;references:ID" json:"department,omitempty"`
+	Roles          []SysRole      `gorm:"many2many:sys_user_role;joinForeignKey:UserID;joinReferences:RoleID" json:"roles"`
+	Positions      []SysPosition  `gorm:"many2many:sys_user_position;joinForeignKey:UserID;joinReferences:PositionID" json:"positions,omitempty"`
+	Bio            string         `gorm:"type:text;comment:个人简介" json:"bio"`
+	LastLoginAt    *time.Time     `gorm:"comment:最后登录时间" json:"lastLoginAt,omitempty"`
 }
 
 // 用户来源常量

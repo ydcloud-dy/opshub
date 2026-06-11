@@ -134,7 +134,7 @@
       class="user-dialog responsive-dialog"
       @close="handleDialogClose"
     >
-      <el-form :model="userForm" :rules="rules" ref="formRef" label-width="80px" class="user-form">
+      <el-form :model="userForm" :rules="rules" ref="formRef" label-width="104px" class="user-form">
         <!-- 基本信息 -->
         <div class="form-section-title">
           <el-icon><User /></el-icon>
@@ -210,6 +210,29 @@
                 <el-radio :label="1">启用</el-radio>
                 <el-radio :label="0">禁用</el-radio>
               </el-radio-group>
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <div class="form-section-title">
+          <el-icon><Message /></el-icon>
+          <span>通知标识</span>
+        </div>
+
+        <el-row :gutter="16">
+          <el-col :span="24">
+            <el-form-item label="用户标识">
+              <el-input
+                v-model="userForm.notifyUserId"
+                placeholder="飞书填 open_id，如 ou_xxx；钉钉填手机号或 userId；企业微信填账号"
+              >
+                <template #prefix>
+                  <el-icon><Message /></el-icon>
+                </template>
+              </el-input>
+              <div class="form-tip">
+                用于值班表通知时 @ 对应人员。飞书外部群通常填写 ou_ 开头的 open_id；钉钉未接通讯录时建议填写手机号，接入企业通讯录/内部机器人时可填写钉钉 userId；企业微信填写成员账号或手机号。无法被平台解析时会降级显示为 @姓名。
+              </div>
             </el-form-item>
           </el-col>
         </el-row>
@@ -410,6 +433,11 @@ const userForm = reactive({
   realName: '',
   email: '',
   phone: '',
+  notifyUserId: '',
+  feishuUserId: '',
+  feishuOpenId: '',
+  dingtalkUserId: '',
+  wecomUserId: '',
   status: 1,
   departmentId: null as number | null,
   positionIds: [] as number[],
@@ -572,6 +600,11 @@ const handleEdit = (row: any) => {
   userForm.realName = row.realName || ''
   userForm.email = row.email || ''
   userForm.phone = row.phone || ''
+  userForm.notifyUserId = row.notifyUserId || row.feishuOpenId || row.feishuUserId || row.dingtalkUserId || row.wecomUserId || ''
+  userForm.feishuUserId = row.feishuUserId || ''
+  userForm.feishuOpenId = row.feishuOpenId || ''
+  userForm.dingtalkUserId = row.dingtalkUserId || ''
+  userForm.wecomUserId = row.wecomUserId || ''
   userForm.status = row.status ?? 1
   userForm.departmentId = row.departmentId ? Number(row.departmentId) : null
 
@@ -677,6 +710,10 @@ const handleSubmit = async () => {
           // 清理userForm中的null值，避免发送到后端
           const userData = {
             ...userForm,
+            feishuUserId: userForm.notifyUserId,
+            feishuOpenId: userForm.notifyUserId,
+            dingtalkUserId: userForm.notifyUserId,
+            wecomUserId: userForm.notifyUserId,
             positionIds: positionIds,
             roleIds: roleIds
           }
@@ -693,7 +730,13 @@ const handleSubmit = async () => {
           ElMessage.success('更新成功')
         } else {
           // 创建新用户
-          await createUser(userForm)
+          await createUser({
+            ...userForm,
+            feishuUserId: userForm.notifyUserId,
+            feishuOpenId: userForm.notifyUserId,
+            dingtalkUserId: userForm.notifyUserId,
+            wecomUserId: userForm.notifyUserId
+          })
 
           // 分配角色
           if (roleIds.length > 0) {
@@ -724,6 +767,11 @@ const handleDialogClose = () => {
     realName: '',
     email: '',
     phone: '',
+    notifyUserId: '',
+    feishuUserId: '',
+    feishuOpenId: '',
+    dingtalkUserId: '',
+    wecomUserId: '',
     status: 1,
     departmentId: null,
     positionIds: [],
@@ -906,6 +954,13 @@ onMounted(() => {
 .form-section-title .el-icon {
   font-size: 18px;
   color: #409eff;
+}
+
+.form-tip {
+  margin-top: 6px;
+  color: #909399;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .form-section-title + .el-form {

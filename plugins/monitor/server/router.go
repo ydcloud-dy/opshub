@@ -29,6 +29,7 @@ import (
 func RegisterRoutes(router *gin.RouterGroup, db *gorm.DB) {
 	handler := NewHandler(db)
 	alertHandler := NewAlertHandler(db)
+	dataSourceHandler := NewDataSourceHandler(db)
 
 	// 监控插件路由组 - 使用 /monitor 前缀
 	monitorGroup := router.Group("/monitor")
@@ -44,6 +45,125 @@ func RegisterRoutes(router *gin.RouterGroup, db *gorm.DB) {
 			domains.PUT("/:id", handler.UpdateDomain)            // 更新域名监控
 			domains.DELETE("/:id", handler.DeleteDomain)         // 删除域名监控
 			domains.POST("/:id/check", handler.CheckDomain)      // 立即检查域名
+		}
+
+		// 多数据源管理路由组
+		monitorGroup.POST("/datasource-remote-write-test", dataSourceHandler.TestRemoteWriteConfig)
+		dataSources := monitorGroup.Group("/datasources")
+		{
+			dataSources.GET("", dataSourceHandler.ListDataSources)          // 获取数据源列表
+			dataSources.GET("/:id", dataSourceHandler.GetDataSource)        // 获取数据源详情
+			dataSources.POST("", dataSourceHandler.CreateDataSource)        // 创建数据源
+			dataSources.PUT("/:id", dataSourceHandler.UpdateDataSource)     // 更新数据源
+			dataSources.DELETE("/:id", dataSourceHandler.DeleteDataSource)  // 删除数据源
+			dataSources.POST("/:id/test", dataSourceHandler.TestDataSource) // 测试数据源连通性
+			dataSources.POST("/:id/remote-write-test", dataSourceHandler.TestDataSourceRemoteWrite)
+			dataSources.POST("/:id/query", dataSourceHandler.QueryDataSource) // 查询测试
+			dataSources.GET("/:id/indices", dataSourceHandler.ListDataSourceIndices)
+			dataSources.GET("/:id/suggestions", dataSourceHandler.SuggestDataSource)
+		}
+
+		// WatchAlert 风格拨测任务路由组
+		probeTasks := monitorGroup.Group("/probe-tasks")
+		{
+			probeTasks.GET("", dataSourceHandler.ListProbeTasks)
+			probeTasks.GET("/:id", dataSourceHandler.GetProbeTask)
+			probeTasks.POST("", dataSourceHandler.CreateProbeTask)
+			probeTasks.PUT("/:id", dataSourceHandler.UpdateProbeTask)
+			probeTasks.DELETE("/:id", dataSourceHandler.DeleteProbeTask)
+			probeTasks.POST("/:id/run", dataSourceHandler.RunProbeTask)
+		}
+
+		monitorGroup.POST("/instant-probe", dataSourceHandler.InstantProbe)
+
+		// 故障中心路由组
+		faultCenters := monitorGroup.Group("/fault-centers")
+		{
+			faultCenters.GET("", dataSourceHandler.ListFaultCenters)
+			faultCenters.GET("/:id", dataSourceHandler.GetFaultCenter)
+			faultCenters.GET("/:id/slo", dataSourceHandler.GetFaultCenterSLO)
+			faultCenters.POST("", dataSourceHandler.CreateFaultCenter)
+			faultCenters.PUT("/:id", dataSourceHandler.UpdateFaultCenter)
+			faultCenters.DELETE("/:id", dataSourceHandler.DeleteFaultCenter)
+		}
+
+		// WatchAlert 风格通知对象路由组
+		noticeObjects := monitorGroup.Group("/notice-objects")
+		{
+			noticeObjects.GET("", dataSourceHandler.ListNoticeObjects)
+			noticeObjects.POST("/test", dataSourceHandler.TestNoticeObject)
+			noticeObjects.GET("/:id", dataSourceHandler.GetNoticeObject)
+			noticeObjects.POST("", dataSourceHandler.CreateNoticeObject)
+			noticeObjects.PUT("/:id", dataSourceHandler.UpdateNoticeObject)
+			noticeObjects.DELETE("/:id", dataSourceHandler.DeleteNoticeObject)
+		}
+
+		// 通知模板路由组
+		noticeTemplates := monitorGroup.Group("/notice-templates")
+		{
+			noticeTemplates.GET("", dataSourceHandler.ListNoticeTemplates)
+			noticeTemplates.GET("/:id", dataSourceHandler.GetNoticeTemplate)
+			noticeTemplates.POST("", dataSourceHandler.CreateNoticeTemplate)
+			noticeTemplates.PUT("/:id", dataSourceHandler.UpdateNoticeTemplate)
+			noticeTemplates.DELETE("/:id", dataSourceHandler.DeleteNoticeTemplate)
+		}
+
+		// 值班表路由组
+		dutyTables := monitorGroup.Group("/duty-tables")
+		{
+			dutyTables.GET("", dataSourceHandler.ListDutyTables)
+			dutyTables.GET("/:id", dataSourceHandler.GetDutyTable)
+			dutyTables.POST("", dataSourceHandler.CreateDutyTable)
+			dutyTables.PUT("/:id", dataSourceHandler.UpdateDutyTable)
+			dutyTables.DELETE("/:id", dataSourceHandler.DeleteDutyTable)
+		}
+
+		// 值班日程路由组
+		dutySchedules := monitorGroup.Group("/duty-schedules")
+		{
+			dutySchedules.GET("", dataSourceHandler.ListDutySchedules)
+			dutySchedules.POST("", dataSourceHandler.UpsertDutySchedule)
+			dutySchedules.PUT("/:id", dataSourceHandler.UpdateDutySchedule)
+			dutySchedules.DELETE("/:id", dataSourceHandler.DeleteDutySchedule)
+		}
+
+		// 告警规则组路由组
+		ruleGroups := monitorGroup.Group("/rule-groups")
+		{
+			ruleGroups.GET("", dataSourceHandler.ListRuleGroups)
+			ruleGroups.POST("", dataSourceHandler.CreateRuleGroup)
+			ruleGroups.PUT("/:id", dataSourceHandler.UpdateRuleGroup)
+			ruleGroups.DELETE("/:id", dataSourceHandler.DeleteRuleGroup)
+		}
+
+		// 数据源告警规则路由组
+		rules := monitorGroup.Group("/rules")
+		{
+			rules.GET("", dataSourceHandler.ListAlertRules) // 获取告警规则列表
+			rules.POST("/batch-update", dataSourceHandler.BatchUpdateAlertRules)
+			rules.POST("/batch-delete", dataSourceHandler.BatchDeleteAlertRules)
+			rules.POST("/export", dataSourceHandler.ExportAlertRules)
+			rules.POST("/import", dataSourceHandler.ImportAlertRules)
+			rules.POST("/import-prometheus-yaml", dataSourceHandler.ImportPrometheusRuleYAML)
+			rules.GET("/:id", dataSourceHandler.GetAlertRule)       // 获取告警规则详情
+			rules.POST("", dataSourceHandler.CreateAlertRule)       // 创建告警规则
+			rules.PUT("/:id", dataSourceHandler.UpdateAlertRule)    // 更新告警规则
+			rules.DELETE("/:id", dataSourceHandler.DeleteAlertRule) // 删除告警规则
+			rules.POST("/:id/evaluate", dataSourceHandler.EvaluateAlertRule)
+		}
+
+		// 数据源告警事件路由组
+		events := monitorGroup.Group("/alert-events")
+		{
+			events.GET("", dataSourceHandler.ListAlertEvents)
+			events.GET("/stats", dataSourceHandler.GetAlertEventStats)
+			events.POST("/batch-ack", dataSourceHandler.BatchAcknowledgeAlertEvents)
+			events.POST("/batch-delete", dataSourceHandler.BatchDeleteAlertEvents)
+			events.GET("/:id", dataSourceHandler.GetAlertEvent)
+			events.GET("/:id/callback-queries", dataSourceHandler.GetAlertEventCallbackQueries)
+			events.POST("/:id/ack", dataSourceHandler.AcknowledgeAlertEvent)
+			events.POST("/:id/silence", dataSourceHandler.SilenceAlertEvent)
+			events.DELETE("/:id", dataSourceHandler.DeleteAlertEvent)
 		}
 
 		// 证书管理路由组
@@ -108,5 +228,16 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.AlertReceiver{},
 		&model.AlertReceiverChannel{},
 		&model.AlertLog{},
+		&model.DataSource{},
+		&model.FaultCenter{},
+		&model.AlertRuleGroup{},
+		&model.AlertRule{},
+		&model.AlertEvent{},
+		&model.ProbeTask{},
+		&model.ProbeHistory{},
+		&model.NoticeTemplate{},
+		&model.NoticeObject{},
+		&model.DutyTable{},
+		&model.DutySchedule{},
 	)
 }

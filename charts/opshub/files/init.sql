@@ -328,6 +328,14 @@ CREATE TABLE IF NOT EXISTS `hosts` (
   `description` varchar(500) COMMENT '描述',
   `status` tinyint DEFAULT -1 COMMENT '状态 1:在线 0:离线 -1:未知',
   `last_seen` datetime COMMENT '最后看到时间',
+  `agent_id` varchar(80) COMMENT 'Agent唯一标识',
+  `agent_version` varchar(50) COMMENT 'Agent版本',
+  `agent_status` varchar(20) COMMENT 'Agent状态 online/offline/pending',
+  `agent_last_seen` datetime COMMENT 'Agent最后心跳时间',
+  `agent_last_collect_at` datetime COMMENT 'Agent最后采集时间',
+  `agent_token_hash` varchar(128) COMMENT 'Agent认证Token哈希',
+  `agent_install_token_hash` varchar(128) COMMENT 'Agent安装注册码哈希',
+  `agent_install_token_expires_at` datetime COMMENT 'Agent安装注册码过期时间',
   `os` varchar(100) COMMENT '操作系统',
   `kernel` varchar(100) COMMENT '内核版本',
   `arch` varchar(50) COMMENT '架构',
@@ -349,6 +357,8 @@ CREATE TABLE IF NOT EXISTS `hosts` (
   KEY `idx_group_id` (`group_id`),
   KEY `idx_ip` (`ip`),
   KEY `idx_status` (`status`),
+  KEY `idx_hosts_agent_id` (`agent_id`),
+  KEY `idx_hosts_agent_install_token_hash` (`agent_install_token_hash`),
   KEY `idx_deleted_at` (`deleted_at`),
   CONSTRAINT `fk_hosts_group` FOREIGN KEY (`group_id`) REFERENCES `asset_group` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -1407,8 +1417,9 @@ VALUES
 
   -- ========== 资产管理子菜单 (parent_id=15) ==========
   (16, '主机管理', 'host-management', 2, 15, '/asset/hosts', 'asset/Hosts', 'Monitor', 1, 1, 1, NOW(), NOW()),
-  (19, '凭据管理', 'asset:credentials', 3, 15, '/asset/credentials', 'asset/Credentials', 'Lock', 2, 1, 1, NOW(), NOW()),
-  (17, '业务分组', 'business-group', 2, 15, '/asset/groups', 'asset/Groups', 'Collection', 3, 1, 1, NOW(), NOW()),
+  (66, 'Agent管理', 'asset-agent-management', 2, 15, '/asset/agents', 'asset/Agents', 'Connection', 2, 1, 1, NOW(), NOW()),
+  (19, '凭据管理', 'asset:credentials', 3, 15, '/asset/credentials', 'asset/Credentials', 'Lock', 3, 1, 1, NOW(), NOW()),
+  (17, '业务分组', 'business-group', 2, 15, '/asset/groups', 'asset/Groups', 'Collection', 4, 1, 1, NOW(), NOW()),
   (27, '云账号管理', 'cloud-accounts', 2, 15, '/asset/cloud-accounts', 'asset/CloudAccounts', 'Cloudy', 5, 1, 1, NOW(), NOW()),
   (34, '终端审计', 'asset_terminal_audit', 2, 15, '/asset/terminal-audit', '', 'View', 5, 1, 1, NOW(), NOW()),
   (65, '权限配置', 'asset_permission', 2, 15, '/asset/permissions', 'views/asset/AssetPermission.vue', 'Lock', 6, 1, 1, NOW(), NOW()),
@@ -1425,14 +1436,14 @@ VALUES
 INSERT INTO `sys_role_menu` (`role_id`, `menu_id`)
 VALUES
   (1, 1), (1, 2), (1, 3), (1, 5), (1, 10), (1, 11), (1, 12), (1, 13), (1, 15), (1, 16), (1, 17), (1, 19),
-  (1, 23), (1, 24), (1, 25), (1, 27), (1, 29), (1, 30), (1, 32), (1, 33), (1, 34), (1, 65);
+  (1, 23), (1, 24), (1, 25), (1, 27), (1, 29), (1, 30), (1, 32), (1, 33), (1, 34), (1, 65), (1, 66);
   -- 身份认证模块暂不开放
   -- (1, 90), (1, 91), (1, 92), (1, 93), (1, 94), (1, 95), (1, 96);
 
 -- 为普通用户角色分配基础菜单权限
 INSERT INTO `sys_role_menu` (`role_id`, `menu_id`)
 VALUES
-  (2, 10), (2, 15), (2, 16), (2, 17), (2, 19), (2, 27), (2, 34), (2, 65),
+  (2, 10), (2, 15), (2, 16), (2, 17), (2, 19), (2, 27), (2, 34), (2, 65), (2, 66),
   (2, 23), (2, 24), (2, 25);
   -- 身份认证模块暂不开放
   -- (2, 90), (2, 92), (2, 93), (2, 96);

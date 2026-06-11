@@ -44,7 +44,7 @@
     <div class="page-header">
       <div class="page-title-group">
         <div class="page-title-icon">
-          <el-icon><Platform /></el-icon>
+          <el-icon><Monitor /></el-icon>
         </div>
         <div>
           <h2 class="page-title">集群管理</h2>
@@ -615,6 +615,7 @@ import {
   Upload,
   Platform,
   Key,
+  Monitor,
   Refresh,
   RefreshLeft,
   Plus,
@@ -1050,6 +1051,69 @@ const clearSelection = () => {
   }
 }
 
+const isConfirmCancel = (error: unknown) => error === 'cancel' || error === 'close'
+
+const getErrorMessage = (error: any, fallback: string) => {
+  return error?.response?.data?.message || error?.message || fallback
+}
+
+const escapeHtml = (value: string) => {
+  return value.replace(/[&<>"']/g, char => {
+    const entities: Record<string, string> = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;'
+    }
+    return entities[char] ?? char
+  })
+}
+
+const deleteClusterWithLoading = async (cluster: Cluster, force = false) => {
+  const loadingMsg = ElMessage.info({
+    message: force ? '正在强制删除 OpsHub 本地记录，请稍候...' : '正在删除集群，请稍候...',
+    duration: 0,
+    type: 'info'
+  })
+
+  try {
+    await deleteCluster(cluster.id, force)
+  } finally {
+    loadingMsg.close()
+  }
+}
+
+const confirmForceDeleteCluster = async (cluster: Cluster, reason: string) => {
+  await ElMessageBox.confirm(
+    `<div style="line-height: 1.8;">
+      <p style="margin: 0 0 12px 0; font-weight: 600; color: #e6a23c;">
+        集群 <strong>"${escapeHtml(cluster.name)}"</strong> 删除时无法完成集群内资源清理。
+      </p>
+      <div style="padding: 12px; background: #fff7e6; border-left: 3px solid #e6a23c; margin-bottom: 10px; border-radius: 4px;">
+        <p style="margin: 0 0 8px 0; color: #606266; font-size: 14px;"><strong>失败原因：</strong></p>
+        <p style="margin: 0; color: #909399; font-size: 13px; word-break: break-all;">${escapeHtml(reason)}</p>
+      </div>
+      <p style="margin: 0; color: #606266; font-size: 13px;">
+        如果这个集群已经在云上删除或注销，可以强制删除 OpsHub 本地的集群记录、访问凭据、角色绑定和缓存。
+      </p>
+      <p style="margin: 8px 0 0 0; color: #f56c6c; font-size: 13px;">
+        强制删除不会再连接目标集群，也不会清理真实集群内残留资源。
+      </p>
+    </div>`,
+    '强制删除本地记录',
+    {
+      type: 'warning',
+      confirmButtonText: '强制删除本地记录',
+      cancelButtonText: '取消',
+      dangerouslyUseHTMLString: true,
+      customClass: 'delete-cluster-confirm'
+    }
+  )
+
+  await deleteClusterWithLoading(cluster, true)
+}
+
 // 批量同步集群
 const handleBatchSync = async () => {
   try {
@@ -1102,24 +1166,69 @@ const handleBatchDelete = async () => {
       }
     )
 
+    const clustersToDelete = [...selectedClusters.value]
+
     // 显示正在删除的提示
     const loadingMsg = ElMessage.info({
-      message: `正在删除 ${selectedClusters.value.length} 个集群，请稍候...`,
+      message: `正在删除 ${clustersToDelete.length} 个集群，请稍候...`,
       duration: 0,
       type: 'info'
     })
 
-    // 并发删除所有选中的集群
-    const deletePromises = selectedClusters.value.map(cluster => deleteCluster(cluster.id))
-    await Promise.all(deletePromises)
+    let results: PromiseSettledResult<unknown>[] = []
+    try {
+      // 并发删除所有选中的集群
+      results = await Promise.allSettled(clustersToDelete.map(cluster => deleteCluster(cluster.id)))
+    } finally {
+      loadingMsg.close()
+    }
 
-    loadingMsg.close()
+    const failedClusters = results
+      .map((result, index) => ({ result, cluster: clustersToDelete[index]! }))
+      .filter((item): item is { result: PromiseRejectedResult; cluster: Cluster } => item.result.status === 'rejected')
+
+    if (failedClusters.length > 0) {
+      const firstReason = getErrorMessage(failedClusters[0]!.result.reason, '删除失败')
+      await ElMessageBox.confirm(
+        `有 ${failedClusters.length} 个集群无法完成集群内资源清理。若这些集群已经不存在，是否强制删除它们在 OpsHub 的本地记录？\n\n失败原因：${firstReason}`,
+        '批量强制删除确认',
+        {
+          confirmButtonText: '强制删除本地记录',
+          cancelButtonText: '取消',
+          type: 'warning'
+        }
+      )
+
+      const forceLoadingMsg = ElMessage.info({
+        message: `正在强制删除 ${failedClusters.length} 个集群的本地记录，请稍候...`,
+        duration: 0,
+        type: 'info'
+      })
+
+      let forceResults: PromiseSettledResult<unknown>[] = []
+      try {
+        forceResults = await Promise.allSettled(
+          failedClusters.map(item => deleteCluster(item.cluster.id, true))
+        )
+      } finally {
+        forceLoadingMsg.close()
+      }
+
+      const forceFailedCount = forceResults.filter(result => result.status === 'rejected').length
+      if (forceFailedCount > 0) {
+        ElMessage.error(`仍有 ${forceFailedCount} 个集群强制删除失败，请稍后重试`)
+      } else {
+        ElMessage.success('已强制删除不可达集群的本地记录')
+      }
+    } else {
+      ElMessage.success('删除成功')
+    }
+
     clearSelection()
     await loadClusters()
-    ElMessage.success('删除成功')
   } catch (error: any) {
-    if (error !== 'cancel') {
-      ElMessage.error(error.response?.data?.message || '删除失败')
+    if (!isConfirmCancel(error)) {
+      ElMessage.error(getErrorMessage(error, '删除失败'))
     }
   }
 }
@@ -1326,7 +1435,7 @@ const handleDelete = async (row: Cluster) => {
       `<div style="line-height: 1.8;">
         <p style="margin-bottom: 12px; font-weight: 600; color: #f56c6c;">
           <i class="el-icon-warning" style="margin-right: 4px;"></i>
-          确定要删除集群 <strong>"${row.name}"</strong> 吗？
+          确定要删除集群 <strong>"${escapeHtml(row.name)}"</strong> 吗？
         </p>
         <div style="padding: 12px; background: #fef0f0; border-left: 3px solid #f56c6c; margin-bottom: 8px; border-radius: 4px;">
           <p style="margin: 0 0 8px 0; color: #606266; font-size: 14px;"><strong>删除集群将同时清理以下资源：</strong></p>
@@ -1335,7 +1444,7 @@ const handleDelete = async (row: Cluster) => {
             <li>所有用户的角色绑定（ClusterRoleBinding 和 RoleBinding）</li>
             <li>所有默认集群角色（ClusterRole）</li>
             <li>所有命名空间中的 OpsHub 管理的 RoleBinding</li>
-            <li>数据库中的所有集群相关数据</li>
+            <li>数据库中的集群记录、访问凭据和角色绑定数据</li>
           </ul>
         </div>
         <p style="margin: 8px 0 0 0; color: #e6a23c; font-size: 13px;">
@@ -1352,23 +1461,37 @@ const handleDelete = async (row: Cluster) => {
         customClass: 'delete-cluster-confirm'
       }
     )
-
-    // 显示正在删除的提示
-    const loadingMsg = ElMessage.info({
-      message: '正在删除集群，请稍候...',
-      duration: 0,
-      type: 'info'
-    })
-
-    await deleteCluster(row.id)
-    loadingMsg.close()
-    ElMessage.success('集群已删除，所有相关资源已清理')
-    loadClusters()
   } catch (error: any) {
-    if (error !== 'cancel') {
-      ElMessage.error(error.response?.data?.message || '删除失败')
+    if (!isConfirmCancel(error)) {
+      ElMessage.error(getErrorMessage(error, '删除失败'))
     }
+    return
   }
+
+  try {
+    await deleteClusterWithLoading(row)
+  } catch (error: any) {
+    if (isConfirmCancel(error)) {
+      return
+    }
+
+    const reason = getErrorMessage(error, '删除失败')
+    try {
+      await confirmForceDeleteCluster(row, reason)
+    } catch (forceError: any) {
+      if (!isConfirmCancel(forceError)) {
+        ElMessage.error(getErrorMessage(forceError, '强制删除失败'))
+      }
+      return
+    }
+
+    ElMessage.success('已强制删除 OpsHub 本地集群记录')
+    await loadClusters()
+    return
+  }
+
+  ElMessage.success('集群已删除，所有相关资源已清理')
+  await loadClusters()
 }
 
 // 查看集群凭证

@@ -15,17 +15,17 @@
             <el-icon class="title-icon" :size="28"><Monitor /></el-icon>
             {{ nodeName }}
           </h1>
-          <el-tag v-if="nodeInfo.status === 'Ready'" type="success" effect="dark" size="large" class="status-tag">正常</el-tag>
-          <el-tag v-else type="danger" effect="dark" size="large" class="status-tag">异常</el-tag>
+          <el-tag v-if="nodeInfo.status === 'Ready'" type="success" effect="light" size="large" class="status-tag">正常</el-tag>
+          <el-tag v-else type="danger" effect="light" size="large" class="status-tag">异常</el-tag>
         </div>
         <div class="node-meta">
           <span class="meta-item">
             <el-icon><Platform /></el-icon>
-            {{ clusterName }}
+            {{ clusterName || '所属集群' }}
           </span>
           <span class="meta-item">
             <el-icon><Connection /></el-icon>
-            {{ nodeInfo.internalIP }}
+            {{ nodeInfo.internalIP || '-' }}
           </span>
           <span class="meta-item" v-if="nodeInfo.version">
             <el-icon><InfoFilled /></el-icon>
@@ -44,7 +44,7 @@
         <div class="stat-content">
           <div class="stat-label">CPU 使用率</div>
           <div class="stat-value">{{ cpuUsage }}%</div>
-          <div class="stat-detail">{{ formatResource(nodeInfo.cpuCapacity) }}</div>
+          <div class="stat-detail">{{ formatResource(nodeInfo.cpuCapacity || '') }}</div>
         </div>
         <div class="stat-progress">
           <div class="progress-bar" :style="{ width: cpuUsage + '%' }"></div>
@@ -58,7 +58,7 @@
         <div class="stat-content">
           <div class="stat-label">内存使用率</div>
           <div class="stat-value">{{ memoryUsage }}%</div>
-          <div class="stat-detail">{{ formatMemory(nodeInfo.memoryCapacity) }}</div>
+          <div class="stat-detail">{{ formatMemory(nodeInfo.memoryCapacity || '') }}</div>
         </div>
         <div class="stat-progress">
           <div class="progress-bar" :style="{ width: memoryUsage + '%' }"></div>
@@ -112,7 +112,7 @@
           </div>
           <div class="info-row">
             <span class="info-label">角色</span>
-            <span class="info-value">{{ getRoleText(nodeInfo.roles) }}</span>
+            <span class="info-value">{{ getRoleText(nodeInfo.roles || '') }}</span>
           </div>
           <div class="info-row">
             <span class="info-label">调度状态</span>
@@ -455,8 +455,8 @@ const loadNodeMetrics = async () => {
       headers: { Authorization: `Bearer ${token}` }
     })
     const metrics = response.data.data
-    cpuUsage.value = metrics.cpuUsage ? (metrics.cpuUsage * 100).toFixed(1) : 0
-    memoryUsage.value = metrics.memoryUsage ? (metrics.memoryUsage * 100).toFixed(1) : 0
+    cpuUsage.value = metrics.cpuUsage ? Number((metrics.cpuUsage * 100).toFixed(1)) : 0
+    memoryUsage.value = metrics.memoryUsage ? Number((metrics.memoryUsage * 100).toFixed(1)) : 0
   } catch (error) {
   }
 }
@@ -564,7 +564,7 @@ const formatMemory = (memory: string) => {
   const match = memory.match(/^(\d+(?:\.\d+)?)(Ki|Mi|Gi|Ti)?$/i)
   if (!match) return memory
 
-  const value = parseFloat(match[1])
+  const value = parseFloat(match[1] || '0')
   const unit = match[2]?.toUpperCase()
 
   let bytes = 0
@@ -1317,6 +1317,254 @@ onMounted(() => {
   }
   .labels-annotations-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+/* 节点详情与集群详情统一：单层卡片铺满，内容收在左侧 */
+.node-detail-container {
+  --detail-gold: #D4AF37;
+  --detail-ink: #303133;
+  --detail-muted: #909399;
+  --detail-border: #e5e9f2;
+  min-height: 100vh;
+  padding: 0;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+}
+
+.page-header .header-content {
+  position: relative;
+  overflow: hidden;
+  display: block;
+  width: 100%;
+  min-height: 170px;
+  box-sizing: border-box;
+  padding: 22px 48px;
+  border: 1px solid #dfe6f1;
+  border-radius: 14px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(255, 255, 255, 0.9)),
+    radial-gradient(circle at 84% 16%, rgba(212, 175, 55, 0.18), transparent 32%);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+}
+
+.page-header .header-content::after {
+  content: '';
+  position: absolute;
+  right: 5%;
+  top: -58px;
+  width: 190px;
+  height: 190px;
+  border-radius: 50%;
+  background: rgba(212, 175, 55, 0.1);
+  pointer-events: none;
+}
+
+.page-header .header-top,
+.page-header .node-name-section,
+.page-header .node-meta {
+  position: relative;
+  z-index: 1;
+  max-width: 560px;
+}
+
+.page-header .header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  max-width: none;
+  margin-bottom: 14px;
+}
+
+.page-header .header-top .back-btn,
+.page-header .header-top .black-button {
+  min-height: 40px;
+  padding: 10px 22px;
+  border: 1px solid rgba(212, 175, 55, 0.36) !important;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #2c3e50 0%, #000000 100%) !important;
+  color: var(--detail-gold) !important;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+}
+
+.page-header .header-top .back-btn:hover,
+.page-header .header-top .black-button:hover {
+  border-color: rgba(212, 175, 55, 0.6) !important;
+  background: linear-gradient(135deg, #34495e 0%, #1a1a1a 100%) !important;
+  color: var(--detail-gold) !important;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 22px rgba(212, 175, 55, 0.28);
+}
+
+.page-header .node-name-section {
+  gap: 18px;
+  margin-bottom: 12px;
+}
+
+.page-header .node-name-section .node-title {
+  color: var(--detail-ink);
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.page-header .node-name-section .node-title .title-icon {
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  background: transparent;
+  color: var(--detail-gold);
+  box-shadow: none;
+}
+
+.page-header .node-name-section .status-tag {
+  padding: 8px 18px;
+  border-radius: 20px;
+  font-weight: 600;
+}
+
+.page-header .node-meta {
+  gap: 16px;
+}
+
+.page-header .node-meta .meta-item {
+  gap: 8px;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: #606266;
+}
+
+.page-header .node-meta .meta-item .el-icon {
+  color: var(--detail-gold);
+}
+
+.stats-grid {
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+.stat-card {
+  position: relative;
+  gap: 20px;
+  padding: 24px;
+  border: none;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+}
+
+.stat-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 4px;
+  background: var(--detail-gold);
+}
+
+.stat-card:hover {
+  border-color: transparent;
+  box-shadow: 0 8px 24px rgba(212, 175, 55, 0.3);
+  transform: translateY(-4px);
+}
+
+.stat-icon,
+.stat-icon-cpu,
+.stat-icon-memory,
+.stat-icon-pod,
+.stat-icon-uptime {
+  width: 64px;
+  height: 64px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #2c3e50 0%, #000000 100%);
+  color: var(--detail-gold);
+}
+
+.stat-label {
+  color: var(--detail-muted);
+  font-size: 14px;
+}
+
+.stat-value {
+  color: var(--detail-ink);
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.stat-detail {
+  color: var(--detail-muted);
+  font-size: 13px;
+}
+
+.progress-bar {
+  background: linear-gradient(90deg, var(--detail-gold) 0%, #bfa13f 100%);
+}
+
+.info-card,
+.section-card {
+  border: none;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+}
+
+.card-header,
+.section-header {
+  padding: 20px 24px;
+  background: #ffffff;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.card-header .header-icon,
+.section-title .title-icon {
+  color: var(--detail-gold);
+}
+
+.card-header h3,
+.section-title h3 {
+  color: var(--detail-ink);
+  font-weight: 700;
+}
+
+.tag-item {
+  border: none;
+  border-left: 3px solid var(--detail-gold);
+  border-radius: 8px;
+  background: #fafafa;
+}
+
+.tag-key,
+.taint-key {
+  color: var(--detail-gold);
+}
+
+.modern-table :deep(.el-table__header th),
+.conditions-table :deep(.el-table__header th) {
+  background: #f5f7fa !important;
+  color: #606266;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.modern-table :deep(.el-table__row:hover),
+.conditions-table :deep(.el-table__row:hover) {
+  background-color: #fefcf5 !important;
+}
+
+@media (max-width: 1400px) {
+  .page-header .header-content {
+    display: block;
+  }
+}
+
+@media (max-width: 768px) {
+  .page-header .header-content {
+    padding: 22px;
+    min-height: 0;
   }
 }
 </style>

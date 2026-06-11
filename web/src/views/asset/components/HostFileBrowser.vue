@@ -495,10 +495,21 @@ const downloadFile = async (file: FileInfo) => {
       ? (currentPath.value === '~' ? '~/' : '/') + file.name
       : currentPath.value + '/' + file.name
 
-    const response = await downloadHostFile(props.hostId, filePath)
+    const blob = await downloadHostFile(props.hostId, filePath) as Blob
+
+    if (blob.type.includes('application/json')) {
+      const errorText = await blob.text()
+      let message = errorText || '下载失败'
+      try {
+        const errorData = JSON.parse(errorText)
+        message = errorData.message || message
+      } catch {
+      }
+      throw new Error(message)
+    }
 
     // 创建下载链接
-    const url = window.URL.createObjectURL(new Blob([response.data]))
+    const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
     link.setAttribute('download', file.name)

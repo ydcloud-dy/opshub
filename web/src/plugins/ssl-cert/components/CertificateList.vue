@@ -13,7 +13,7 @@
       </div>
       <div class="header-actions">
         <el-dropdown @command="handleCreate">
-          <el-button class="black-button">
+          <el-button type="primary">
             <el-icon style="margin-right: 6px;"><Plus /></el-icon>
             新增证书
             <el-icon style="margin-left: 6px;"><ArrowDown /></el-icon>
@@ -181,11 +181,11 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="到期时间" min-width="110">
+        <el-table-column label="到期时间" width="190">
           <template #default="{ row }">
-            <div v-if="row.not_after">
-              <span :class="getExpiryClass(row.not_after)">{{ formatDateTime(row.not_after) }}</span>
-              <div class="expiry-days">{{ getExpiryDays(row.not_after) }}</div>
+            <div v-if="row.not_after" class="expiry-cell">
+              <span class="expiry-time" :class="getExpiryClass(row.not_after)">{{ formatDateTime(row.not_after) }}</span>
+              <span class="expiry-days">{{ getExpiryDays(row.not_after) }}</span>
             </div>
             <span v-else>-</span>
           </template>
@@ -386,7 +386,7 @@
 
       <template #footer>
         <el-button @click="applyDialogVisible = false">取消</el-button>
-        <el-button class="black-button" @click="handleApplySubmit" :loading="submitting">申请证书</el-button>
+        <el-button type="primary" @click="handleApplySubmit" :loading="submitting">申请证书</el-button>
       </template>
     </el-dialog>
 
@@ -448,7 +448,7 @@
 
       <template #footer>
         <el-button @click="editDialogVisible = false">取消</el-button>
-        <el-button class="black-button" @click="handleEditSubmit" :loading="submitting">保存</el-button>
+        <el-button type="primary" @click="handleEditSubmit" :loading="submitting">保存</el-button>
       </template>
     </el-dialog>
 
@@ -1391,15 +1391,15 @@ onMounted(() => {
 .page-title-icon {
   width: 48px;
   height: 48px;
-  background: linear-gradient(135deg, #000 0%, #1a1a1a 100%);
-  border-radius: 10px;
+  background: #f8fafc;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #d4af37;
+  color: #111827;
   font-size: 22px;
   flex-shrink: 0;
-  border: 1px solid #d4af37;
+  border: 1px solid #edf1f7;
 }
 
 .page-title {
@@ -1485,9 +1485,9 @@ onMounted(() => {
 }
 
 .stat-icon-primary {
-  background: linear-gradient(135deg, #000 0%, #1a1a1a 100%);
-  color: #d4af37;
-  border: 1px solid #d4af37;
+  background: #f8fafc;
+  color: #111827;
+  border: 1px solid #edf1f7;
 }
 
 .stat-icon-success {
@@ -1628,20 +1628,6 @@ onMounted(() => {
   padding: 16px;
   display: flex;
   justify-content: flex-end;
-}
-
-.black-button {
-  background-color: #000000 !important;
-  color: #ffffff !important;
-  border-color: #000000 !important;
-  border-radius: 8px;
-  padding: 10px 20px;
-  font-weight: 500;
-}
-
-.black-button:hover {
-  background-color: #333333 !important;
-  border-color: #333333 !important;
 }
 
 .form-tip {
@@ -1873,14 +1859,14 @@ onMounted(() => {
 .domain-icon {
   width: 48px;
   height: 48px;
-  background: linear-gradient(135deg, #000 0%, #1a1a1a 100%);
-  border-radius: 10px;
+  background: #f8fafc;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #d4af37;
+  color: #111827;
   font-size: 22px;
-  border: 1px solid #d4af37;
+  border: 1px solid #edf1f7;
 }
 
 .domain-text {
@@ -1925,8 +1911,8 @@ onMounted(() => {
 }
 
 .format-option.active {
-  border-color: #000;
-  background: #f5f5f5;
+  border-color: #bfdbfe;
+  background: #eff6ff;
 }
 
 .format-icon {
@@ -1942,8 +1928,8 @@ onMounted(() => {
 }
 
 .format-option.active .format-icon {
-  background: #000;
-  color: #d4af37;
+  background: #2563eb;
+  color: #fff;
 }
 
 .format-info {
@@ -2043,12 +2029,12 @@ onMounted(() => {
 .download-action .el-button {
   min-width: 200px;
   border-radius: 8px;
-  background: #000;
-  border-color: #000;
+  background: #111827;
+  border-color: #111827;
 }
 
 .download-action .el-button:hover {
-  background: #333;
-  border-color: #333;
+  background: #2b3445;
+  border-color: #2b3445;
 }
 </style>

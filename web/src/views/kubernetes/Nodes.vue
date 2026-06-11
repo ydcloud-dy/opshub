@@ -1294,7 +1294,7 @@ const formatMemoryWithUsage = (node: NodeInfo) => {
   const used = usedGB >= 1 ? usedGB.toFixed(1) : (usedBytes / (1024 * 1024)).toFixed(1)
   const total = totalGB >= 1 ? Math.ceil(totalGB) + 'G' : Math.ceil(totalBytes / (1024 * 1024)) + 'M'
 
-  return `内存:${used}/${total}`
+  return `${used}/${total}`
 }
 
 // 获取角色文本

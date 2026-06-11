@@ -4,7 +4,7 @@
     <div class="page-header">
       <div class="page-title-group">
         <div class="page-title-icon">
-          <el-icon><Document /></el-icon>
+          <el-icon><Tickets /></el-icon>
         </div>
         <div>
           <h2 class="page-title">告警日志</h2>
@@ -240,7 +240,7 @@ import {
   Search,
   RefreshLeft,
   View,
-  Document,
+  Tickets,
   List,
   CircleCheck,
   CircleClose,

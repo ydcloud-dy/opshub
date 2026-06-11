@@ -5,7 +5,7 @@ server:
   read_timeout: 60000  # 毫秒
   write_timeout: 60000 # 毫秒
   jwt_secret: "your-secret-key-change-in-production"  # JWT密钥
-  external_url: "http://10.122.28.13:5173"  # 外部访问URL，用于OAuth2 SSO，如 http://10.122.24.67:9876
+  external_url: "http://localhost:5173"  # 外部访问URL，用于OAuth2 SSO，如 http://10.122.24.67:9876
   frontend_url: ""  # 前端URL，用于OAuth2登录重定向，本地开发默认 http://localhost:5173
 
 database:
@@ -22,7 +22,7 @@ database:
 redis:
   host: 127.0.0.1
   port: 6379
-  password: "123456"
+  password: ""
   db: 0
   pool_size: 10
   min_idle_conn: 5

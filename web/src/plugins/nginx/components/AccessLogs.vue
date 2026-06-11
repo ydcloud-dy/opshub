@@ -62,8 +62,8 @@
         </el-select>
       </div>
       <div class="search-actions">
-        <el-button class="black-button" @click="loadData">查询</el-button>
-        <el-button class="reset-btn" @click="handleReset">重置</el-button>
+        <el-button type="primary" @click="loadData">查询</el-button>
+        <el-button plain @click="handleReset">重置</el-button>
       </div>
     </div>
 

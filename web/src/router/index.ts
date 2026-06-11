@@ -96,6 +96,12 @@ const router = createRouter({
           meta: { title: '主机管理' }
         },
         {
+          path: 'asset/agents',
+          name: 'AssetAgents',
+          component: () => import('@/views/asset/Agents.vue'),
+          meta: { title: 'Agent管理' }
+        },
+        {
           path: 'asset/credentials',
           name: 'AssetCredentials',
           component: () => import('@/views/asset/Credentials.vue'),
@@ -149,43 +155,42 @@ const router = createRouter({
           component: () => import('@/views/plugin/PluginInstall.vue'),
           meta: { title: '插件安装' }
         },
-        // 身份认证模块（暂不开放，如需启用请取消注释）
-        // {
-        //   path: 'identity/portal',
-        //   name: 'IdentityPortal',
-        //   component: () => import('@/views/identity/Portal.vue'),
-        //   meta: { title: '应用门户' }
-        // },
-        // {
-        //   path: 'identity/sources',
-        //   name: 'IdentitySources',
-        //   component: () => import('@/views/identity/IdentitySources.vue'),
-        //   meta: { title: '身份源管理' }
-        // },
-        // {
-        //   path: 'identity/apps',
-        //   name: 'IdentityApps',
-        //   component: () => import('@/views/identity/SSOApplications.vue'),
-        //   meta: { title: '应用管理' }
-        // },
-        // {
-        //   path: 'identity/credentials',
-        //   name: 'IdentityCredentials',
-        //   component: () => import('@/views/identity/Credentials.vue'),
-        //   meta: { title: '凭证管理' }
-        // },
-        // {
-        //   path: 'identity/permissions',
-        //   name: 'IdentityPermissions',
-        //   component: () => import('@/views/identity/Permissions.vue'),
-        //   meta: { title: '访问策略' }
-        // },
-        // {
-        //   path: 'identity/logs',
-        //   name: 'IdentityLogs',
-        //   component: () => import('@/views/identity/AuthLogs.vue'),
-        //   meta: { title: '认证日志' }
-        // }
+        {
+          path: 'identity/portal',
+          name: 'IdentityPortal',
+          component: () => import('@/views/identity/Portal.vue'),
+          meta: { title: '应用门户' }
+        },
+        {
+          path: 'identity/sources',
+          name: 'IdentitySources',
+          component: () => import('@/views/identity/IdentitySources.vue'),
+          meta: { title: '身份源管理' }
+        },
+        {
+          path: 'identity/apps',
+          name: 'IdentityApps',
+          component: () => import('@/views/identity/SSOApplications.vue'),
+          meta: { title: '应用管理' }
+        },
+        {
+          path: 'identity/credentials',
+          name: 'IdentityCredentials',
+          component: () => import('@/views/identity/Credentials.vue'),
+          meta: { title: '凭证管理' }
+        },
+        {
+          path: 'identity/permissions',
+          name: 'IdentityPermissions',
+          component: () => import('@/views/identity/Permissions.vue'),
+          meta: { title: '访问策略' }
+        },
+        {
+          path: 'identity/logs',
+          name: 'IdentityLogs',
+          component: () => import('@/views/identity/AuthLogs.vue'),
+          meta: { title: '认证日志' }
+        }
       ]
     }
   ]
@@ -309,4 +314,3 @@ router.beforeEach(async (to, from, next) => {
 })
 
 export default router
-

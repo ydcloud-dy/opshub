@@ -13,11 +13,11 @@
       </div>
       <div class="header-actions">
         <el-button @click="exportToPDF" :loading="exporting" type="primary">
-          <el-icon style="margin-right: 6px;"><Download /></el-icon>
+          <el-icon><Download /></el-icon>
           导出PDF
         </el-button>
-        <el-button @click="refreshData" :loading="refreshing">
-          <el-icon style="margin-right: 6px;"><Refresh /></el-icon>
+        <el-button plain @click="refreshData" :loading="refreshing">
+          <el-icon><Refresh /></el-icon>
           刷新
         </el-button>
       </div>
@@ -45,8 +45,8 @@
         />
       </div>
       <div class="search-actions">
-        <el-button class="black-button" @click="loadData">查询</el-button>
-        <el-button class="reset-btn" @click="handleReset">重置</el-button>
+        <el-button type="primary" @click="loadData">查询</el-button>
+        <el-button plain @click="handleReset">重置</el-button>
       </div>
     </div>
 
@@ -421,12 +421,12 @@ const initTrendChart = () => {
         type: 'line',
         smooth: true,
         data: data.map(item => item.totalRequests),
-        lineStyle: { color: '#d4af37' },
-        itemStyle: { color: '#d4af37' },
+        lineStyle: { color: '#2563eb' },
+        itemStyle: { color: '#2563eb' },
         areaStyle: {
           color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(212, 175, 55, 0.3)' },
-            { offset: 1, color: 'rgba(212, 175, 55, 0.1)' }
+            { offset: 0, color: 'rgba(37, 99, 235, 0.20)' },
+            { offset: 1, color: 'rgba(37, 99, 235, 0.04)' }
           ])
         },
       },

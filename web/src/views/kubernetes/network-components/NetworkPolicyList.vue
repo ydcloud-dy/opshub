@@ -22,7 +22,7 @@
     </div>
 
     <div class="table-wrapper">
-      <el-table :data="filteredPolicies" v-loading="loading" class="modern-table" size="default">
+      <el-table :data="paginatedPolicies" v-loading="loading" class="modern-table" size="default">
         <el-table-column label="名称" prop="name" min-width="180" fixed>
           <template #header>
             <span class="header-with-icon">
@@ -80,6 +80,16 @@
           </template>
         </el-table-column>
       </el-table>
+
+      <div class="pagination-wrapper">
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          :page-sizes="[10, 20, 50]"
+          :total="filteredPolicies.length"
+          layout="total, sizes, prev, pager, next"
+        />
+      </div>
     </div>
 
     <el-dialog v-model="yamlDialogVisible" :title="`NetworkPolicy YAML - ${selectedPolicy?.name}`" width="900px" :lock-scroll="false" class="yaml-dialog">
@@ -149,6 +159,8 @@ const policyList = ref<NetworkPolicyDetailInfo[]>([])
 const namespaces = ref<any[]>([])
 const searchName = ref('')
 const filterNamespace = ref('')
+const currentPage = ref(1)
+const pageSize = ref(10)
 const yamlDialogVisible = ref(false)
 const yamlContent = ref('')
 const selectedPolicy = ref<NetworkPolicyDetailInfo | null>(null)
@@ -183,6 +195,12 @@ const filteredPolicies = computed(() => {
   return result
 })
 
+const paginatedPolicies = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  const end = start + pageSize.value
+  return filteredPolicies.value.slice(start, end)
+})
+
 const loadPolicies = async (showSuccess = false) => {
   if (!props.clusterId) return
   loading.value = true
@@ -209,7 +227,7 @@ const loadNamespaces = async () => {
 }
 
 const handleSearch = () => {
-  // 本地过滤
+  currentPage.value = 1
 }
 
 const handleCreateYAML = () => {
@@ -479,6 +497,14 @@ watch(() => props.namespace, () => {
 // 监听筛选后的数据变化，更新计数
 watch(filteredPolicies, (newData) => {
   emit('count-update', newData.length)
+  const totalPages = Math.max(1, Math.ceil(newData.length / pageSize.value))
+  if (currentPage.value > totalPages) {
+    currentPage.value = totalPages
+  }
+})
+
+watch(pageSize, () => {
+  currentPage.value = 1
 })
 
 onMounted(() => {
@@ -603,6 +629,12 @@ defineExpose({
   background: #f0f0f0;
   border-radius: 3px;
   color: #606266;
+}
+
+.pagination-wrapper {
+  display: flex;
+  justify-content: flex-end;
+  padding: 16px;
 }
 
 /* 操作按钮 */

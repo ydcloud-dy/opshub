@@ -11,6 +11,12 @@
           <p class="page-subtitle">管理所有服务器和主机资源，支持多种方式导入</p>
         </div>
       </div>
+      <div class="asset-overview">
+        <div v-for="item in assetOverviewStats" :key="item.label" class="asset-overview-item">
+          <span class="asset-overview-value">{{ item.value }}</span>
+          <span class="asset-overview-label">{{ item.label }}</span>
+        </div>
+      </div>
       <div class="header-actions">
         <el-button @click="handleOpenTerminal" class="terminal-button">
           <el-icon style="margin-right: 6px;"><Monitor /></el-icon>
@@ -196,20 +202,21 @@
           <el-table
             :data="hostList"
             v-loading="hostLoading"
-            class="modern-table"
+            class="modern-table host-inventory-table"
+            :scrollbar-always-on="true"
             :header-cell-style="{ background: '#fafbfc', color: '#606266', fontWeight: '600' }"
             @selection-change="handleHostSelectionChange"
           >
             <el-table-column type="selection" width="55" fixed="left" />
-            <el-table-column label="主机" prop="name" min-width="140" fixed="left">
+            <el-table-column label="主机" prop="name" width="270" fixed="left">
               <template #default="{ row }">
                 <div class="hostname-cell" @click="handleShowHostDetail(row)">
                   <div class="host-avatar" :class="`host-status-${row.status}`">
                     <el-icon><Monitor /></el-icon>
                   </div>
                   <div class="host-info">
-                    <div class="hostname hostname-clickable">{{ row.name }}</div>
-                    <div class="host-meta">
+                    <div class="hostname hostname-clickable" :title="row.name">{{ row.name }}</div>
+                    <div class="host-meta" :title="`${row.ip}:${row.port}`">
                       <span class="ip">{{ row.ip }}</span>
                       <span class="port">:{{ row.port }}</span>
                     </div>
@@ -218,7 +225,7 @@
               </template>
             </el-table-column>
 
-            <el-table-column label="状态" width="70" align="center">
+            <el-table-column label="状态" width="96" align="center">
               <template #default="{ row }">
                 <div class="status-cell">
                   <span class="status-dot" :class="`status-dot-${row.status}`"></span>
@@ -227,7 +234,23 @@
               </template>
             </el-table-column>
 
-            <el-table-column label="类型" width="90" align="center">
+            <el-table-column label="采集方式" min-width="150" align="center">
+              <template #default="{ row }">
+                <div class="agent-cell">
+                  <el-tag
+                    size="small"
+                    :type="row.collectMode === 'agent' ? 'success' : row.collectMode === 'agent_pending' ? 'warning' : 'info'"
+                  >
+                    {{ row.collectModeText || 'SSH采集' }}
+                  </el-tag>
+                  <span v-if="row.agentStatusText" class="agent-status-text">
+                    {{ row.agentStatusText }}
+                  </span>
+                </div>
+              </template>
+            </el-table-column>
+
+            <el-table-column label="类型" width="96" align="center">
               <template #default="{ row }">
                 <el-tag v-if="row.type === 'cloud'" :icon="Cloudy" size="small" type="warning">
                   {{ row.cloudProviderText || '云主机' }}
@@ -238,7 +261,7 @@
               </template>
             </el-table-column>
 
-            <el-table-column label="CPU" min-width="100" align="center">
+            <el-table-column label="CPU" min-width="150" align="center">
               <template #default="{ row }">
                 <div class="resource-cell">
                   <div v-if="row.cpuCores" class="resource-info">
@@ -255,7 +278,7 @@
               </template>
             </el-table-column>
 
-            <el-table-column label="内存" min-width="120" align="center">
+            <el-table-column label="内存" min-width="190" align="center">
               <template #default="{ row }">
                 <div class="resource-cell">
                   <div v-if="row.memoryTotal" class="resource-info">
@@ -272,7 +295,7 @@
               </template>
             </el-table-column>
 
-            <el-table-column label="磁盘" min-width="120" align="center">
+            <el-table-column label="磁盘" min-width="190" align="center">
               <template #default="{ row }">
                 <div class="resource-cell">
                   <div v-if="row.diskTotal" class="resource-info">
@@ -289,44 +312,66 @@
               </template>
             </el-table-column>
 
-            <el-table-column label="标签" min-width="80">
+            <el-table-column label="标签" min-width="220">
               <template #default="{ row }">
                 <div v-if="row.tags && row.tags.length > 0" class="tags-cell">
                   <el-tag
-                    v-for="(tag, index) in row.tags.slice(0, 2)"
+                    v-for="(tag, index) in row.tags.slice(0, 3)"
                     :key="index"
                     size="small"
                     class="tag-item"
+                    :title="tag"
                   >
                     {{ tag }}
                   </el-tag>
-                  <el-tag v-if="row.tags.length > 2" size="small" type="info" class="tag-more">
-                    +{{ row.tags.length - 2 }}
+                  <el-tag v-if="row.tags.length > 3" size="small" type="info" class="tag-more">
+                    +{{ row.tags.length - 3 }}
                   </el-tag>
                 </div>
                 <span v-else class="text-muted">-</span>
               </template>
             </el-table-column>
 
-            <el-table-column label="系统信息" min-width="120" show-overflow-tooltip>
+            <el-table-column label="系统信息" min-width="260">
               <template #default="{ row }">
                 <div v-if="row.os || row.arch" class="config-cell">
                   <div v-if="row.os" class="config-item">
                     <el-icon><Platform /></el-icon>
-                    <span class="config-text">{{ row.os }}</span>
+                    <span class="config-text" :title="row.os">{{ row.os }}</span>
                   </div>
                   <div v-if="row.arch" class="config-item">
                     <el-icon><Cpu /></el-icon>
-                    <span class="config-text">{{ row.arch }}</span>
+                    <span class="config-text" :title="row.arch">{{ row.arch }}</span>
                   </div>
                 </div>
                 <span v-else class="text-muted">-</span>
               </template>
             </el-table-column>
 
-            <el-table-column label="操作" width="170" fixed="right" align="center">
+            <el-table-column label="操作" width="230" fixed="right" align="center">
               <template #default="{ row }">
                 <div class="action-buttons">
+                  <el-tooltip :content="getAgentActionTip(row)" placement="top">
+                    <el-button
+                      v-if="hasHostPermission(row.id, PERMISSION.EDIT)"
+                      link
+                      class="action-btn action-agent"
+                      :disabled="!isAgentSupported(row)"
+                      @click="handleAgentInstall(row)"
+                    >
+                      <el-icon><Operation /></el-icon>
+                    </el-button>
+                  </el-tooltip>
+                  <el-tooltip content="解除Agent" placement="top">
+                    <el-button
+                      v-if="hasHostPermission(row.id, PERMISSION.EDIT) && isAgentSupported(row) && (row.agentId || row.collectMode === 'agent_pending')"
+                      link
+                      class="action-btn action-agent-revoke"
+                      @click="handleAgentRevoke(row)"
+                    >
+                      <el-icon><Close /></el-icon>
+                    </el-button>
+                  </el-tooltip>
                   <el-tooltip content="采集信息" placement="top">
                     <el-button
                       v-if="hasHostPermission(row.id, PERMISSION.COLLECT)"
@@ -710,6 +755,42 @@
               </div>
             </div>
 
+            <!-- Agent信息 -->
+            <div class="info-card">
+              <div class="info-card-header">
+                <div class="info-icon info-icon-agent">
+                  <el-icon><Operation /></el-icon>
+                </div>
+                <span class="info-card-title">Agent采集</span>
+              </div>
+              <div class="info-card-body">
+                <div class="info-row">
+                  <span class="info-label">采集方式</span>
+                  <span class="info-value">{{ hostDetail.collectModeText || 'SSH采集' }}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Agent状态</span>
+                  <span class="info-value">
+                    <el-tag :type="getAgentStatusType(hostDetail.agentStatus)" size="small">
+                      {{ hostDetail.agentStatusText || '未安装' }}
+                    </el-tag>
+                  </span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Agent版本</span>
+                  <span class="info-value">{{ hostDetail.agentVersion || '-' }}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">最后心跳</span>
+                  <span class="info-value">{{ hostDetail.agentLastSeen || '-' }}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">最后采集</span>
+                  <span class="info-value">{{ hostDetail.agentLastCollectAt || '-' }}</span>
+                </div>
+              </div>
+            </div>
+
             <!-- 认证信息 -->
             <div class="info-card" v-if="hostDetail.credential">
               <div class="info-card-header">
@@ -846,9 +927,61 @@
       </div>
       <template #footer>
         <el-button @click="showHostDetailDialog = false">关闭</el-button>
+        <el-button
+          v-if="hostDetail && hasHostPermission(hostDetail.id, PERMISSION.EDIT) && isAgentSupported(hostDetail) && (hostDetail.agentId || hostDetail.collectMode === 'agent_pending')"
+          type="danger"
+          plain
+          @click="handleAgentRevoke(hostDetail)"
+        >
+          <el-icon><Close /></el-icon>
+          解除Agent
+        </el-button>
+        <el-button @click="handleAgentInstall(hostDetail)" v-if="hostDetail && hasHostPermission(hostDetail.id, PERMISSION.EDIT) && isAgentSupported(hostDetail)">
+          <el-icon><Operation /></el-icon>
+          {{ hostDetail.agentId ? '重新安装Agent' : '安装Agent' }}
+        </el-button>
         <el-button type="primary" @click="handleCollectHostFromDetail" :loading="hostDetailLoading">
           <el-icon><Refresh /></el-icon>
           采集信息
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- Agent安装命令 -->
+    <el-dialog
+      v-model="agentInstallDialogVisible"
+      title="安装 OpsHub Agent"
+      width="720px"
+      class="agent-install-dialog responsive-dialog"
+    >
+      <div class="agent-install-content" v-loading="agentInstallLoading">
+        <el-alert
+          type="info"
+          :closable="false"
+          show-icon
+          title="在目标主机上执行下方命令，Agent 会自动注册为 systemd 服务并持续上报主机信息。"
+        />
+        <div class="agent-target" v-if="agentInstallTarget">
+          <span class="agent-target-name">{{ agentInstallTarget.name }}</span>
+          <span class="agent-target-ip">{{ agentInstallTarget.ip }}:{{ agentInstallTarget.port }}</span>
+          <el-tag size="small" type="warning">令牌24小时有效</el-tag>
+        </div>
+        <el-input
+          v-model="agentInstallCommand"
+          type="textarea"
+          :rows="5"
+          readonly
+          resize="none"
+          class="agent-command-input"
+        />
+        <div class="agent-install-tips">
+          <span>如果提示二进制不存在，请先在 OpsHub 服务器执行 <code>make agent-binaries</code>。</span>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="agentInstallDialogVisible = false">关闭</el-button>
+        <el-button type="primary" @click="copyAgentInstallCommand" :disabled="!agentInstallCommand">
+          复制命令
         </el-button>
       </template>
     </el-dialog>
@@ -1327,7 +1460,9 @@ import {
   batchCollectHostInfo,
   downloadExcelTemplate,
   importFromExcel,
-  batchDeleteHosts
+  batchDeleteHosts,
+  getAgentInstallCommand,
+  revokeHostAgent
 } from '@/api/host'
 import type { CloudInstanceVO, CloudRegionVO } from '@/api/host'
 import { PERMISSION, hasPermission } from '@/utils/permission'
@@ -1375,6 +1510,10 @@ const showCloudAccountDialog = ref(false)
 const fileBrowserVisible = ref(false)
 const selectedHostId = ref(0)
 const selectedHostName = ref('')
+const agentInstallDialogVisible = ref(false)
+const agentInstallLoading = ref(false)
+const agentInstallCommand = ref('')
+const agentInstallTarget = ref<any>(null)
 
 // 主机详情
 const showHostDetailDialog = ref(false)
@@ -1419,6 +1558,19 @@ const hostPagination = reactive({
   pageSize: 20,
   total: 0
 })
+
+const countGroupNodes = (nodes: any[]): number => {
+  return nodes.reduce((total, node) => {
+    return total + 1 + (node.children ? countGroupNodes(node.children) : 0)
+  }, 0)
+}
+
+const assetOverviewStats = computed(() => [
+  { label: '总资产', value: hostPagination.total },
+  { label: '当前页在线', value: hostList.value.filter((host: any) => host.status === 1).length },
+  { label: '资产分组', value: countGroupNodes(groupTree.value) },
+  { label: '已选主机', value: selectedHosts.value.length }
+])
 
 // 树形组件配置
 const treeProps = {
@@ -1652,6 +1804,30 @@ const getStatusType = (status: number) => {
     case 0: return 'info'
     default: return ''
   }
+}
+
+const getAgentStatusType = (status?: string) => {
+  if (status === 'online') return 'success'
+  if (status === 'pending') return 'warning'
+  if (status === 'offline') return 'danger'
+  return 'info'
+}
+
+const isCloudHost = (host: any) => {
+  return host?.type === 'cloud' || !!host?.cloudProvider || !!host?.cloudInstanceId || !!host?.cloudAccountId
+}
+
+const isAgentSupported = (host: any) => {
+  if (!host) return false
+  if (host.agentSupported === false) return false
+  return !isCloudHost(host)
+}
+
+const getAgentActionTip = (host: any) => {
+  if (!isAgentSupported(host)) {
+    return host?.agentDisabledReason || '云主机仅支持SSH采集'
+  }
+  return host?.agentId ? '重新安装Agent' : '安装Agent'
 }
 
 // 加载分组树
@@ -2357,6 +2533,81 @@ const handleFileManager = (row: any) => {
   selectedHostId.value = row.id
   selectedHostName.value = row.name
   fileBrowserVisible.value = true
+}
+
+const handleAgentInstall = async (row: any) => {
+  if (!row?.id) return
+  if (!isAgentSupported(row)) {
+    ElMessage.warning(row?.agentDisabledReason || '云主机仅支持SSH采集，请使用采集信息按钮进行SSH采集')
+    return
+  }
+  agentInstallTarget.value = row
+  agentInstallDialogVisible.value = true
+  agentInstallLoading.value = true
+  agentInstallCommand.value = ''
+  try {
+    const data = await getAgentInstallCommand(row.id) as any
+    agentInstallCommand.value = data.command || ''
+    if (!agentInstallCommand.value) {
+      ElMessage.warning('未获取到Agent安装命令')
+    }
+    await loadHostList()
+    await refreshHostDetail(row.id)
+  } catch (error: any) {
+    ElMessage.error(error.message || '生成Agent安装命令失败')
+  } finally {
+    agentInstallLoading.value = false
+  }
+}
+
+const copyAgentInstallCommand = async () => {
+  if (!agentInstallCommand.value) return
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(agentInstallCommand.value)
+    } else {
+      const textarea = document.createElement('textarea')
+      textarea.value = agentInstallCommand.value
+      textarea.style.position = 'fixed'
+      textarea.style.opacity = '0'
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textarea)
+    }
+    ElMessage.success('安装命令已复制')
+  } catch (error) {
+    ElMessage.error('复制失败，请手动复制命令')
+  }
+}
+
+const refreshHostDetail = async (hostId: number) => {
+  if (!hostDetail.value || hostDetail.value.id !== hostId) return
+  const data = await getHost(hostId)
+  hostDetail.value = data
+}
+
+const handleAgentRevoke = async (row: any) => {
+  if (!row?.id) return
+  try {
+    await ElMessageBox.confirm(
+      `确定要解除主机"${row.name}"的Agent绑定吗？解除后该Agent将无法继续上报，需要重新安装才能恢复。`,
+      '解除Agent绑定',
+      {
+        confirmButtonText: '解除绑定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+    await revokeHostAgent(row.id)
+    ElMessage.success('Agent绑定已解除')
+    await loadHostList()
+    await refreshHostDetail(row.id)
+  } catch (error: any) {
+    if (error !== 'cancel' && error !== 'close') {
+      ElMessage.error(error.message || '解除Agent绑定失败')
+    }
+  }
 }
 
 // 显示主机详情
@@ -3154,6 +3405,14 @@ onMounted(() => {
   transform: scale(1.1);
 }
 
+.action-btn.is-disabled,
+.action-btn.is-disabled:hover {
+  color: #b8c2d3;
+  background: transparent;
+  transform: none;
+  cursor: not-allowed;
+}
+
 .action-edit:hover {
   background-color: #e8f4ff;
   color: #409eff;
@@ -3172,6 +3431,29 @@ onMounted(() => {
 .action-files:hover {
   background-color: #fdf6ec;
   color: #e6a23c;
+}
+
+.action-agent:hover {
+  background-color: #ecfdf5;
+  color: #10b981;
+}
+
+.action-agent-revoke:hover {
+  background-color: #fef2f2;
+  color: #ef4444;
+}
+
+.agent-cell {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.agent-status-text {
+  font-size: 11px;
+  color: #909399;
+  line-height: 1.2;
 }
 
 .hostname-cell {
@@ -3403,7 +3685,8 @@ onMounted(() => {
 :deep(.cloud-import-dialog),
 :deep(.credential-dialog),
 :deep(.cloud-account-dialog),
-:deep(.group-edit-dialog) {
+:deep(.group-edit-dialog),
+:deep(.agent-install-dialog) {
   border-radius: 12px;
 }
 
@@ -3412,7 +3695,8 @@ onMounted(() => {
 :deep(.cloud-import-dialog .el-dialog__header),
 :deep(.credential-dialog .el-dialog__header),
 :deep(.cloud-account-dialog .el-dialog__header),
-:deep(.group-edit-dialog .el-dialog__header) {
+:deep(.group-edit-dialog .el-dialog__header),
+:deep(.agent-install-dialog .el-dialog__header) {
   padding: 20px 24px 16px;
   border-bottom: 1px solid #f0f0f0;
 }
@@ -3422,7 +3706,8 @@ onMounted(() => {
 :deep(.cloud-import-dialog .el-dialog__body),
 :deep(.credential-dialog .el-dialog__body),
 :deep(.cloud-account-dialog .el-dialog__body),
-:deep(.group-edit-dialog .el-dialog__body) {
+:deep(.group-edit-dialog .el-dialog__body),
+:deep(.agent-install-dialog .el-dialog__body) {
   padding: 24px;
 }
 
@@ -3431,7 +3716,8 @@ onMounted(() => {
 :deep(.cloud-import-dialog .el-dialog__footer),
 :deep(.credential-dialog .el-dialog__footer),
 :deep(.cloud-account-dialog .el-dialog__footer),
-:deep(.group-edit-dialog .el-dialog__footer) {
+:deep(.group-edit-dialog .el-dialog__footer),
+:deep(.agent-install-dialog .el-dialog__footer) {
   padding: 16px 24px;
   border-top: 1px solid #f0f0f0;
 }
@@ -3473,6 +3759,52 @@ onMounted(() => {
   padding: 10px;
   background: #f5f7fa;
   border-radius: 6px;
+}
+
+.agent-install-content {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.agent-target {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+}
+
+.agent-target-name {
+  font-weight: 600;
+  color: #303133;
+}
+
+.agent-target-ip {
+  color: #606266;
+  font-size: 13px;
+}
+
+.agent-command-input :deep(.el-textarea__inner) {
+  font-family: Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #1f2937;
+  background: #f9fafb;
+}
+
+.agent-install-tips {
+  font-size: 12px;
+  color: #909399;
+}
+
+.agent-install-tips code {
+  padding: 2px 6px;
+  background: #f3f4f6;
+  border-radius: 4px;
+  color: #111827;
 }
 
 /* 云主机导入样式 */
@@ -3715,6 +4047,10 @@ onMounted(() => {
 
 .info-icon-tags {
   background: linear-gradient(135deg, #909399 0%, #a6a9ad 100%);
+}
+
+.info-icon-agent {
+  background: linear-gradient(135deg, #10b981 0%, #34d399 100%);
 }
 
 .info-icon-resource {
@@ -4392,11 +4728,406 @@ onMounted(() => {
 .legend-dot.critical {
   background: #f56c6c;
 }
-</style>
 
-// 文件管理
-const handleFileManager = (row: any) => {
-  selectedHostId.value = row.id
-  selectedHostName.value = row.name
-  fileBrowserVisible.value = true
+/* 资产工作台视觉优化 */
+.hosts-page-container {
+  gap: 16px;
 }
+
+.page-header {
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 0;
+  padding: 18px 20px;
+  border: 1px solid #e5e9f2;
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+}
+
+.page-title-icon {
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 9px;
+  color: #111827;
+  background: rgba(255, 175, 53, 0.18);
+}
+
+.page-title {
+  color: #111827;
+  font-size: 22px;
+  font-weight: 750;
+}
+
+.page-subtitle {
+  color: #667085;
+}
+
+.asset-overview {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(76px, 1fr));
+  gap: 10px;
+  flex: 1;
+  max-width: 460px;
+}
+
+.asset-overview-item {
+  min-height: 58px;
+  padding: 10px 12px;
+  border: 1px solid #edf1f7;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.asset-overview-value {
+  display: block;
+  color: #111827;
+  font-size: 20px;
+  font-weight: 750;
+  line-height: 1.1;
+}
+
+.asset-overview-label {
+  display: block;
+  margin-top: 5px;
+  color: #667085;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.header-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.black-button,
+.terminal-button {
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 7px;
+  box-shadow: 0 8px 18px rgba(17, 24, 39, 0.12);
+}
+
+.terminal-button {
+  margin-right: 0;
+  background: #ffffff !important;
+  border-color: #d8dee9 !important;
+  color: #344054 !important;
+  box-shadow: none;
+}
+
+.terminal-button:hover {
+  background: #f8fafc !important;
+  border-color: #111827 !important;
+  color: #111827 !important;
+}
+
+.main-content {
+  gap: 16px;
+}
+
+.left-panel,
+.table-wrapper,
+.terminal-view {
+  border: 1px solid #e5e9f2;
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+}
+
+.left-panel {
+  width: 292px;
+  overflow: hidden;
+}
+
+.panel-header {
+  padding: 14px 16px;
+  border-bottom-color: #edf1f7;
+  background: #fbfcfe;
+}
+
+.panel-title {
+  color: #111827;
+  font-size: 14px;
+}
+
+.panel-icon,
+.search-icon {
+  color: #d97706;
+}
+
+.group-search :deep(.el-input__wrapper) {
+  border-radius: 7px;
+}
+
+.group-tree :deep(.el-tree-node__content) {
+  height: 34px;
+  border-radius: 7px;
+}
+
+.group-tree :deep(.el-tree-node__content:hover) {
+  background: #f8fafc;
+}
+
+.group-tree :deep(.is-current > .el-tree-node__content) {
+  background: rgba(255, 175, 53, 0.16);
+  color: #111827;
+}
+
+.right-panel {
+  gap: 0;
+}
+
+.view-container {
+  min-height: 0;
+}
+
+.filter-bar {
+  padding: 14px 16px;
+  border: 1px solid #e5e9f2;
+  border-bottom: 0;
+  border-radius: 10px 10px 0 0;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.04);
+}
+
+.filter-inputs {
+  flex-wrap: wrap;
+}
+
+.filter-input {
+  width: 240px;
+}
+
+.filter-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.selected-group-bar {
+  background: #fffaf2;
+  border: 1px solid #e5e9f2;
+  border-bottom: 0;
+  color: #344054;
+}
+
+.group-path {
+  color: #111827;
+}
+
+.table-wrapper {
+  border-top: 0;
+  border-radius: 0 0 10px 10px;
+}
+
+.modern-table :deep(.el-table__header th) {
+  background: #f8fafc !important;
+  color: #475467 !important;
+  font-size: 13px;
+}
+
+.modern-table :deep(.el-table__body td) {
+  border-bottom-color: #edf1f7;
+}
+
+.host-inventory-table {
+  width: 100%;
+}
+
+.host-inventory-table :deep(.el-table__cell) {
+  padding: 11px 0;
+}
+
+.host-inventory-table :deep(.cell) {
+  padding: 0 12px;
+}
+
+.host-inventory-table :deep(.el-scrollbar__bar.is-horizontal) {
+  height: 10px;
+}
+
+.host-inventory-table :deep(.el-scrollbar__bar.is-horizontal .el-scrollbar__thumb) {
+  background: #aeb9c8;
+}
+
+.hostname-cell {
+  gap: 12px;
+}
+
+.host-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+}
+
+.hostname {
+  color: #111827;
+  font-weight: 650;
+}
+
+.host-inventory-table .host-info {
+  min-width: 0;
+}
+
+.host-inventory-table .host-meta {
+  max-width: 100%;
+  overflow: hidden;
+  color: #667085;
+}
+
+.host-inventory-table .ip {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.host-meta,
+.config-item,
+.resource-label {
+  color: #667085;
+}
+
+.host-inventory-table .resource-info {
+  gap: 5px;
+  padding: 0;
+}
+
+.host-inventory-table .resource-label {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+}
+
+.host-inventory-table .resource-info :deep(.el-progress) {
+  width: 100%;
+}
+
+.host-inventory-table .resource-info :deep(.el-progress__text) {
+  color: #667085;
+  font-size: 11px !important;
+}
+
+.host-inventory-table .tags-cell {
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.host-inventory-table .tags-cell .tag-item {
+  max-width: 112px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.host-inventory-table .config-cell {
+  padding: 0;
+}
+
+.host-inventory-table .config-item {
+  max-width: 100%;
+}
+
+.host-inventory-table .config-text {
+  max-width: calc(100% - 22px);
+}
+
+.status-dot-1 {
+  background: #16a34a;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.14);
+}
+
+.status-dot-0 {
+  background: #dc2626;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.14);
+}
+
+.status-dot--1 {
+  background: #98a2b3;
+  box-shadow: 0 0 0 3px rgba(152, 162, 179, 0.16);
+}
+
+.status-text-1 {
+  color: #16a34a;
+}
+
+.status-text-0 {
+  color: #dc2626;
+}
+
+.action-buttons {
+  gap: 4px;
+}
+
+.action-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+}
+
+.pagination-wrapper {
+  min-height: 54px;
+  padding: 12px 16px;
+  background: #fff;
+  border-top-color: #edf1f7;
+}
+
+:deep(.host-import-dialog),
+:deep(.excel-import-dialog),
+:deep(.cloud-import-dialog),
+:deep(.credential-dialog),
+:deep(.cloud-account-dialog),
+:deep(.group-edit-dialog),
+:deep(.host-detail-dialog),
+:deep(.agent-install-dialog) {
+  border-radius: 10px;
+}
+
+:deep(.host-import-dialog .el-dialog__header),
+:deep(.excel-import-dialog .el-dialog__header),
+:deep(.cloud-import-dialog .el-dialog__header),
+:deep(.credential-dialog .el-dialog__header),
+:deep(.cloud-account-dialog .el-dialog__header),
+:deep(.group-edit-dialog .el-dialog__header),
+:deep(.host-detail-dialog .el-dialog__header),
+:deep(.agent-install-dialog .el-dialog__header) {
+  background: #fbfcfe;
+  border-bottom-color: #edf1f7;
+}
+
+@media (max-width: 1280px) {
+  .page-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .asset-overview {
+    order: 3;
+    width: 100%;
+    max-width: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .main-content {
+    flex-direction: column;
+  }
+
+  .left-panel {
+    width: 100%;
+    min-height: 260px;
+  }
+
+  .filter-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .filter-input,
+  .filter-inputs,
+  .filter-actions {
+    width: 100%;
+  }
+
+  .asset-overview {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+</style>

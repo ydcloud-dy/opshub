@@ -30,8 +30,8 @@
           value-format="YYYY-MM-DD"
           style="width: 280px"
         />
-        <el-button class="black-button" @click="refreshData" :loading="refreshing">
-          <el-icon style="margin-right: 6px;"><Refresh /></el-icon>
+        <el-button type="primary" @click="refreshData" :loading="refreshing">
+          <el-icon><Refresh /></el-icon>
           刷新
         </el-button>
       </div>
@@ -65,7 +65,7 @@
                     <div class="progress-bar-container">
                       <div
                         class="progress-bar"
-                        :style="{ width: getPercent(row.count, totalUrlCount) + '%', backgroundColor: '#d4af37' }"
+                        :style="{ width: getPercent(row.count, totalUrlCount) + '%', backgroundColor: '#2563eb' }"
                       ></div>
                     </div>
                     <span class="progress-text">{{ getPercent(row.count, totalUrlCount).toFixed(1) }}%</span>

@@ -30,8 +30,8 @@
           value-format="YYYY-MM-DD"
           style="width: 280px"
         />
-        <el-button class="black-button" @click="loadData">
-          <el-icon style="margin-right: 6px;"><Refresh /></el-icon>
+        <el-button type="primary" @click="loadData">
+          <el-icon><Refresh /></el-icon>
           刷新
         </el-button>
       </div>
@@ -213,8 +213,8 @@ const loadTimeSeries = async () => {
             type: 'line',
             smooth: true,
             data: data.map(d => d.requests),
-            itemStyle: { color: '#d4af37' },
-            areaStyle: { color: 'rgba(212, 175, 55, 0.1)' }
+            itemStyle: { color: '#2563eb' },
+            areaStyle: { color: 'rgba(37, 99, 235, 0.10)' }
           },
           {
             name: '带宽(KB)',
@@ -457,7 +457,7 @@ const loadStatusDistribution = async () => {
 
 // 辅助函数
 const getColorByIndex = (index: number): string => {
-  const colors = ['#d4af37', '#409EFF', '#67C23A', '#E6A23C', '#F56C6C', '#909399', '#9B59B6', '#1ABC9C', '#3498DB', '#E74C3C']
+  const colors = ['#2563eb', '#16a34a', '#d97706', '#dc2626', '#7c3aed', '#64748b', '#0891b2', '#059669', '#0284c7', '#be123c']
   return colors[index % colors.length]
 }
 

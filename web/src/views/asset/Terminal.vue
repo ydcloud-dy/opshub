@@ -2,6 +2,13 @@
   <div class="terminal-page">
     <!-- 左侧分组和主机列表 -->
     <div class="terminal-sidebar">
+      <div class="terminal-brand">
+        <div>
+          <div class="terminal-brand-title">Web 终端</div>
+          <div class="terminal-brand-subtitle">双击主机创建 SSH 会话</div>
+        </div>
+        <span class="terminal-brand-badge">{{ connectedCount }} 在线</span>
+      </div>
       <div class="sidebar-header">
         <div class="sidebar-title">
           <el-icon><Collection /></el-icon>
@@ -49,10 +56,41 @@
           </template>
         </el-tree>
       </div>
+      <div class="sidebar-footer">
+        <span class="shortcut-key">双击</span>
+        <span>打开新标签，会话会自动录制审计。</span>
+      </div>
     </div>
 
     <!-- 右侧终端区域 -->
     <div class="terminal-main">
+      <div class="terminal-workbar">
+        <div class="workbar-left">
+          <div class="workbar-title">{{ activeTerminalTab?.host?.name || '新建终端' }}</div>
+          <div class="workbar-meta">
+            <template v-if="activeTerminalTab?.host">
+              <span>{{ activeTerminalTab.host.ip }}:{{ activeTerminalTab.host.port }}</span>
+              <span>{{ activeTerminalTab.host.sshUser || 'ssh' }}</span>
+            </template>
+            <template v-else>
+              <span>从左侧资产树选择一台主机开始连接</span>
+            </template>
+          </div>
+        </div>
+        <div class="workbar-status">
+          <span class="session-counter">{{ terminalTabs.length }} 个标签</span>
+          <span
+            class="connection-badge"
+            :class="{
+              connected: activeTerminalTab?.connected,
+              connecting: activeTerminalTab?.connecting
+            }"
+          >
+            <span></span>
+            {{ activeTerminalTab?.connected ? '已连接' : activeTerminalTab?.connecting ? '连接中' : '未连接' }}
+          </span>
+        </div>
+      </div>
       <div class="tabs-container">
         <el-tabs
           v-model="activeTab"
@@ -138,6 +176,14 @@ const terminalTabs = ref<TerminalTab[]>([
     connecting: false
   }
 ])
+
+const activeTerminalTab = computed(() => {
+  return terminalTabs.value.find(tab => tab.id === activeTab.value) || terminalTabs.value[0]
+})
+
+const connectedCount = computed(() => {
+  return terminalTabs.value.filter(tab => tab.connected).length
+})
 
 // 树形配置
 const treeProps = {
@@ -986,5 +1032,353 @@ onBeforeUnmount(() => {
 
 .terminal-tabs :deep(.el-icon-close:hover) {
   color: #cccccc;
+}
+
+/* 终端工作台视觉重构 */
+.terminal-page {
+  height: 100vh;
+  min-height: 0;
+  padding: 0;
+  background: #0f172a;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: hidden;
+}
+
+.terminal-sidebar {
+  width: 320px;
+  min-width: 320px;
+  background: #111827;
+  border-right: 1px solid #263244;
+}
+
+.terminal-brand {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 18px 16px;
+  background:
+    linear-gradient(135deg, rgba(255, 175, 53, 0.12), rgba(20, 184, 166, 0.08)),
+    #111827;
+  border-bottom: 1px solid #263244;
+}
+
+.terminal-brand-title {
+  color: #f8fafc;
+  font-size: 18px;
+  font-weight: 750;
+  line-height: 1.2;
+}
+
+.terminal-brand-subtitle {
+  margin-top: 5px;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.terminal-brand-badge {
+  height: 24px;
+  padding: 0 9px;
+  color: #bbf7d0;
+  background: rgba(22, 163, 74, 0.14);
+  border: 1px solid rgba(34, 197, 94, 0.28);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 22px;
+  white-space: nowrap;
+}
+
+.sidebar-header {
+  padding: 14px 16px;
+  border-bottom-color: #263244;
+}
+
+.sidebar-title {
+  color: #e5e7eb;
+  margin-bottom: 12px;
+}
+
+.sidebar-title .el-icon {
+  color: #ffaf35;
+}
+
+.host-count {
+  color: #94a3b8;
+}
+
+.search-input :deep(.el-input__wrapper) {
+  background: #0f172a;
+  border: 0;
+  box-shadow: 0 0 0 1px #334155 inset;
+}
+
+.search-input :deep(.el-input__wrapper:hover) {
+  box-shadow: 0 0 0 1px #475569 inset;
+}
+
+.search-input :deep(.el-input__wrapper.is-focus) {
+  box-shadow: 0 0 0 1px #ffaf35 inset, 0 0 0 3px rgba(255, 175, 53, 0.12);
+}
+
+.sidebar-content {
+  padding: 10px 10px 0;
+}
+
+.terminal-tree :deep(.el-tree-node__content) {
+  min-height: 34px;
+  padding: 2px 0;
+  border-radius: 7px;
+}
+
+.terminal-tree :deep(.el-tree-node__content:hover) {
+  background: rgba(148, 163, 184, 0.10);
+}
+
+.terminal-tree :deep(.is-current > .el-tree-node__content) {
+  background: rgba(255, 175, 53, 0.16);
+}
+
+.tree-node {
+  padding: 6px 8px;
+}
+
+.node-icon .el-icon,
+.host-svg-icon {
+  color: #94a3b8;
+}
+
+.node-label {
+  color: #dbe4f0;
+  font-size: 13px;
+}
+
+.node-count {
+  color: #64748b;
+}
+
+.node-status.online {
+  background: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.16);
+}
+
+.node-status.offline {
+  background: #64748b;
+}
+
+.sidebar-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  color: #94a3b8;
+  border-top: 1px solid #263244;
+  font-size: 12px;
+}
+
+.shortcut-key {
+  height: 22px;
+  padding: 0 8px;
+  color: #f8fafc;
+  background: #1f2937;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  line-height: 20px;
+}
+
+.terminal-main {
+  background: #0b1120;
+}
+
+.terminal-workbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 68px;
+  padding: 14px 18px;
+  background: #0f172a;
+  border-bottom: 1px solid #263244;
+}
+
+.workbar-title {
+  color: #f8fafc;
+  font-size: 17px;
+  font-weight: 750;
+}
+
+.workbar-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 5px;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.workbar-meta span + span::before {
+  content: "/";
+  margin-right: 8px;
+  color: #475569;
+}
+
+.workbar-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.session-counter,
+.connection-badge {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 26px;
+  white-space: nowrap;
+}
+
+.session-counter {
+  color: #cbd5e1;
+  background: #111827;
+  border: 1px solid #334155;
+}
+
+.connection-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #cbd5e1;
+  background: #111827;
+  border: 1px solid #334155;
+}
+
+.connection-badge span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #64748b;
+}
+
+.connection-badge.connected {
+  color: #bbf7d0;
+  border-color: rgba(34, 197, 94, 0.32);
+  background: rgba(22, 163, 74, 0.10);
+}
+
+.connection-badge.connected span {
+  background: #22c55e;
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.12);
+}
+
+.connection-badge.connecting {
+  color: #fde68a;
+  border-color: rgba(245, 158, 11, 0.36);
+  background: rgba(245, 158, 11, 0.10);
+}
+
+.connection-badge.connecting span {
+  background: #f59e0b;
+}
+
+.terminal-tabs :deep(.el-tabs__header) {
+  background: #111827;
+  border-bottom-color: #263244;
+  padding: 0 12px;
+}
+
+.terminal-tabs :deep(.el-tabs__nav-wrap) {
+  padding: 10px 0 0;
+}
+
+.terminal-tabs :deep(.el-tabs__item) {
+  height: 34px;
+  line-height: 32px;
+  color: #94a3b8;
+  background: #0f172a;
+  border-color: #263244;
+  border-radius: 7px 7px 0 0;
+}
+
+.terminal-tabs :deep(.el-tabs__item:hover) {
+  color: #f8fafc;
+  background: #172033;
+}
+
+.terminal-tabs :deep(.el-tabs__item.is-active) {
+  color: #f8fafc;
+  background: #020617;
+  border-color: #334155;
+  border-bottom-color: #020617;
+}
+
+.terminal-body,
+.terminal-empty {
+  background:
+    radial-gradient(circle at center, rgba(255, 175, 53, 0.035), transparent 34%),
+    #020617;
+}
+
+.xterm-container {
+  padding: 12px;
+  background: #020617;
+}
+
+.xterm-container :deep(.xterm) {
+  padding: 10px;
+  background: #020617;
+  border: 1px solid #172033;
+  border-radius: 8px;
+}
+
+.xterm-container :deep(.xterm .xterm-viewport) {
+  background-color: #020617 !important;
+}
+
+.empty-icon {
+  width: 72px;
+  height: 72px;
+  padding: 16px;
+  background: #111827;
+  border: 1px solid #263244;
+  border-radius: 14px;
+  opacity: 1;
+}
+
+.empty-icon svg {
+  fill: #64748b;
+}
+
+.empty-text {
+  color: #e5e7eb;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.empty-hint {
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+@media (max-width: 900px) {
+  .terminal-page {
+    height: 100vh;
+    min-height: 0;
+    flex-direction: column;
+  }
+
+  .terminal-sidebar {
+    width: 100%;
+    min-width: 0;
+    max-height: 320px;
+  }
+
+  .terminal-workbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
 </style>

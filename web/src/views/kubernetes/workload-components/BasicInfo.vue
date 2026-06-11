@@ -50,14 +50,14 @@
       <div class="form-section">
         <div class="form-section-header">
           <label>标签</label>
-          <el-button link type="primary" @click="emit('addLabel')" :icon="Plus" size="small">添加</el-button>
+          <el-button class="section-add-btn" type="primary" @click="emit('addLabel')" :icon="Plus" size="small">添加</el-button>
         </div>
         <div class="key-value-list">
           <div v-for="(label, index) in formData.labels" :key="'label-'+index" class="key-value-row">
             <el-input v-model="label.key" placeholder="key" size="small" />
             <span class="separator">=</span>
             <el-input v-model="label.value" placeholder="value" size="small" />
-            <el-button link type="danger" @click="emit('removeLabel', index)" :icon="Delete" size="small" />
+            <el-button class="kv-delete-btn" link type="danger" @click="emit('removeLabel', index)" :icon="Delete" size="small" />
           </div>
           <div v-if="formData.labels.length === 0" class="empty-tip">暂无标签</div>
         </div>
@@ -65,14 +65,14 @@
       <div class="form-section">
         <div class="form-section-header">
           <label>注解</label>
-          <el-button link type="primary" @click="emit('addAnnotation')" :icon="Plus" size="small">添加</el-button>
+          <el-button class="section-add-btn" type="primary" @click="emit('addAnnotation')" :icon="Plus" size="small">添加</el-button>
         </div>
         <div class="key-value-list">
           <div v-for="(anno, index) in formData.annotations" :key="'anno-'+index" class="key-value-row">
             <el-input v-model="anno.key" placeholder="key" size="small" />
             <span class="separator">=</span>
             <el-input v-model="anno.value" placeholder="value" size="small" />
-            <el-button link type="danger" @click="emit('removeAnnotation', index)" :icon="Delete" size="small" />
+            <el-button class="kv-delete-btn" link type="danger" @click="emit('removeAnnotation', index)" :icon="Delete" size="small" />
           </div>
           <div v-if="formData.annotations.length === 0" class="empty-tip">暂无注解</div>
         </div>
@@ -228,16 +228,38 @@ const emit = defineEmits<{
   letter-spacing: 0.3px;
 }
 
-.form-section-header .el-button {
-  font-weight: 500;
-  background: #d4af37;
-  border: none;
-  color: #1a1a1a;
+.form-section-header .section-add-btn {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid rgba(176, 132, 18, 0.28);
+  border-radius: 999px;
+  background: linear-gradient(135deg, #f0cf55 0%, #d4af37 100%);
+  color: #1f1600;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  box-shadow:
+    0 8px 16px rgba(212, 175, 55, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  transition: all 0.2s ease;
 }
 
-.form-section-header .el-button:hover {
-  background: #c9a227;
-  box-shadow: 0 4px 12px rgba(212, 175, 55, 0.4);
+.form-section-header .section-add-btn:hover {
+  border-color: rgba(154, 111, 10, 0.36);
+  background: linear-gradient(135deg, #f5d96a 0%, #cfa72f 100%);
+  color: #141006;
+  box-shadow:
+    0 10px 20px rgba(212, 175, 55, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  transform: translateY(-1px);
+}
+
+.form-section-header .section-add-btn:active {
+  transform: translateY(0);
+}
+
+.form-section-header .section-add-btn :deep(.el-icon) {
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .key-value-list {
@@ -270,6 +292,21 @@ const emit = defineEmits<{
   border: none;
   box-shadow: none;
   background: transparent;
+}
+
+.kv-delete-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #fff5f5;
+  color: #ff6b6b;
+  transition: all 0.2s ease;
+}
+
+.kv-delete-btn:hover {
+  background: #ffe3e3;
+  color: #e03131;
+  transform: translateY(-1px);
 }
 
 .separator {

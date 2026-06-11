@@ -18,11 +18,11 @@
         <div class="cluster-meta">
           <span class="meta-item">
             <el-icon><Connection /></el-icon>
-            {{ clusterInfo?.apiEndpoint }}
+            {{ clusterInfo?.apiEndpoint || '-' }}
           </span>
           <span class="meta-item">
             <el-icon><InfoFilled /></el-icon>
-            {{ clusterInfo?.version }}
+            {{ clusterInfo?.version || '-' }}
           </span>
           <span class="meta-item" v-if="clusterInfo?.provider">
             <el-icon><Shop /></el-icon>
@@ -1290,6 +1290,79 @@ onMounted(() => {
 
   .quick-stats {
     grid-template-columns: 1fr;
+  }
+}
+
+/* 顶部身份区：单层卡片铺满，内容收在左侧 */
+.page-header {
+  .header-content {
+    position: relative;
+    overflow: hidden;
+    display: block;
+    width: 100%;
+    min-height: 170px;
+    box-sizing: border-box;
+    padding: 22px 48px;
+    border: 1px solid #dfe6f1;
+    border-radius: 12px;
+    background:
+      linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(255, 255, 255, 0.9)),
+      radial-gradient(circle at 84% 16%, rgba(212, 175, 55, 0.18), transparent 32%);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+
+    &::after {
+      content: '';
+      position: absolute;
+      right: 5%;
+      top: -58px;
+      width: 190px;
+      height: 190px;
+      border-radius: 50%;
+      background: rgba(212, 175, 55, 0.1);
+      pointer-events: none;
+    }
+  }
+
+  .header-top,
+  .cluster-name-section,
+  .cluster-meta {
+    position: relative;
+    z-index: 1;
+    max-width: 560px;
+  }
+
+  .header-top {
+    margin-bottom: 14px;
+  }
+
+  .cluster-name-section {
+    margin-bottom: 12px;
+  }
+
+  .cluster-meta {
+    gap: 16px;
+
+    .meta-item {
+      color: #606266;
+    }
+  }
+
+}
+
+@media (max-width: 1400px) {
+  .page-header {
+    .header-content {
+      display: block;
+    }
+  }
+}
+
+@media (max-width: 768px) {
+  .page-header {
+    .header-content {
+      padding: 22px;
+      min-height: 0;
+    }
   }
 }
 </style>

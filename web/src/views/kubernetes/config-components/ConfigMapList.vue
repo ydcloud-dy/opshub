@@ -135,9 +135,21 @@
     </el-dialog>
 
     <!-- 表单创建弹窗 -->
-    <el-dialog v-model="formDialogVisible" :title="formDialogTitle" width="1200px" class="form-dialog">
+    <el-dialog v-model="formDialogVisible" :title="formDialogTitle" width="min(1420px, 88vw)" class="form-dialog configmap-editor-dialog">
       <el-form :model="formData" label-width="100px" class="configmap-form">
-        <div class="form-row">
+        <div class="configmap-hero">
+          <div>
+            <div class="configmap-hero-kicker">Kubernetes ConfigMap</div>
+            <div class="configmap-hero-title">{{ formData.name || '新的配置' }}</div>
+            <p>用键值对管理应用配置，支持普通数据、二进制数据、标签和注解。</p>
+          </div>
+          <div class="configmap-hero-badges">
+            <span>{{ formData.data.length }} Data</span>
+            <span>{{ formData.binaryData.length }} BinaryData</span>
+          </div>
+        </div>
+
+        <div class="form-row resource-fields">
           <el-form-item label="名称" required>
             <el-input v-model="formData.name" placeholder="请输入 ConfigMap 名称" style="width: 100%;" />
           </el-form-item>
@@ -161,15 +173,15 @@
                     <el-icon><Plus /></el-icon> 添加数据
                   </el-button>
                 </div>
-                <el-table :data="formData.data" border class="form-table">
-                  <el-table-column label="Key" width="200">
+                <el-table :data="formData.data" class="form-table config-data-table">
+                  <el-table-column label="Key" width="260">
                     <template #default="{ row }">
                       <el-input v-model="row.key" placeholder="请输入 Key" />
                     </template>
                   </el-table-column>
                   <el-table-column label="Value">
                     <template #default="{ row }">
-                      <el-input v-model="row.value" type="textarea" :rows="3" placeholder="请输入 Value" />
+                      <el-input v-model="row.value" type="textarea" :rows="4" placeholder="请输入 Value" />
                     </template>
                   </el-table-column>
                   <el-table-column label="操作" width="80">
@@ -190,15 +202,15 @@
                     <el-icon><Plus /></el-icon> 添加二进制数据
                   </el-button>
                 </div>
-                <el-table :data="formData.binaryData" border class="form-table">
-                  <el-table-column label="Key" width="200">
+                <el-table :data="formData.binaryData" class="form-table config-data-table">
+                  <el-table-column label="Key" width="260">
                     <template #default="{ row }">
                       <el-input v-model="row.key" placeholder="请输入 Key" />
                     </template>
                   </el-table-column>
                   <el-table-column label="Value">
                     <template #default="{ row }">
-                      <el-input v-model="row.value" type="textarea" :rows="3" placeholder="请输入 Value (Base64编码)" />
+                      <el-input v-model="row.value" type="textarea" :rows="4" placeholder="请输入 Value (Base64编码)" />
                     </template>
                   </el-table-column>
                   <el-table-column label="操作" width="80">
@@ -223,8 +235,8 @@
                     <el-icon><Plus /></el-icon> 添加
                   </el-button>
                 </div>
-                <el-table :data="formData.labels" border class="form-table">
-                  <el-table-column label="Key" width="200">
+                <el-table :data="formData.labels" class="form-table metadata-table">
+                  <el-table-column label="Key" width="260">
                     <template #default="{ row }">
                       <el-input v-model="row.key" placeholder="请输入 Key" />
                     </template>
@@ -251,8 +263,8 @@
                     <el-icon><Plus /></el-icon> 添加
                   </el-button>
                 </div>
-                <el-table :data="formData.annotations" border class="form-table">
-                  <el-table-column label="Key" width="200">
+                <el-table :data="formData.annotations" class="form-table metadata-table">
+                  <el-table-column label="Key" width="260">
                     <template #default="{ row }">
                       <el-input v-model="row.key" placeholder="请输入 Key" />
                     </template>
@@ -1137,5 +1149,312 @@ defineExpose({
 .black-button:hover {
   background-color: #333333 !important;
   border-color: #333333 !important;
+}
+
+/* ConfigMap 创建/编辑弹窗美化 */
+.configmap-editor-dialog {
+  --cfg-primary: #2563eb;
+  --cfg-border: #e6ebf2;
+  --cfg-muted: #667085;
+  --cfg-ink: #111827;
+}
+
+.configmap-list {
+  --cfg-primary: #2563eb;
+  --cfg-border: #e6ebf2;
+  --cfg-muted: #667085;
+  --cfg-ink: #111827;
+}
+
+.configmap-list .search-bar,
+.configmap-list .table-wrapper {
+  border: 1px solid var(--cfg-border);
+  border-radius: 18px;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.05);
+}
+
+.configmap-list .search-icon,
+.configmap-list .header-icon-blue {
+  color: var(--cfg-primary);
+}
+
+.configmap-list .name-icon-wrapper {
+  border: 0;
+  background: #eff6ff;
+  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.16);
+}
+
+.configmap-list .name-icon {
+  color: var(--cfg-primary);
+}
+
+.configmap-list .name-text {
+  color: var(--cfg-ink);
+  font-weight: 800;
+}
+
+.configmap-list .modern-table :deep(.el-table__header th) {
+  background: #f8fbff !important;
+  color: #475467;
+  font-weight: 900;
+  border-bottom: 1px solid var(--cfg-border);
+}
+
+.configmap-list .modern-table :deep(.el-table__row td) {
+  border-bottom: 1px solid #edf2f7;
+}
+
+.configmap-list .modern-table :deep(.el-table__row:hover) {
+  background: #f8fbff !important;
+}
+
+.configmap-editor-dialog :deep(.el-dialog) {
+  border-radius: 24px;
+  overflow: hidden;
+  background: #f7faff;
+  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.22);
+}
+
+.configmap-editor-dialog :deep(.el-dialog__header) {
+  padding: 20px 26px;
+  margin: 0;
+  background: #ffffff;
+  border-bottom: 1px solid var(--cfg-border);
+}
+
+.configmap-editor-dialog :deep(.el-dialog__title) {
+  color: var(--cfg-ink);
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.configmap-editor-dialog :deep(.el-dialog__body) {
+  padding: 22px;
+  max-height: min(74vh, 820px);
+  background:
+    radial-gradient(circle at top left, rgba(37, 99, 235, 0.08), transparent 28%),
+    #f7faff;
+}
+
+.configmap-editor-dialog :deep(.el-dialog__footer) {
+  background: #ffffff;
+  border-top: 1px solid var(--cfg-border);
+}
+
+.configmap-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+  padding: 20px 22px;
+  border: 1px solid var(--cfg-border);
+  border-radius: 22px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.92)),
+    radial-gradient(circle at 90% 10%, rgba(37, 99, 235, 0.13), transparent 32%);
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.06);
+}
+
+.configmap-hero-kicker {
+  width: fit-content;
+  margin-bottom: 8px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: var(--cfg-primary);
+  border: 1px solid #bfdbfe;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.configmap-hero-title {
+  color: var(--cfg-ink);
+  font-size: 26px;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+}
+
+.configmap-hero p {
+  margin: 8px 0 0;
+  color: var(--cfg-muted);
+}
+
+.configmap-hero-badges {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.configmap-hero-badges span {
+  padding: 8px 10px;
+  border: 1px solid #dbeafe;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.resource-fields {
+  padding: 18px;
+  border: 1px solid var(--cfg-border);
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+}
+
+.configmap-form :deep(.el-input__wrapper),
+.configmap-form :deep(.el-select .el-input__wrapper),
+.configmap-form :deep(.el-textarea__inner) {
+  border: 1px solid #d7e2f2;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.configmap-form :deep(.el-input__wrapper:hover),
+.configmap-form :deep(.el-input__wrapper.is-focus),
+.configmap-form :deep(.el-select .el-input__wrapper:hover),
+.configmap-form :deep(.el-select .el-input__wrapper.is-focus),
+.configmap-form :deep(.el-textarea__inner:hover),
+.configmap-form :deep(.el-textarea__inner:focus) {
+  border-color: var(--cfg-primary);
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+}
+
+.form-tabs {
+  overflow: hidden;
+  border: 1px solid var(--cfg-border);
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
+}
+
+.form-tabs :deep(.el-tabs__header) {
+  margin: 0;
+  padding: 0 18px;
+  background: #ffffff;
+  border-bottom: 1px solid var(--cfg-border);
+}
+
+.form-tabs :deep(.el-tabs__item) {
+  height: 54px;
+  line-height: 54px;
+  color: #475467;
+  font-weight: 900;
+}
+
+.form-tabs :deep(.el-tabs__item.is-active),
+.form-tabs :deep(.el-tabs__item:hover) {
+  color: var(--cfg-primary);
+}
+
+.form-tabs :deep(.el-tabs__active-bar) {
+  background: var(--cfg-primary);
+}
+
+.tab-content {
+  padding: 18px;
+}
+
+.data-section,
+.binarydata-section,
+.metadata-section {
+  margin-bottom: 18px;
+  padding: 18px;
+  border: 1px solid var(--cfg-border);
+  border-radius: 18px;
+  background: #f8fbff;
+}
+
+.section-title,
+.metadata-title {
+  color: var(--cfg-ink);
+  font-weight: 900;
+}
+
+.section-header .el-button,
+.metadata-header .el-button {
+  border-radius: 999px;
+  background: var(--cfg-primary);
+  border-color: var(--cfg-primary);
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.form-table {
+  overflow: hidden;
+  border: 1px solid var(--cfg-border);
+  border-radius: 14px;
+}
+
+.form-table :deep(.el-table__header th) {
+  background: #ffffff !important;
+  color: #475467;
+  font-weight: 900;
+  border-bottom: 1px solid var(--cfg-border);
+}
+
+.form-table :deep(.el-table__row td) {
+  background: #ffffff;
+  border-bottom: 1px solid #edf2f7;
+  vertical-align: top;
+}
+
+.config-data-table :deep(.el-textarea__inner) {
+  min-height: 118px !important;
+  font-family: 'SFMono-Regular', 'Cascadia Code', 'Menlo', monospace;
+  line-height: 1.65;
+}
+
+.black-button {
+  background: #1f2937 !important;
+  border-color: #1f2937 !important;
+  color: #ffffff !important;
+  border-radius: 12px;
+}
+
+.black-button:hover {
+  background: #111827 !important;
+  border-color: #111827 !important;
+}
+
+.yaml-dialog :deep(.el-dialog__header) {
+  background: #ffffff;
+  border-bottom: 1px solid #e6ebf2;
+}
+
+.yaml-dialog :deep(.el-dialog__title) {
+  color: #111827;
+}
+
+.yaml-dialog :deep(.el-dialog__body) {
+  background: #f7faff;
+}
+
+.yaml-editor-wrapper {
+  border-color: #d7e2f2;
+  border-radius: 16px;
+  background: #ffffff;
+}
+
+.yaml-line-numbers {
+  background: #f8fbff;
+  color: #98a2b3;
+  border-right-color: #e6ebf2;
+}
+
+.yaml-textarea {
+  background: #ffffff;
+  color: #1f2937;
+}
+
+@media (max-width: 960px) {
+  .configmap-hero,
+  .form-row {
+    flex-direction: column;
+  }
 }
 </style>

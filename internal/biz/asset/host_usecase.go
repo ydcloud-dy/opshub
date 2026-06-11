@@ -22,10 +22,16 @@ package asset
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -49,6 +55,15 @@ type HostUseCase struct {
 	cloudRepo      CloudAccountRepo
 }
 
+const (
+	defaultAgentIntervalSeconds  = 30
+	minAgentIntervalSeconds      = 10
+	maxAgentIntervalSeconds      = 3600
+	agentInstallTokenTTL         = 24 * time.Hour
+	agentOfflineAfter            = 2 * time.Minute
+	cloudHostAgentDisabledReason = "云主机仅支持SSH采集，不允许部署Agent"
+)
+
 func NewHostUseCase(hostRepo HostRepo, credentialRepo CredentialRepo, groupRepo AssetGroupRepo, cloudRepo CloudAccountRepo) *HostUseCase {
 	return &HostUseCase{
 		hostRepo:       hostRepo,
@@ -56,6 +71,25 @@ func NewHostUseCase(hostRepo HostRepo, credentialRepo CredentialRepo, groupRepo 
 		groupRepo:      groupRepo,
 		cloudRepo:      cloudRepo,
 	}
+}
+
+func isCloudManagedHost(host *Host) bool {
+	return host != nil && (host.Type == "cloud" || host.CloudProvider != "" || host.CloudInstanceID != "" || host.CloudAccountID > 0)
+}
+
+func isAgentSupportedHost(host *Host) bool {
+	return !isCloudManagedHost(host)
+}
+
+func resetAgentState(host *Host) {
+	host.AgentID = ""
+	host.AgentVersion = ""
+	host.AgentStatus = ""
+	host.AgentLastSeen = nil
+	host.AgentLastCollectAt = nil
+	host.AgentTokenHash = ""
+	host.AgentInstallTokenHash = ""
+	host.AgentInstallTokenExpiresAt = nil
 }
 
 // Create 创建主机
@@ -94,6 +128,9 @@ func (uc *HostUseCase) Update(ctx context.Context, req *HostRequest) error {
 	host.CredentialID = req.CredentialID
 	host.Tags = req.Tags
 	host.Description = req.Description
+	if !isAgentSupportedHost(host) {
+		resetAgentState(host)
+	}
 
 	return uc.hostRepo.Update(ctx, host)
 }
@@ -132,7 +169,7 @@ func (uc *HostUseCase) GetByID(ctx context.Context, id uint) (*HostInfoVO, error
 }
 
 // List 分页查询主机列表
-func (uc *HostUseCase) List(ctx context.Context, page, pageSize int, keyword string, groupID *uint, accessibleHostIDs []uint, status *int) ([]*HostInfoVO, int64, error) {
+func (uc *HostUseCase) List(ctx context.Context, page, pageSize int, keyword string, groupID *uint, accessibleHostIDs []uint, status *int, collectMode, agentStatus string) ([]*HostInfoVO, int64, error) {
 	// 如果指定了分组ID，获取所有子孙分组ID
 	var groupIDs []uint
 	if groupID != nil && *groupID > 0 {
@@ -144,7 +181,7 @@ func (uc *HostUseCase) List(ctx context.Context, page, pageSize int, keyword str
 		}
 	}
 
-	hosts, total, err := uc.hostRepo.List(ctx, page, pageSize, keyword, groupIDs, accessibleHostIDs, status)
+	hosts, total, err := uc.hostRepo.List(ctx, page, pageSize, keyword, groupIDs, accessibleHostIDs, status, collectMode, agentStatus)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -178,9 +215,60 @@ func (uc *HostUseCase) List(ctx context.Context, page, pageSize int, keyword str
 // toInfoVO 转换为InfoVO
 func (uc *HostUseCase) toInfoVO(host *Host) *HostInfoVO {
 	statusText := "未知"
-	if host.Status == 1 {
+	status := host.Status
+
+	collectMode := "ssh"
+	collectModeText := "SSH采集"
+	agentSupported := isAgentSupportedHost(host)
+	agentDisabledReason := ""
+	agentStatus := host.AgentStatus
+	agentStatusText := ""
+	agentID := host.AgentID
+	agentVersion := host.AgentVersion
+	var agentLastSeen string
+	var agentLastCollectAt string
+
+	if !agentSupported {
+		agentID = ""
+		agentVersion = ""
+		agentStatus = ""
+		agentStatusText = "仅SSH采集"
+		agentDisabledReason = cloudHostAgentDisabledReason
+	} else if host.AgentID != "" {
+		collectMode = "agent"
+		collectModeText = "Agent采集"
+		if agentStatus == "" {
+			agentStatus = "offline"
+		}
+		if host.AgentLastSeen == nil || time.Since(*host.AgentLastSeen) > agentOfflineAfter {
+			agentStatus = "offline"
+			status = 0
+		}
+		switch agentStatus {
+		case "online":
+			agentStatusText = "Agent在线"
+		case "pending":
+			agentStatusText = "待安装"
+		default:
+			agentStatusText = "Agent离线"
+		}
+	} else if host.AgentInstallTokenHash != "" {
+		collectMode = "agent_pending"
+		collectModeText = "Agent待安装"
+		agentStatus = "pending"
+		agentStatusText = "待安装"
+	}
+
+	if agentSupported && host.AgentLastSeen != nil {
+		agentLastSeen = host.AgentLastSeen.Format("2006-01-02 15:04:05")
+	}
+	if agentSupported && host.AgentLastCollectAt != nil {
+		agentLastCollectAt = host.AgentLastCollectAt.Format("2006-01-02 15:04:05")
+	}
+
+	if status == 1 {
 		statusText = "在线"
-	} else if host.Status == 0 {
+	} else if status == 0 {
 		statusText = "离线"
 	}
 
@@ -216,28 +304,39 @@ func (uc *HostUseCase) toInfoVO(host *Host) *HostInfoVO {
 	}
 
 	return &HostInfoVO{
-		ID:                host.ID,
-		Name:              host.Name,
-		GroupID:           host.GroupID,
-		Type:              host.Type,
-		TypeText:          typeText,
-		CloudProvider:     host.CloudProvider,
-		CloudProviderText: cloudProviderText,
-		CloudInstanceID:   host.CloudInstanceID,
-		SSHUser:           host.SSHUser,
-		IP:                host.IP,
-		Port:              host.Port,
-		CredentialID:      host.CredentialID,
-		Tags:              tags,
-		Description:       host.Description,
-		Status:            host.Status,
-		StatusText:        statusText,
-		LastSeen:          lastSeen,
-		OS:                host.OS,
-		Kernel:            host.Kernel,
-		Arch:              host.Arch,
-		CreateTime:        host.CreatedAt.Format("2006-01-02 15:04:05"),
-		UpdateTime:        host.UpdatedAt.Format("2006-01-02 15:04:05"),
+		ID:                  host.ID,
+		Name:                host.Name,
+		GroupID:             host.GroupID,
+		Type:                host.Type,
+		TypeText:            typeText,
+		CloudProvider:       host.CloudProvider,
+		CloudProviderText:   cloudProviderText,
+		CloudInstanceID:     host.CloudInstanceID,
+		CloudAccountID:      host.CloudAccountID,
+		SSHUser:             host.SSHUser,
+		IP:                  host.IP,
+		Port:                host.Port,
+		CredentialID:        host.CredentialID,
+		Tags:                tags,
+		Description:         host.Description,
+		Status:              status,
+		StatusText:          statusText,
+		LastSeen:            lastSeen,
+		CollectMode:         collectMode,
+		CollectModeText:     collectModeText,
+		AgentSupported:      agentSupported,
+		AgentDisabledReason: agentDisabledReason,
+		AgentID:             agentID,
+		AgentVersion:        agentVersion,
+		AgentStatus:         agentStatus,
+		AgentStatusText:     agentStatusText,
+		AgentLastSeen:       agentLastSeen,
+		AgentLastCollectAt:  agentLastCollectAt,
+		OS:                  host.OS,
+		Kernel:              host.Kernel,
+		Arch:                host.Arch,
+		CreateTime:          host.CreatedAt.Format("2006-01-02 15:04:05"),
+		UpdateTime:          host.UpdatedAt.Format("2006-01-02 15:04:05"),
 		// 扩展信息
 		CPUCores:    host.CPUCores,
 		CPUUsage:    host.CPUUsage,
@@ -259,8 +358,23 @@ func (uc *HostUseCase) CollectHostInfo(ctx context.Context, hostID uint) error {
 		return fmt.Errorf("获取主机信息失败: %w", err)
 	}
 
+	agentSupported := isAgentSupportedHost(host)
+
+	// 已安装Agent且最近在线时，资源信息由Agent持续上报，这里不再额外发起SSH连接。
+	if agentSupported && host.AgentID != "" && host.AgentLastSeen != nil && time.Since(*host.AgentLastSeen) <= agentOfflineAfter {
+		host.Status = 1
+		host.AgentStatus = "online"
+		return uc.hostRepo.Update(ctx, host)
+	}
+
 	// 如果没有配置凭证，无法连接
 	if host.CredentialID == 0 {
+		if agentSupported && host.AgentID != "" {
+			host.Status = 0
+			host.AgentStatus = "offline"
+			_ = uc.hostRepo.Update(ctx, host)
+			return fmt.Errorf("Agent已离线，且主机未配置SSH凭证")
+		}
 		return fmt.Errorf("主机未配置凭证")
 	}
 
@@ -427,6 +541,338 @@ func (uc *HostUseCase) BatchDelete(ctx context.Context, hostIDs []uint) error {
 		}
 	}
 	return nil
+}
+
+// CreateAgentInstallCommand 为指定主机生成一次性的Agent安装命令
+func (uc *HostUseCase) CreateAgentInstallCommand(ctx context.Context, hostID uint, serverURL string, interval int) (*AgentInstallCommandVO, error) {
+	host, err := uc.hostRepo.GetByID(ctx, hostID)
+	if err != nil {
+		return nil, fmt.Errorf("主机不存在")
+	}
+	if !isAgentSupportedHost(host) {
+		resetAgentState(host)
+		_ = uc.hostRepo.Update(ctx, host)
+		return nil, fmt.Errorf(cloudHostAgentDisabledReason)
+	}
+
+	interval = normalizeAgentInterval(interval)
+
+	enrollmentToken, err := generateSecureToken(32)
+	if err != nil {
+		return nil, fmt.Errorf("生成Agent安装令牌失败: %w", err)
+	}
+
+	expiresAt := time.Now().Add(agentInstallTokenTTL)
+	host.AgentInstallTokenHash = hashSecret(enrollmentToken)
+	host.AgentInstallTokenExpiresAt = &expiresAt
+	if host.AgentID == "" {
+		host.AgentStatus = "pending"
+	}
+
+	if err := uc.hostRepo.Update(ctx, host); err != nil {
+		return nil, fmt.Errorf("保存Agent安装令牌失败: %w", err)
+	}
+
+	serverURL = strings.TrimRight(serverURL, "/")
+	scriptURL := fmt.Sprintf(
+		"%s/api/v1/public/agents/install.sh?token=%s&server=%s&interval=%d",
+		serverURL,
+		url.QueryEscape(enrollmentToken),
+		url.QueryEscape(serverURL),
+		interval,
+	)
+
+	return &AgentInstallCommandVO{
+		Command:         fmt.Sprintf("curl -fsSL %q | sudo bash", scriptURL),
+		ScriptURL:       scriptURL,
+		EnrollmentToken: enrollmentToken,
+		ExpiresAt:       expiresAt.Format("2006-01-02 15:04:05"),
+		Interval:        interval,
+	}, nil
+}
+
+// InstallAgentViaSSH 通过主机已配置的SSH凭证一键安装Agent
+func (uc *HostUseCase) InstallAgentViaSSH(ctx context.Context, hostID uint, serverURL string, interval int) (*AgentInstallResultVO, error) {
+	host, err := uc.hostRepo.GetByID(ctx, hostID)
+	if err != nil {
+		return nil, fmt.Errorf("主机不存在")
+	}
+
+	result := &AgentInstallResultVO{
+		HostID:   host.ID,
+		HostName: host.Name,
+		IP:       host.IP,
+		Success:  false,
+	}
+
+	if !isAgentSupportedHost(host) {
+		resetAgentState(host)
+		_ = uc.hostRepo.Update(ctx, host)
+		result.Message = cloudHostAgentDisabledReason
+		return result, nil
+	}
+
+	if host.CredentialID == 0 {
+		result.Message = "主机未配置SSH凭证，无法一键安装"
+		return result, nil
+	}
+
+	credential, err := uc.credentialRepo.GetByIDDecrypted(ctx, host.CredentialID)
+	if err != nil {
+		result.Message = "获取SSH凭证失败: " + err.Error()
+		return result, nil
+	}
+
+	command, err := uc.CreateAgentInstallCommand(ctx, hostID, serverURL, interval)
+	if err != nil {
+		return nil, err
+	}
+	result.Command = command
+
+	sshClient, err := uc.createSSHClient(host, credential)
+	if err != nil {
+		result.Message = "SSH连接失败: " + err.Error()
+		return result, nil
+	}
+	defer sshClient.Close()
+
+	output, err := sshClient.ExecuteWithTimeout(buildAgentSSHInstallCommand(command.ScriptURL), 3*time.Minute)
+	result.Output = trimAgentInstallOutput(output)
+	if err != nil {
+		result.Message = "远程安装失败: " + err.Error()
+		return result, nil
+	}
+
+	result.Success = true
+	result.Message = "安装命令已执行，等待Agent注册并上报心跳"
+	return result, nil
+}
+
+// RevokeAgent 解除主机与Agent的绑定，并清理安装令牌
+func (uc *HostUseCase) RevokeAgent(ctx context.Context, hostID uint) error {
+	host, err := uc.hostRepo.GetByID(ctx, hostID)
+	if err != nil {
+		return fmt.Errorf("主机不存在")
+	}
+
+	resetAgentState(host)
+	return uc.hostRepo.Update(ctx, host)
+}
+
+// RegisterAgent 使用安装令牌完成Agent首次注册
+func (uc *HostUseCase) RegisterAgent(ctx context.Context, req *AgentRegisterRequest) (*AgentRegisterResponse, error) {
+	host, err := uc.hostRepo.GetByAgentInstallTokenHash(ctx, hashSecret(req.EnrollmentToken))
+	if err != nil {
+		return nil, fmt.Errorf("Agent安装令牌无效或已过期")
+	}
+	if !isAgentSupportedHost(host) {
+		resetAgentState(host)
+		_ = uc.hostRepo.Update(ctx, host)
+		return nil, fmt.Errorf(cloudHostAgentDisabledReason)
+	}
+
+	agentID, err := generateAgentID()
+	if err != nil {
+		return nil, fmt.Errorf("生成Agent ID失败: %w", err)
+	}
+	agentToken, err := generateSecureToken(32)
+	if err != nil {
+		return nil, fmt.Errorf("生成Agent认证令牌失败: %w", err)
+	}
+
+	now := time.Now()
+	host.AgentID = agentID
+	host.AgentTokenHash = hashSecret(agentToken)
+	host.AgentVersion = req.Version
+	host.AgentStatus = "online"
+	host.AgentLastSeen = &now
+	host.AgentInstallTokenHash = ""
+	host.AgentInstallTokenExpiresAt = nil
+	host.Status = 1
+	host.LastSeen = &now
+	if req.Hostname != "" {
+		host.Hostname = req.Hostname
+	}
+	if req.OS != "" {
+		host.OS = req.OS
+	}
+	if req.Kernel != "" {
+		host.Kernel = req.Kernel
+	}
+	if req.Arch != "" {
+		host.Arch = req.Arch
+	}
+
+	if err := uc.hostRepo.Update(ctx, host); err != nil {
+		return nil, fmt.Errorf("保存Agent注册信息失败: %w", err)
+	}
+
+	return &AgentRegisterResponse{
+		AgentID:    agentID,
+		AgentToken: agentToken,
+		HostID:     host.ID,
+		Interval:   defaultAgentIntervalSeconds,
+	}, nil
+}
+
+// HeartbeatAgent 更新Agent心跳
+func (uc *HostUseCase) HeartbeatAgent(ctx context.Context, req *AgentHeartbeatRequest) error {
+	host, err := uc.authenticateAgent(ctx, req.AgentID, req.AgentToken)
+	if err != nil {
+		return err
+	}
+
+	now := time.Now()
+	host.AgentStatus = "online"
+	host.AgentLastSeen = &now
+	host.LastSeen = &now
+	host.Status = 1
+	if req.Version != "" {
+		host.AgentVersion = req.Version
+	}
+	if req.Hostname != "" {
+		host.Hostname = req.Hostname
+	}
+	return uc.hostRepo.Update(ctx, host)
+}
+
+// ReportAgentMetrics 保存Agent上报的主机资源信息
+func (uc *HostUseCase) ReportAgentMetrics(ctx context.Context, req *AgentMetricsRequest) error {
+	host, err := uc.authenticateAgent(ctx, req.AgentID, req.AgentToken)
+	if err != nil {
+		return err
+	}
+
+	now := time.Now()
+	host.AgentStatus = "online"
+	host.AgentLastSeen = &now
+	host.AgentLastCollectAt = &now
+	host.LastSeen = &now
+	host.Status = 1
+	if req.Version != "" {
+		host.AgentVersion = req.Version
+	}
+	if req.Hostname != "" {
+		host.Hostname = req.Hostname
+	}
+	if req.OS != "" {
+		host.OS = req.OS
+	}
+	if req.Kernel != "" {
+		host.Kernel = req.Kernel
+	}
+	if req.Arch != "" {
+		host.Arch = req.Arch
+	}
+	if req.CPUCores > 0 {
+		host.CPUCores = req.CPUCores
+	}
+	host.CPUUsage = req.CPUUsage
+	host.MemoryTotal = req.MemoryTotal
+	host.MemoryUsed = req.MemoryUsed
+	host.MemoryUsage = req.MemoryUsage
+	host.DiskTotal = req.DiskTotal
+	host.DiskUsed = req.DiskUsed
+	host.DiskUsage = req.DiskUsage
+	host.Uptime = req.Uptime
+
+	if host.MemoryUsage == 0 && req.MemoryTotal > 0 {
+		host.MemoryUsage = float64(req.MemoryUsed) / float64(req.MemoryTotal) * 100
+	}
+	if host.DiskUsage == 0 && req.DiskTotal > 0 {
+		host.DiskUsage = float64(req.DiskUsed) / float64(req.DiskTotal) * 100
+	}
+
+	return uc.hostRepo.Update(ctx, host)
+}
+
+func (uc *HostUseCase) authenticateAgent(ctx context.Context, agentID, agentToken string) (*Host, error) {
+	if agentID == "" || agentToken == "" {
+		return nil, fmt.Errorf("Agent认证信息不能为空")
+	}
+
+	host, err := uc.hostRepo.GetByAgentID(ctx, agentID)
+	if err != nil {
+		return nil, fmt.Errorf("Agent不存在")
+	}
+	if host.AgentTokenHash == "" {
+		return nil, fmt.Errorf("Agent未初始化认证令牌")
+	}
+	if !isAgentSupportedHost(host) {
+		resetAgentState(host)
+		_ = uc.hostRepo.Update(ctx, host)
+		return nil, fmt.Errorf(cloudHostAgentDisabledReason)
+	}
+
+	expected := []byte(host.AgentTokenHash)
+	actual := []byte(hashSecret(agentToken))
+	if subtle.ConstantTimeCompare(expected, actual) != 1 {
+		return nil, fmt.Errorf("Agent认证失败")
+	}
+	return host, nil
+}
+
+func generateAgentID() (string, error) {
+	token, err := generateSecureToken(18)
+	if err != nil {
+		return "", err
+	}
+	return "agt_" + strings.TrimRight(token, "="), nil
+}
+
+func generateSecureToken(size int) (string, error) {
+	buf := make([]byte, size)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(buf), nil
+}
+
+func hashSecret(secret string) string {
+	sum := sha256.Sum256([]byte(secret))
+	return hex.EncodeToString(sum[:])
+}
+
+func normalizeAgentInterval(interval int) int {
+	if interval <= 0 {
+		return defaultAgentIntervalSeconds
+	}
+	if interval < minAgentIntervalSeconds {
+		return minAgentIntervalSeconds
+	}
+	if interval > maxAgentIntervalSeconds {
+		return maxAgentIntervalSeconds
+	}
+	return interval
+}
+
+func buildAgentSSHInstallCommand(scriptURL string) string {
+	script := fmt.Sprintf(`set -euo pipefail
+install_url=%s
+if [ "$(id -u)" -eq 0 ]; then
+  curl -fsSL "$install_url" | bash
+elif command -v sudo >/dev/null 2>&1; then
+  curl -fsSL "$install_url" | sudo -n bash
+else
+  echo "当前用户不是root且未安装sudo，无法自动安装OpsHub Agent" >&2
+  exit 1
+fi`, shellQuote(scriptURL))
+	return "bash -lc " + shellQuote(script)
+}
+
+func shellQuote(value string) string {
+	if value == "" {
+		return "''"
+	}
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+}
+
+func trimAgentInstallOutput(output string) string {
+	output = strings.TrimSpace(output)
+	if len(output) <= 4000 {
+		return output
+	}
+	return output[len(output)-4000:]
 }
 
 // toCredentialVO 转换为CredentialVO
@@ -819,8 +1265,12 @@ func (uc *CloudAccountUseCase) ImportFromCloud(ctx context.Context, req *CloudIm
 		existHost, err := hostUseCase.hostRepo.GetByCloudInstanceID(ctx, instance.InstanceID)
 		if err == nil && existHost != nil {
 			// 主机已存在，更新分组
+			existHost.Type = "cloud"
+			existHost.CloudProvider = account.Provider
+			existHost.CloudAccountID = req.AccountID
 			existHost.GroupID = req.GroupID
 			existHost.Name = instance.Name
+			resetAgentState(existHost)
 			if err := hostUseCase.hostRepo.Update(ctx, existHost); err != nil {
 				importErrors = append(importErrors, fmt.Sprintf("实例 %s 更新失败: %v", instance.InstanceID, err))
 			} else {
@@ -851,6 +1301,7 @@ func (uc *CloudAccountUseCase) ImportFromCloud(ctx context.Context, req *CloudIm
 			existByIP.CloudAccountID = req.AccountID
 			existByIP.GroupID = req.GroupID
 			existByIP.Name = instance.Name
+			resetAgentState(existByIP)
 			if instance.OS != "" {
 				existByIP.OS = instance.OS
 			}

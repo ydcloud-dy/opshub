@@ -184,7 +184,8 @@ func (h *ClusterHandler) DeleteCluster(c *gin.Context) {
 		return
 	}
 
-	if err := h.clusterService.DeleteCluster(c.Request.Context(), uint(id)); err != nil {
+	force := c.Query("force") == "true" || c.Query("force") == "1"
+	if err := h.clusterService.DeleteClusterWithOptions(c.Request.Context(), uint(id), service.DeleteClusterOptions{Force: force}); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    500,
 			"message": err.Error(),
@@ -192,9 +193,14 @@ func (h *ClusterHandler) DeleteCluster(c *gin.Context) {
 		return
 	}
 
+	message := "删除成功"
+	if force {
+		message = "已强制删除本地记录"
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
-		"message": "删除成功",
+		"message": message,
 	})
 }
 

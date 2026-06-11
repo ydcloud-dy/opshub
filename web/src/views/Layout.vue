@@ -78,8 +78,8 @@
       </div>
     </el-aside>
 
-    <el-container>
-      <el-header>
+    <el-container :class="{ 'fullscreen-content': hideSidebar }">
+      <el-header v-if="!hideSidebar">
         <div class="header-content">
           <div class="header-logo">
             <img :src="headerImage" alt="Header" class="header-image" />
@@ -95,7 +95,7 @@
         </div>
       </el-header>
 
-      <el-main>
+      <el-main :class="{ 'fullscreen-main': hideSidebar }">
         <!-- 无权限时显示无权限页面 -->
         <NoPermission v-if="hasNoPermission" />
         <!-- 有权限时显示正常内容 -->
@@ -146,7 +146,21 @@ import {
   Key,
   Upload,
   Bell,
-  VideoPlay
+  VideoPlay,
+  AlarmClock,
+  CollectionTag,
+  CopyDocument,
+  DataAnalysis,
+  DocumentCopy,
+  FirstAidKit,
+  Histogram,
+  Message,
+  MessageBox,
+  Notification,
+  Operation,
+  SetUp,
+  TrendCharts,
+  Warning
 } from '@element-plus/icons-vue'
 import { getUserMenu } from '@/api/menu'
 
@@ -260,12 +274,125 @@ const iconMap: Record<string, any> = {
   'Key': Key,
   'Upload': Upload,
   'Bell': Bell,
-  'VideoPlay': VideoPlay
+  'VideoPlay': VideoPlay,
+  'AlarmClock': AlarmClock,
+  'CollectionTag': CollectionTag,
+  'CopyDocument': CopyDocument,
+  'DataAnalysis': DataAnalysis,
+  'DocumentCopy': DocumentCopy,
+  'FirstAidKit': FirstAidKit,
+  'Histogram': Histogram,
+  'Message': Message,
+  'MessageBox': MessageBox,
+  'Notification': Notification,
+  'Operation': Operation,
+  'SetUp': SetUp,
+  'TrendCharts': TrendCharts,
+  'Warning': Warning
+}
+
+const monitorMenuIconMap: Record<string, string> = {
+  '/monitor': 'Monitor',
+  '/monitor/dashboard': 'DataAnalysis',
+  '/monitor/fault-centers': 'FirstAidKit',
+  '/monitor/datasources': 'Connection',
+  '/monitor/rules': 'Warning',
+  '/monitor/probe-tasks': 'Odometer',
+  '/monitor/instant-probe': 'VideoPlay',
+  '/monitor/notice-objects': 'MessageBox',
+  '/monitor/notice-templates': 'DocumentCopy',
+  '/monitor/duty-tables': 'Calendar'
 }
 
 // 获取图标组件
 const getIcon = (iconName: string) => {
   return iconMap[iconName] || Menu
+}
+
+const normalizeMonitorMenuIcons = (menus: any[]) => {
+  menus.forEach(menu => {
+    if (menu.path && monitorMenuIconMap[menu.path]) {
+      menu.icon = monitorMenuIconMap[menu.path]
+    }
+    if (Array.isArray(menu.children)) {
+      normalizeMonitorMenuIcons(menu.children)
+    }
+  })
+}
+
+const normalizeMonitorMenuEntries = (menus: any[]) => {
+  const hasDashboard = menus.some(menu => menu.path === '/monitor/dashboard')
+  const hasProbeTask = menus.some(menu => menu.path === '/monitor/probe-tasks')
+  const hasInstantProbe = menus.some(menu => menu.path === '/monitor/instant-probe')
+  const normalized: any[] = []
+  let probeAnchor: any = null
+
+  menus.forEach(menu => {
+    if (menu.path === '/monitor/domain') {
+      if (hasProbeTask) {
+        return
+      }
+      probeAnchor = {
+        ...menu,
+        name: '拨测任务',
+        path: '/monitor/probe-tasks',
+        icon: 'Odometer',
+        sort: menu.sort || 4,
+      }
+      normalized.push(probeAnchor)
+      return
+    }
+    if (menu.path === '/monitor/probe-tasks') {
+      probeAnchor = menu
+    }
+    normalized.push(menu)
+  })
+
+  if (!hasDashboard) {
+    const monitorParent = normalized.find(menu => menu.path === '/monitor')
+    const firstMonitorChild = normalized.find(menu => menu.parentPath === '/monitor' || menu.parentId === monitorParent?.ID || menu.parentId === monitorParent?.id)
+    if (monitorParent || firstMonitorChild) {
+      normalized.push({
+        ID: 'monitor_dashboard',
+        id: 'monitor_dashboard',
+        name: '监控面板',
+        code: 'monitor_dashboard',
+        type: 2,
+        parentId: firstMonitorChild?.parentId ?? monitorParent?.ID ?? monitorParent?.id ?? 0,
+        parentPath: firstMonitorChild?.parentPath ?? '/monitor',
+        path: '/monitor/dashboard',
+        component: 'monitor/MonitorDashboard',
+        icon: 'DataAnalysis',
+        sort: 0.5,
+        visible: 1,
+        status: 1,
+      })
+    }
+  }
+
+  if (!hasInstantProbe) {
+    const monitorParent = normalized.find(menu => menu.path === '/monitor')
+    const anchor = probeAnchor || normalized.find(menu => menu.path === '/monitor/probe-tasks')
+    if (monitorParent || anchor) {
+      normalized.push({
+        ID: 'monitor_instant_probe',
+        id: 'monitor_instant_probe',
+        name: '即时拨测',
+        code: 'monitor_instant_probe',
+        type: 2,
+        parentId: anchor?.parentId ?? monitorParent?.ID ?? monitorParent?.id ?? 0,
+        parentPath: anchor?.parentPath ?? '/monitor',
+        path: '/monitor/instant-probe',
+        component: 'monitor/InstantProbe',
+        icon: 'VideoPlay',
+        sort: (anchor?.sort || 4) + 0.1,
+        visible: 1,
+        status: 1,
+      })
+    }
+  }
+
+  return normalized
 }
 
 // 构建菜单树
@@ -412,6 +539,7 @@ const buildMenuTree = (menus: any[]) => {
   }
 
   cleanEmptyChildren(tree)
+  normalizeMonitorMenuIcons(tree)
 
 
   return tree
@@ -439,7 +567,7 @@ const loadMenu = async () => {
       return result
     }
 
-    const flatSystemMenus = flattenMenus(systemMenus)
+    const flatSystemMenus = normalizeMonitorMenuEntries(flattenMenus(systemMenus))
 
     // 构建菜单树
     menuList.value = buildMenuTree(flatSystemMenus)
@@ -514,9 +642,9 @@ onMounted(async () => {
 }
 
 .el-aside {
-  background-color: #000000 !important;
+  background-color: #070b12 !important;
   color: #fff;
-  box-shadow: 2px 0 6px rgba(0, 0, 0, 0.1);
+  box-shadow: 8px 0 24px rgba(15, 23, 42, 0.12);
   display: flex;
   flex-direction: column;
   height: 100vh;
@@ -526,7 +654,7 @@ onMounted(async () => {
 .logo {
   height: 80px;
   text-align: center;
-  background: #000000;
+  background: #070b12;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   margin: 0;
   flex-shrink: 0;
@@ -579,7 +707,7 @@ onMounted(async () => {
   align-items: center;
   gap: 12px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
-  background: #000000;
+  background: #070b12;
   cursor: pointer;
   transition: all 0.3s ease;
   width: 100%;
@@ -676,7 +804,7 @@ onMounted(async () => {
 
 .el-menu {
   border-right: none !important;
-  background-color: #000000 !important;
+  background-color: #070b12 !important;
   flex: 1 1 auto;
   overflow-y: auto; /* 允许垂直滚动 */
   overflow-x: hidden; /* 隐藏水平滚动 */
@@ -703,7 +831,7 @@ onMounted(async () => {
 
 /* 覆盖 Element Plus 菜单样式 */
 :deep(.el-menu) {
-  background-color: #000000 !important;
+  background-color: #070b12 !important;
 }
 
 :deep(.el-menu-item) {
@@ -840,12 +968,14 @@ onMounted(async () => {
 }
 
 .el-header {
-  background-color: #fff;
-  border-bottom: 1px solid #e6e6e6;
+  height: 64px;
+  background-color: rgba(255, 255, 255, 0.92);
+  border-bottom: 1px solid #e5e9f2;
   display: flex;
   align-items: center;
-  padding: 0 20px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  padding: 0 22px;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.04);
+  backdrop-filter: blur(14px);
 }
 
 .header-content {
@@ -877,9 +1007,33 @@ onMounted(async () => {
   align-items: center;
 }
 
+.breadcrumb :deep(.el-breadcrumb__inner) {
+  color: #667085;
+  font-size: 13px;
+}
+
+.breadcrumb :deep(.el-breadcrumb__item:last-child .el-breadcrumb__inner) {
+  color: #111827;
+  font-weight: 600;
+}
+
 .el-main {
-  background-color: #f0f2f5;
-  padding: 20px;
+  background: #f4f6fa;
+  padding: 18px;
+  overflow: auto;
+}
+
+.fullscreen-content {
+  height: 100vh;
+  min-height: 0;
+}
+
+.el-main.fullscreen-main {
+  height: 100vh;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #0b1120;
 }
 
 </style>

@@ -12,12 +12,12 @@
         </div>
       </div>
       <div class="header-actions">
-        <el-button class="black-button" @click="handleAdd">
-          <el-icon style="margin-right: 6px;"><Plus /></el-icon>
+        <el-button type="primary" @click="handleAdd">
+          <el-icon><Plus /></el-icon>
           新增监控
         </el-button>
-        <el-button @click="loadData">
-          <el-icon style="margin-right: 6px;"><Refresh /></el-icon>
+        <el-button plain @click="loadData">
+          <el-icon><Refresh /></el-icon>
           刷新
         </el-button>
       </div>
@@ -28,7 +28,7 @@
       <div class="search-inputs">
         <el-input
           v-model="searchForm.domain"
-          placeholder="搜索域名..."
+          placeholder="请输入域名搜索"
           clearable
           class="search-input"
         >
@@ -50,8 +50,8 @@
       </div>
 
       <div class="search-actions">
-        <el-button class="reset-btn" @click="handleReset">
-          <el-icon style="margin-right: 4px;"><RefreshLeft /></el-icon>
+        <el-button plain @click="handleReset">
+          <el-icon><RefreshLeft /></el-icon>
           重置
         </el-button>
       </div>
@@ -99,13 +99,20 @@
 
     <!-- 表格容器 -->
     <div class="table-wrapper">
+      <div class="table-toolbar">
+        <div>
+          <h3>监控列表</h3>
+          <span>{{ filteredData.length }} 条记录</span>
+        </div>
+      </div>
       <el-table
         :data="filteredData"
         v-loading="loading"
-        class="modern-table"
+        class="modern-table domain-monitor-table"
+        :scrollbar-always-on="true"
         :header-cell-style="{ background: '#fafbfc', color: '#606266', fontWeight: '600' }"
       >
-        <el-table-column label="域名" prop="domain" min-width="200">
+        <el-table-column label="域名" prop="domain" min-width="260" show-overflow-tooltip>
           <template #default="{ row }">
             <div class="domain-cell">
               <el-link :href="`http://${row.domain}`" target="_blank" type="primary">
@@ -117,9 +124,9 @@
 
         <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }">
-            <el-tag v-if="row.status === 'normal'" type="success" effect="dark">正常</el-tag>
-            <el-tag v-else-if="row.status === 'abnormal'" type="danger" effect="dark">异常</el-tag>
-            <el-tag v-else type="warning" effect="dark">暂停</el-tag>
+            <el-tag v-if="row.status === 'normal'" type="success">正常</el-tag>
+            <el-tag v-else-if="row.status === 'abnormal'" type="danger">异常</el-tag>
+            <el-tag v-else type="warning">暂停</el-tag>
           </template>
         </el-table-column>
 
@@ -138,7 +145,11 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="SSL到期时间" prop="sslExpiry" width="180" />
+        <el-table-column label="SSL到期时间" prop="sslExpiry" width="190" align="center">
+          <template #default="{ row }">
+            <span class="time-text">{{ formatDateTime(row.sslExpiry) }}</span>
+          </template>
+        </el-table-column>
 
         <el-table-column label="检查间隔" width="120" align="center">
           <template #default="{ row }">
@@ -146,13 +157,13 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="最后检查" prop="lastCheck" width="180">
+        <el-table-column label="最后检查" prop="lastCheck" width="190" align="center">
           <template #default="{ row }">
-            <span>{{ formatDateTime(row.lastCheck) }}</span>
+            <span class="time-text">{{ formatDateTime(row.lastCheck) }}</span>
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" width="200" fixed="right" align="center">
+        <el-table-column label="操作" width="176" fixed="right" align="center">
           <template #default="{ row }">
             <div class="action-buttons">
               <el-tooltip content="查看详情" placement="top">
@@ -239,7 +250,7 @@
       <template #footer>
         <div class="dialog-footer">
           <el-button @click="dialogVisible = false">取消</el-button>
-          <el-button class="black-button" @click="handleSubmit" :loading="submitting">确定</el-button>
+          <el-button type="primary" @click="handleSubmit" :loading="submitting">确定</el-button>
         </div>
       </template>
     </el-dialog>
@@ -263,9 +274,9 @@
           </div>
           <div class="info-item">
             <span class="info-label">状态:</span>
-            <el-tag v-if="currentDomain.status === 'normal'" type="success" effect="dark">正常</el-tag>
-            <el-tag v-else-if="currentDomain.status === 'abnormal'" type="danger" effect="dark">异常</el-tag>
-            <el-tag v-else type="warning" effect="dark">暂停</el-tag>
+            <el-tag v-if="currentDomain.status === 'normal'" type="success">正常</el-tag>
+            <el-tag v-else-if="currentDomain.status === 'abnormal'" type="danger">异常</el-tag>
+            <el-tag v-else type="warning">暂停</el-tag>
           </div>
           <div class="info-item">
             <span class="info-label">响应时间:</span>
@@ -327,7 +338,8 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
-import { ElMessage, ElMessageBox, FormInstance, FormRules } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import type { FormInstance, FormRules } from 'element-plus'
 import {
   Plus,
   Search,
@@ -422,21 +434,18 @@ const getResponseTimeClass = (time: number) => {
 // 格式化时间
 const formatDateTime = (dateTime: string | null | undefined | Date) => {
   if (!dateTime) return '-'
-  // 如果是 Date 对象，转换为字符串
-  let dateStr = ''
-  if (dateTime instanceof Date) {
-    const year = dateTime.getFullYear()
-    const month = String(dateTime.getMonth() + 1).padStart(2, '0')
-    const day = String(dateTime.getDate()).padStart(2, '0')
-    const hours = String(dateTime.getHours()).padStart(2, '0')
-    const minutes = String(dateTime.getMinutes()).padStart(2, '0')
-    const seconds = String(dateTime.getSeconds()).padStart(2, '0')
-    dateStr = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
-  } else {
-    // 如果是字符串，移除T和时区部分
-    dateStr = String(dateTime).replace('T', ' ').split('+')[0].split('.')[0]
+
+  const date = dateTime instanceof Date ? dateTime : new Date(dateTime)
+  if (!Number.isNaN(date.getTime()) && date.getFullYear() > 1970) {
+    const pad = (value: number) => String(value).padStart(2, '0')
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
   }
-  return dateStr
+
+  return String(dateTime)
+    .replace('T', ' ')
+    .replace(/Z$/, '')
+    .split('+')[0]
+    .split('.')[0] || '-'
 }
 
 // 重置搜索
@@ -607,18 +616,22 @@ onMounted(() => {
 .domain-monitor-container {
   padding: 0;
   background-color: transparent;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 /* 页面头部 */
 .page-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 12px;
-  padding: 16px 20px;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 0;
+  padding: 18px 20px;
   background: #fff;
+  border: 1px solid #e5e9f2;
   border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
 }
 
 .page-title-group {
@@ -628,31 +641,31 @@ onMounted(() => {
 }
 
 .page-title-icon {
-  width: 48px;
-  height: 48px;
-  background: linear-gradient(135deg, #000 0%, #1a1a1a 100%);
-  border-radius: 10px;
+  width: 42px;
+  height: 42px;
+  background: #f8fafc;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #d4af37;
+  color: #111827;
   font-size: 22px;
   flex-shrink: 0;
-  border: 1px solid #d4af37;
+  border: 1px solid #edf1f7;
 }
 
 .page-title {
   margin: 0;
-  font-size: 20px;
-  font-weight: 600;
-  color: #303133;
+  font-size: 22px;
+  font-weight: 750;
+  color: #111827;
   line-height: 1.3;
 }
 
 .page-subtitle {
   margin: 4px 0 0 0;
   font-size: 13px;
-  color: #909399;
+  color: #667085;
   line-height: 1.4;
 }
 
@@ -662,13 +675,21 @@ onMounted(() => {
   align-items: center;
 }
 
+.header-actions :deep(.el-button) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  border-radius: 7px;
+}
+
 /* 搜索栏 */
 .search-bar {
-  margin-bottom: 12px;
-  padding: 12px 16px;
+  margin-bottom: 0;
+  padding: 14px;
   background: #fff;
+  border: 1px solid #e5e9f2;
   border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -690,37 +711,32 @@ onMounted(() => {
   gap: 10px;
 }
 
-.reset-btn {
-  background: #f5f7fa;
-  border-color: #dcdfe6;
-  color: #606266;
-}
-
-.reset-btn:hover {
-  background: #e6e8eb;
-  border-color: #c0c4cc;
+.search-actions :deep(.el-button) {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 34px;
+  border-radius: 7px;
 }
 
 .search-bar :deep(.el-input__wrapper) {
   border-radius: 8px;
-  border: 1px solid #dcdfe6;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+  border: 0;
+  box-shadow: 0 0 0 1px #d8dee9 inset;
   transition: all 0.3s ease;
   background-color: #fff;
 }
 
 .search-bar :deep(.el-input__wrapper:hover) {
-  border-color: #d4af37;
-  box-shadow: 0 2px 8px rgba(212, 175, 55, 0.15);
+  box-shadow: 0 0 0 1px #c0c8d4 inset;
 }
 
 .search-bar :deep(.el-input__wrapper.is-focus) {
-  border-color: #d4af37;
-  box-shadow: 0 2px 12px rgba(212, 175, 55, 0.25);
+  box-shadow: 0 0 0 1px #111827 inset, 0 0 0 3px rgba(17, 24, 39, 0.08);
 }
 
 .search-icon {
-  color: #d4af37;
+  color: #98a2b3;
 }
 
 /* 统计卡片 */
@@ -728,49 +744,59 @@ onMounted(() => {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 0;
 }
 
 .stat-card {
   background: #fff;
+  border: 1px solid #e5e9f2;
   border-radius: 8px;
-  padding: 20px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+  padding: 16px;
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.stat-card:hover {
+  border-color: #d8dee9;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
+  transform: translateY(-1px);
 }
 
 .stat-icon {
-  width: 56px;
-  height: 56px;
-  border-radius: 12px;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
+  font-size: 21px;
   flex-shrink: 0;
 }
 
 .stat-icon-primary {
-  background: linear-gradient(135deg, #000 0%, #1a1a1a 100%);
-  color: #d4af37;
-  border: 1px solid #d4af37;
+  background: #fff8e8;
+  color: #d97706;
+  border: 1px solid #fde6b7;
 }
 
 .stat-icon-success {
-  background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
-  color: #fff;
+  background: #ecfdf3;
+  color: #16a34a;
+  border: 1px solid #bbf7d0;
 }
 
 .stat-icon-danger {
-  background: linear-gradient(135deg, #f56c6c 0%, #f4534a 100%);
-  color: #fff;
+  background: #fff1f2;
+  color: #e11d48;
+  border: 1px solid #fecdd3;
 }
 
 .stat-icon-warning {
-  background: linear-gradient(135deg, #e6a23c 0%, #d9972c 100%);
-  color: #fff;
+  background: #fffbeb;
+  color: #d97706;
+  border: 1px solid #fde68a;
 }
 
 .stat-content {
@@ -778,32 +804,94 @@ onMounted(() => {
 }
 
 .stat-label {
-  font-size: 14px;
-  color: #909399;
+  font-size: 13px;
+  color: #667085;
   margin-bottom: 4px;
+  font-weight: 600;
 }
 
 .stat-value {
-  font-size: 28px;
-  font-weight: 600;
-  color: #303133;
+  font-size: 26px;
+  font-weight: 760;
+  color: #111827;
+  line-height: 1;
 }
 
 /* 表格容器 */
 .table-wrapper {
   background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+  border: 1px solid #e5e9f2;
+  border-radius: 8px;
   overflow: hidden;
+}
+
+.table-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+  border-bottom: 1px solid #eef2f7;
+  background: #fff;
+}
+
+.table-toolbar h3 {
+  margin: 0;
+  color: #111827;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.table-toolbar span {
+  display: block;
+  margin-top: 2px;
+  color: #98a2b3;
+  font-size: 12px;
 }
 
 .modern-table {
   width: 100%;
 }
 
+.domain-monitor-table :deep(.el-table__header th) {
+  background: #f8fafc !important;
+  color: #475467 !important;
+  font-size: 13px;
+}
+
+.domain-monitor-table :deep(.el-table__body td) {
+  padding: 12px 0;
+  border-bottom-color: #edf1f7;
+  color: #344054;
+  font-size: 13px;
+}
+
+.domain-monitor-table :deep(.el-table__row:hover) {
+  background-color: #f8fafc !important;
+}
+
+.domain-monitor-table :deep(.cell) {
+  padding: 0 14px;
+}
+
 .domain-cell {
   display: flex;
   align-items: center;
+}
+
+.domain-cell :deep(.el-link__inner) {
+  color: #111827;
+  font-weight: 650;
+}
+
+.time-text {
+  display: inline-block;
+  color: #344054;
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 20px;
+  white-space: nowrap;
 }
 
 .response-time-good {
@@ -824,7 +912,7 @@ onMounted(() => {
 /* 操作按钮 */
 .action-buttons {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
   justify-content: center;
 }
@@ -867,20 +955,6 @@ onMounted(() => {
   color: #f56c6c;
 }
 
-.black-button {
-  background-color: #000000 !important;
-  color: #ffffff !important;
-  border-color: #000000 !important;
-  border-radius: 8px;
-  padding: 10px 20px;
-  font-weight: 500;
-}
-
-.black-button:hover {
-  background-color: #333333 !important;
-  border-color: #333333 !important;
-}
-
 /* 表单提示 */
 .form-tip {
   font-size: 12px;
@@ -920,14 +994,16 @@ onMounted(() => {
 }
 
 :deep(.detail-dialog .el-dialog__header) {
-  background: linear-gradient(135deg, #000 0%, #1a1a1a 100%);
-  color: #d4af37;
+  background: #fbfcfe;
+  color: #111827;
+  border-bottom: 1px solid #edf1f7;
   border-radius: 8px 8px 0 0;
   padding: 20px 24px;
 }
 
 :deep(.detail-dialog .el-dialog__title) {
-  color: #d4af37;
+  color: #111827;
+  font-weight: 700;
 }
 
 .detail-content {
@@ -1011,5 +1087,35 @@ onMounted(() => {
 .history-message {
   color: #606266;
   font-size: 13px;
+}
+
+@media (max-width: 1200px) {
+  .stats-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .page-header,
+  .search-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .header-actions,
+  .search-inputs,
+  .search-actions,
+  .search-input {
+    width: 100%;
+  }
+
+  .search-inputs {
+    flex-direction: column;
+  }
+
+  .stats-cards,
+  .detail-info {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

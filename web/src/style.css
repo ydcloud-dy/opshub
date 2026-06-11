@@ -12,105 +12,5110 @@
  * copies or substantial portions of the Software.
  *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
- * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
- * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
- * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
  */
 
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
-
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
-
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  color: #1f2937;
+  background: #f4f6fa;
+  font-size: 16px;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
+  --opshub-bg: #f4f6fa;
+  --opshub-surface: #ffffff;
+  --opshub-surface-soft: #f8fafc;
+  --opshub-border: #e5e9f2;
+  --opshub-border-strong: #d8dee9;
+  --opshub-text: #1f2937;
+  --opshub-text-muted: #667085;
+  --opshub-text-soft: #98a2b3;
+  --opshub-brand: #111827;
+  --opshub-accent: #ffaf35;
+  --opshub-blue: #2563eb;
+  --opshub-green: #16a34a;
+  --opshub-red: #dc2626;
+  --opshub-amber: #d97706;
+  --opshub-radius: 8px;
+  --opshub-shadow: 0 10px 28px rgba(15, 23, 42, 0.07);
+
+  --el-color-primary: #111827;
+  --el-color-primary-light-3: #374151;
+  --el-color-primary-light-5: #6b7280;
+  --el-color-primary-light-7: #d1d5db;
+  --el-color-primary-light-8: #e5e7eb;
+  --el-color-primary-light-9: #f3f4f6;
+  --el-color-primary-dark-2: #030712;
+  --el-border-radius-base: 6px;
 }
 
-/* 修复弹窗打开时滚动条消失导致的页面抖动问题 */
+* {
+  box-sizing: border-box;
+}
+
 html {
   overflow-y: scroll;
 }
 
-/* 修复 Element Plus Dialog 打开时添加 padding-right 导致的页面抖动 */
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: var(--opshub-bg);
+  color: var(--opshub-text);
+}
+
 body.el-popup-parent--hidden {
   padding-right: 0 !important;
   overflow: hidden !important;
+  width: 100% !important;
 }
 
-/* 确保 Dialog 遮罩层不影响布局 */
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+#app {
+  width: 100%;
+  min-height: 100vh;
+}
+
 .el-overlay {
   overflow: hidden !important;
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
+.el-overlay-dialog {
+  overflow: auto !important;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
 }
 
-body {
-  margin: 0;
+.el-overlay-dialog::-webkit-scrollbar {
+  display: none !important;
+}
+
+.el-button {
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.el-button--primary {
+  background: var(--opshub-brand);
+  border-color: var(--opshub-brand);
+}
+
+.el-button--primary:hover,
+.el-button--primary:focus {
+  background: #2b3445;
+  border-color: #2b3445;
+}
+
+.el-input__wrapper,
+.el-select__wrapper,
+.el-textarea__inner {
+  box-shadow: 0 0 0 1px var(--opshub-border) inset;
+  transition: box-shadow 0.18s ease, background-color 0.18s ease;
+}
+
+.el-input__wrapper:hover,
+.el-select__wrapper:hover,
+.el-textarea__inner:hover {
+  box-shadow: 0 0 0 1px var(--opshub-border-strong) inset;
+}
+
+.el-input__wrapper.is-focus,
+.el-select__wrapper.is-focused,
+.el-textarea__inner:focus {
+  box-shadow: 0 0 0 1px var(--opshub-brand) inset, 0 0 0 3px rgba(255, 175, 53, 0.16);
+}
+
+.el-table {
+  --el-table-border-color: #edf0f5;
+  --el-table-header-bg-color: #f8fafc;
+  --el-table-row-hover-bg-color: #f7f9fc;
+  color: var(--opshub-text);
+}
+
+.el-table th.el-table__cell {
+  color: #475467;
+  font-weight: 650;
+}
+
+.el-table td.el-table__cell {
+  color: #344054;
+}
+
+.el-card {
+  border-color: var(--opshub-border);
+  border-radius: var(--opshub-radius);
+}
+
+.el-dialog {
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.el-dialog__header {
+  margin-right: 0;
+}
+
+.el-tag {
+  border-radius: 6px;
+  font-weight: 500;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Shared operation-page polish for legacy scoped pages. */
+:where(
+  .terminal-audit-container,
+  .domain-monitor-container,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container,
+  .nginx-overview-container,
+  .nginx-top-container,
+  .nginx-daily-report-container,
+  .nginx-access-logs-container,
+  .nginx-config-container,
+  .nginx-analytics-container
+) {
   display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
+  flex-direction: column;
+  gap: 12px;
 }
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+:where(
+  .terminal-audit-container,
+  .domain-monitor-container,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container,
+  .nginx-overview-container,
+  .nginx-top-container,
+  .nginx-daily-report-container,
+  .nginx-access-logs-container,
+  .nginx-config-container,
+  .nginx-analytics-container
+) .page-header {
+  align-items: center !important;
+  gap: 18px !important;
+  margin-bottom: 0 !important;
+  padding: 18px 20px !important;
+  background: var(--opshub-surface) !important;
+  border: 1px solid var(--opshub-border) !important;
+  border-radius: var(--opshub-radius) !important;
+  box-shadow: none !important;
 }
 
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
-}
-
-.card {
-  padding: 2em;
-}
-
-#app {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+:where(
+  .terminal-audit-container,
+  .domain-monitor-container,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container,
+  .nginx-overview-container,
+  .nginx-top-container,
+  .nginx-daily-report-container,
+  .nginx-access-logs-container,
+  .nginx-config-container,
+  .nginx-analytics-container
+) .page-title-icon {
+  width: 42px !important;
+  height: 42px !important;
+  background: var(--opshub-surface-soft) !important;
+  border: 1px solid #edf1f7 !important;
+  border-radius: var(--opshub-radius) !important;
+  color: var(--opshub-text) !important;
+  box-shadow: none !important;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
+:where(
+  .terminal-audit-container,
+  .domain-monitor-container,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container,
+  .nginx-overview-container,
+  .nginx-top-container,
+  .nginx-daily-report-container,
+  .nginx-access-logs-container,
+  .nginx-config-container,
+  .nginx-analytics-container
+) .page-title {
+  color: #111827 !important;
+  font-size: 22px !important;
+  font-weight: 750 !important;
+}
+
+:where(
+  .terminal-audit-container,
+  .domain-monitor-container,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container,
+  .nginx-overview-container,
+  .nginx-top-container,
+  .nginx-daily-report-container,
+  .nginx-access-logs-container,
+  .nginx-config-container,
+  .nginx-analytics-container
+) .page-subtitle {
+  color: var(--opshub-text-muted) !important;
+}
+
+:where(
+  .terminal-audit-container,
+  .domain-monitor-container,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container,
+  .nginx-overview-container,
+  .nginx-top-container,
+  .nginx-daily-report-container,
+  .nginx-access-logs-container,
+  .nginx-config-container,
+  .nginx-analytics-container
+) .header-actions .el-button,
+:where(
+  .terminal-audit-container,
+  .domain-monitor-container,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container,
+  .nginx-overview-container,
+  .nginx-top-container,
+  .nginx-daily-report-container,
+  .nginx-access-logs-container,
+  .nginx-config-container,
+  .nginx-analytics-container
+) .search-actions .el-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  border-radius: 7px !important;
+  padding: 0 14px !important;
+}
+
+:where(
+  .alert-channels-container,
+  .alert-receivers-container,
+  .nginx-top-container,
+  .nginx-daily-report-container,
+  .nginx-access-logs-container,
+  .nginx-config-container,
+  .nginx-analytics-container
+) .black-button.el-button {
+  background: var(--opshub-brand) !important;
+  border-color: var(--opshub-brand) !important;
+  color: #fff !important;
+}
+
+:where(
+  .alert-channels-container,
+  .alert-receivers-container,
+  .nginx-top-container,
+  .nginx-daily-report-container,
+  .nginx-access-logs-container,
+  .nginx-config-container,
+  .nginx-analytics-container
+) .black-button.el-button:hover {
+  background: #2b3445 !important;
+  border-color: #2b3445 !important;
+}
+
+:where(
+  .terminal-audit-container,
+  .nginx-daily-report-container,
+  .nginx-access-logs-container,
+  .nginx-config-container
+) .reset-btn.el-button {
+  background: #fff !important;
+  border-color: var(--opshub-border-strong) !important;
+  color: #344054 !important;
+}
+
+:where(
+  .terminal-audit-container,
+  .nginx-daily-report-container,
+  .nginx-access-logs-container,
+  .nginx-config-container
+) .reset-btn.el-button:hover {
+  background: var(--opshub-surface-soft) !important;
+}
+
+/* Nginx statistics workspace */
+:where(
+  .nginx-overview-container,
+  .nginx-top-container,
+  .nginx-daily-report-container,
+  .nginx-access-logs-container,
+  .nginx-config-container,
+  .nginx-analytics-container
+) .search-bar,
+:where(
+  .nginx-overview-container,
+  .nginx-top-container,
+  .nginx-daily-report-container,
+  .nginx-access-logs-container,
+  .nginx-config-container,
+  .nginx-analytics-container
+) .content-section,
+:where(
+  .nginx-overview-container,
+  .nginx-top-container,
+  .nginx-daily-report-container,
+  .nginx-access-logs-container,
+  .nginx-config-container,
+  .nginx-analytics-container
+) .empty-tip,
+:where(
+  .nginx-overview-container,
+  .nginx-top-container,
+  .nginx-daily-report-container,
+  .nginx-access-logs-container,
+  .nginx-config-container,
+  .nginx-analytics-container
+) .table-wrapper,
+:where(
+  .nginx-overview-container,
+  .nginx-top-container,
+  .nginx-daily-report-container,
+  .nginx-access-logs-container,
+  .nginx-config-container,
+  .nginx-analytics-container
+) .chart-card,
+:where(
+  .nginx-overview-container,
+  .nginx-top-container,
+  .nginx-daily-report-container,
+  .nginx-access-logs-container,
+  .nginx-config-container,
+  .nginx-analytics-container
+) .list-card,
+:where(
+  .nginx-overview-container,
+  .nginx-top-container,
+  .nginx-daily-report-container,
+  .nginx-access-logs-container,
+  .nginx-config-container,
+  .nginx-analytics-container
+) .top-card,
+:where(
+  .nginx-overview-container,
+  .nginx-top-container,
+  .nginx-daily-report-container,
+  .nginx-access-logs-container,
+  .nginx-config-container,
+  .nginx-analytics-container
+) .core-metrics-panel {
+  background: var(--opshub-surface) !important;
+  border: 1px solid var(--opshub-border) !important;
+  border-radius: var(--opshub-radius) !important;
+  box-shadow: none !important;
+}
+
+:where(
+  .nginx-overview-container,
+  .nginx-top-container,
+  .nginx-daily-report-container,
+  .nginx-access-logs-container,
+  .nginx-config-container,
+  .nginx-analytics-container
+) .search-bar {
+  margin-bottom: 0 !important;
+  padding: 14px !important;
+}
+
+:where(
+  .nginx-overview-container,
+  .nginx-top-container,
+  .nginx-daily-report-container,
+  .nginx-access-logs-container,
+  .nginx-config-container,
+  .nginx-analytics-container
+) .search-bar .el-input__wrapper,
+:where(
+  .nginx-overview-container,
+  .nginx-top-container,
+  .nginx-daily-report-container,
+  .nginx-access-logs-container,
+  .nginx-config-container,
+  .nginx-analytics-container
+) .search-bar .el-select__wrapper {
+  border: 0 !important;
+  box-shadow: 0 0 0 1px var(--opshub-border-strong) inset !important;
+}
+
+:where(
+  .nginx-overview-container,
+  .nginx-top-container,
+  .nginx-daily-report-container,
+  .nginx-access-logs-container,
+  .nginx-config-container,
+  .nginx-analytics-container
+) .search-bar .el-input__wrapper.is-focus,
+:where(
+  .nginx-overview-container,
+  .nginx-top-container,
+  .nginx-daily-report-container,
+  .nginx-access-logs-container,
+  .nginx-config-container,
+  .nginx-analytics-container
+) .search-bar .el-select__wrapper.is-focused {
+  box-shadow: 0 0 0 1px var(--opshub-brand) inset, 0 0 0 3px rgba(17, 24, 39, 0.08) !important;
+}
+
+:where(
+  .nginx-overview-container,
+  .nginx-top-container,
+  .nginx-daily-report-container,
+  .nginx-access-logs-container,
+  .nginx-config-container,
+  .nginx-analytics-container
+) .chart-header,
+:where(
+  .nginx-overview-container,
+  .nginx-top-container,
+  .nginx-daily-report-container,
+  .nginx-access-logs-container,
+  .nginx-config-container,
+  .nginx-analytics-container
+) .list-header,
+:where(
+  .nginx-overview-container,
+  .nginx-top-container,
+  .nginx-daily-report-container,
+  .nginx-access-logs-container,
+  .nginx-config-container,
+  .nginx-analytics-container
+) .top-header {
+  border-bottom-color: #eef2f7 !important;
+}
+
+:where(
+  .nginx-overview-container,
+  .nginx-top-container,
+  .nginx-daily-report-container,
+  .nginx-access-logs-container,
+  .nginx-config-container,
+  .nginx-analytics-container
+) .chart-title,
+:where(
+  .nginx-overview-container,
+  .nginx-top-container,
+  .nginx-daily-report-container,
+  .nginx-access-logs-container,
+  .nginx-config-container,
+  .nginx-analytics-container
+) .list-title,
+:where(
+  .nginx-overview-container,
+  .nginx-top-container,
+  .nginx-daily-report-container,
+  .nginx-access-logs-container,
+  .nginx-config-container,
+  .nginx-analytics-container
+) .top-title {
+  color: #111827 !important;
+  font-weight: 700 !important;
+}
+
+.nginx-overview-container .active-visitors-card {
+  align-items: flex-start !important;
+  background: #fff !important;
+  border: 1px solid var(--opshub-border) !important;
+  color: var(--opshub-text) !important;
+  box-shadow: none !important;
+}
+
+.nginx-overview-container .active-visitors-card::before {
+  content: "";
+  width: 34px;
+  height: 3px;
+  margin-bottom: 18px;
+  border-radius: 999px;
+  background: var(--opshub-blue);
+}
+
+.nginx-overview-container .av-number {
+  color: #111827 !important;
+}
+
+.nginx-overview-container .av-label,
+.nginx-overview-container .av-status {
+  color: var(--opshub-text-muted) !important;
+  opacity: 1 !important;
+}
+
+:where(
+  .nginx-overview-container,
+  .nginx-top-container,
+  .nginx-daily-report-container,
+  .nginx-access-logs-container,
+  .nginx-config-container,
+  .nginx-analytics-container
+) .el-table__header th {
+  background: #f8fafc !important;
+  color: #475467 !important;
+  font-size: 13px !important;
+}
+
+:where(
+  .nginx-overview-container,
+  .nginx-top-container,
+  .nginx-daily-report-container,
+  .nginx-access-logs-container,
+  .nginx-config-container,
+  .nginx-analytics-container
+) .el-table__row:hover td {
+  background: #f8fafc !important;
+}
+
+.nginx-overview-container .list-item-bar,
+.nginx-top-container .progress-bar-container,
+.nginx-access-logs-container .top-rank,
+.nginx-overview-container .geo-rank,
+.nginx-top-container .rank-badge {
+  background: #eef2f7 !important;
+}
+
+.nginx-overview-container .list-item-bar-fill,
+.nginx-top-container .progress-bar {
+  background: var(--opshub-blue) !important;
+}
+
+.nginx-access-logs-container .top-rank.rank-1,
+.nginx-access-logs-container .top-rank.rank-2,
+.nginx-access-logs-container .top-rank.rank-3,
+.nginx-top-container .rank-badge.rank-gold,
+.nginx-top-container .rank-badge.rank-silver,
+.nginx-top-container .rank-badge.rank-bronze,
+.nginx-overview-container .geo-item:nth-child(1) .geo-rank,
+.nginx-overview-container .geo-item:nth-child(2) .geo-rank,
+.nginx-overview-container .geo-item:nth-child(3) .geo-rank {
+  border: 1px solid #dbe3ef !important;
+  background: #f8fafc !important;
+  color: #111827 !important;
+  box-shadow: none !important;
+}
+
+.nginx-top-container .content-section .el-tabs__item.is-active {
+  color: var(--opshub-brand) !important;
+}
+
+.nginx-top-container .content-section .el-tabs__active-bar {
+  background: var(--opshub-brand) !important;
+}
+
+.nginx-daily-report-container .export-content {
+  background: transparent !important;
+  padding: 0 !important;
+}
+
+.nginx-config-container .form-section,
+.nginx-config-container .feature-item {
+  border-color: var(--opshub-border) !important;
+}
+
+.nginx-config-container .section-header {
+  background: #f8fafc !important;
+  border-bottom-color: var(--opshub-border) !important;
+}
+
+.config-dialog .el-dialog__header {
+  background: #fbfcfe !important;
+  border-bottom: 1px solid #edf1f7 !important;
+}
+
+.config-dialog .el-dialog__title {
+  color: #111827 !important;
+  font-weight: 700 !important;
+}
+
+.config-dialog .el-dialog__headerbtn .el-dialog__close {
+  color: #667085 !important;
+}
+
+/* Monitor center child pages */
+:where(
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) .table-wrapper,
+:where(
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) .search-bar,
+:where(
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) .stat-card {
+  background: var(--opshub-surface) !important;
+  border: 1px solid var(--opshub-border) !important;
+  border-radius: var(--opshub-radius) !important;
+  box-shadow: none !important;
+}
+
+:where(
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) .stat-card {
+  padding: 16px !important;
+}
+
+:where(
+  .alert-logs-container,
+  .domain-monitor-container
+) .stat-icon {
+  width: 42px !important;
+  height: 42px !important;
+  border-radius: var(--opshub-radius) !important;
+  color: #111827 !important;
+}
+
+:where(
+  .alert-logs-container,
+  .domain-monitor-container
+) .stat-icon-primary {
+  background: #eef4ff !important;
+  border: 1px solid #dbe8ff !important;
+  color: var(--opshub-blue) !important;
+}
+
+:where(
+  .alert-logs-container,
+  .domain-monitor-container
+) .stat-icon-success {
+  background: #ecfdf3 !important;
+  border: 1px solid #bbf7d0 !important;
+  color: var(--opshub-green) !important;
+}
+
+:where(
+  .alert-logs-container,
+  .domain-monitor-container
+) .stat-icon-danger {
+  background: #fff1f2 !important;
+  border: 1px solid #fecdd3 !important;
+  color: #e11d48 !important;
+}
+
+:where(
+  .alert-logs-container,
+  .domain-monitor-container
+) .stat-icon-warning {
+  background: #fffbeb !important;
+  border: 1px solid #fde68a !important;
+  color: var(--opshub-amber) !important;
+}
+
+:where(
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) .el-tag--dark {
+  --el-tag-text-color: var(--el-tag-color);
+  background: var(--el-tag-bg-color) !important;
+  border-color: var(--el-tag-border-color) !important;
+}
+
+.alert-logs-container .detail-dialog .el-dialog__header {
+  background: #fbfcfe !important;
+  border-bottom: 1px solid #edf1f7 !important;
+}
+
+.alert-logs-container .detail-dialog .el-dialog__title {
+  color: #111827 !important;
+  font-weight: 700 !important;
+}
+
+/* OpsHub monitor center workspace */
+:where(
+  .monitor-rules-page,
+  .fault-centers-page,
+  .fault-detail-page,
+  .monitor-datasources-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .domain-monitor-container,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) {
+  gap: 14px !important;
+}
+
+/* Monitor center consistency pass */
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 14px !important;
+  min-height: calc(100vh - 96px);
+  background: transparent !important;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) :is(.page-header, .page-head) {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 18px !important;
+  min-height: 88px !important;
+  margin: 0 !important;
+  padding: 18px 20px !important;
+  border: 1px solid var(--opshub-border) !important;
+  border-radius: var(--opshub-radius) !important;
+  background: var(--opshub-surface) !important;
+  box-shadow: none !important;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) .page-title-group {
+  display: flex !important;
+  align-items: center !important;
+  gap: 14px !important;
+  min-width: 0;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) .page-title-icon {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 0 0 42px !important;
+  width: 42px !important;
+  height: 42px !important;
+  border: 1px solid #edf1f7 !important;
+  border-radius: var(--opshub-radius) !important;
+  background: var(--opshub-surface-soft) !important;
+  color: var(--opshub-text) !important;
+  font-size: 22px !important;
+  box-shadow: none !important;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) :is(.page-title, .page-head h2) {
+  display: block !important;
+  margin: 0 !important;
+  color: #111827 !important;
+  font-size: 22px !important;
+  font-weight: 750 !important;
+  line-height: 1.25 !important;
+  letter-spacing: 0 !important;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) :is(.page-subtitle, .page-head p) {
+  display: block !important;
+  margin: 5px 0 0 !important;
+  color: var(--opshub-text-muted) !important;
+  font-size: 13px !important;
+  line-height: 1.45 !important;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) :is(.header-actions, .head-actions, .search-actions, .schedule-actions) {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 10px !important;
+  flex-wrap: wrap;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) :is(.header-actions, .head-actions, .search-actions, .schedule-actions) .el-button {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  padding: 0 14px !important;
+  border-radius: 7px !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) :is(.el-input__wrapper, .el-select__wrapper, .el-date-editor) {
+  min-height: 36px !important;
+  border-radius: 7px !important;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) .search-bar {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 14px !important;
+  margin: 0 !important;
+  padding: 14px 16px !important;
+  border: 1px solid var(--opshub-border) !important;
+  border-radius: var(--opshub-radius) !important;
+  background: var(--opshub-surface) !important;
+  box-shadow: none !important;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) :is(.search-input, .head-search, .type-filter, .month-picker, .publish-month-picker) {
+  min-width: 0;
+  height: 36px !important;
+}
+
+:where(
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .alert-logs-container
+) :is(.stats-cards, .overview-strip) {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 12px !important;
+  margin: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+:where(
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .alert-logs-container
+) .stat-card {
+  display: flex !important;
+  align-items: center !important;
+  gap: 14px !important;
+  min-height: 92px !important;
+  padding: 16px !important;
+  border: 1px solid var(--opshub-border) !important;
+  border-radius: var(--opshub-radius) !important;
+  background: var(--opshub-surface) !important;
+  box-shadow: none !important;
+}
+
+:where(
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .alert-logs-container
+) .stat-icon {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 0 0 42px !important;
+  width: 42px !important;
+  height: 42px !important;
+  border-radius: var(--opshub-radius) !important;
+  font-size: 21px !important;
+  box-shadow: none !important;
+}
+
+:where(
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .alert-logs-container
+) .stat-label {
+  color: var(--opshub-text-muted) !important;
+  font-size: 13px !important;
+  line-height: 1.2 !important;
+}
+
+:where(
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .alert-logs-container
+) .stat-value {
+  margin-top: 4px !important;
+  color: #111827 !important;
+  font-size: 28px !important;
+  font-weight: 750 !important;
+  line-height: 1 !important;
+}
+
+:where(
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) :is(.table-wrapper, .table-panel, .rule-workspace, .events-section, .schedule-panel, .table-list) {
+  border: 1px solid var(--opshub-border) !important;
+  border-radius: var(--opshub-radius) !important;
+  background: var(--opshub-surface) !important;
+  box-shadow: none !important;
+  overflow: hidden;
+}
+
+:where(
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) .el-table th.el-table__cell {
+  height: 46px !important;
+  background: #f8fafc !important;
+  color: #475467 !important;
+  font-size: 13px !important;
+  font-weight: 650 !important;
+}
+
+:where(
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) .el-table td.el-table__cell {
+  color: #344054 !important;
+  font-size: 13px !important;
+}
+
+.monitor-rules-page .rule-workspace {
+  grid-template-columns: 240px minmax(0, 1fr) !important;
+}
+
+.monitor-rules-page .group-sidebar {
+  padding: 14px !important;
+  border-right: 1px solid var(--opshub-border) !important;
+  background: #fbfcfe !important;
+}
+
+.monitor-rules-page .sidebar-head {
+  margin-bottom: 12px !important;
+  color: #111827 !important;
+  font-size: 13px !important;
+  font-weight: 750 !important;
+}
+
+.monitor-rules-page .group-item {
+  min-height: 36px !important;
+  padding: 0 10px !important;
+  border-radius: 7px !important;
+  font-size: 13px !important;
+}
+
+.fault-centers-page .center-grid {
+  grid-template-columns: repeat(4, minmax(240px, 1fr)) !important;
+  gap: 12px !important;
+}
+
+.fault-centers-page .center-card {
+  min-height: 176px !important;
+  padding: 16px !important;
+  border: 1px solid var(--opshub-border) !important;
+  border-radius: var(--opshub-radius) !important;
+  background: var(--opshub-surface) !important;
+  box-shadow: none !important;
+}
+
+.fault-centers-page .detail-hint {
+  display: inline-flex !important;
+  align-items: center !important;
+  height: 24px !important;
+  padding: 0 9px !important;
+  border: 1px solid #e0e7ff !important;
+  border-radius: 999px !important;
+  background: #f5f7ff !important;
+  color: #3151a3 !important;
+  font-size: 12px !important;
+  font-weight: 650 !important;
+}
+
+.fault-centers-page .center-desc {
+  min-height: 38px !important;
+  margin: 10px 0 14px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  color: var(--opshub-text-muted) !important;
+  font-size: 13px !important;
+  line-height: 19px !important;
+}
+
+.fault-centers-page .metric-row {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+}
+
+.fault-centers-page .metric-item {
+  padding: 10px 8px !important;
+  border: 1px solid #edf1f7 !important;
+  border-radius: var(--opshub-radius) !important;
+  background: #fbfcfe !important;
+  text-align: center !important;
+}
+
+.fault-centers-page .metric-value {
+  font-size: 22px !important;
+  font-weight: 780 !important;
+}
+
+.notice-template-page .template-layout {
+  display: grid !important;
+  grid-template-columns: 280px minmax(0, 1fr) !important;
+  gap: 14px !important;
+}
+
+.notice-template-page .type-rail {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  padding: 14px !important;
+  border: 1px solid var(--opshub-border) !important;
+  border-radius: var(--opshub-radius) !important;
+  background: var(--opshub-surface) !important;
+  box-shadow: none !important;
+}
+
+.notice-template-page .type-item {
+  min-height: 52px !important;
+  border-radius: 7px !important;
+}
+
+.duty-page .duty-layout {
+  display: grid !important;
+  grid-template-columns: 320px minmax(0, 1fr) !important;
+  gap: 14px !important;
+}
+
+.duty-page .schedule-toolbar {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 14px !important;
+  margin: 0 !important;
+  padding: 16px !important;
+  border-bottom: 1px solid var(--opshub-border) !important;
+}
+
+.duty-page .schedule-panel {
+  padding: 0 !important;
+}
+
+.duty-page .weekday-row,
+.duty-page .calendar-grid {
+  margin-right: 16px;
+  margin-left: 16px;
+}
+
+.duty-page .calendar-grid {
+  margin-bottom: 16px;
+}
+
+@media (max-width: 1200px) {
+  :where(
+    .fault-centers-page,
+    .monitor-datasources-container,
+    .monitor-rules-page,
+    .domain-monitor-container,
+    .notice-object-page,
+    .alert-logs-container
+  ) :is(.stats-cards, .overview-strip) {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
-  a:hover {
-    color: #747bff;
+
+  .fault-centers-page .center-grid {
+    grid-template-columns: repeat(2, minmax(240px, 1fr)) !important;
   }
-  button {
-    background-color: #f9f9f9;
+
+  .notice-template-page .template-layout,
+  .duty-page .duty-layout,
+  .monitor-rules-page .rule-workspace {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Monitor center final normalization */
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 14px !important;
+  min-height: calc(100vh - 96px);
+  background: transparent !important;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) :is(.page-header, .page-head) {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 18px !important;
+  min-height: 88px !important;
+  margin: 0 !important;
+  padding: 18px 20px !important;
+  border: 1px solid var(--opshub-border) !important;
+  border-radius: var(--opshub-radius) !important;
+  background: var(--opshub-surface) !important;
+  box-shadow: none !important;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) .page-title-group {
+  display: flex !important;
+  align-items: center !important;
+  gap: 14px !important;
+  min-width: 0;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) .page-title-icon {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 0 0 42px !important;
+  width: 42px !important;
+  height: 42px !important;
+  border: 1px solid #edf1f7 !important;
+  border-radius: var(--opshub-radius) !important;
+  background: var(--opshub-surface-soft) !important;
+  color: var(--opshub-text) !important;
+  font-size: 22px !important;
+  box-shadow: none !important;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) :is(.page-title, .page-head h2) {
+  display: block !important;
+  margin: 0 !important;
+  color: #111827 !important;
+  font-size: 22px !important;
+  font-weight: 750 !important;
+  line-height: 1.25 !important;
+  letter-spacing: 0 !important;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) :is(.page-subtitle, .page-head p) {
+  display: block !important;
+  margin: 5px 0 0 !important;
+  color: var(--opshub-text-muted) !important;
+  font-size: 13px !important;
+  line-height: 1.45 !important;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) :is(.header-actions, .head-actions, .search-actions, .schedule-actions) {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 10px !important;
+  flex-wrap: wrap;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) :is(.header-actions, .head-actions, .search-actions, .schedule-actions) .el-button {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  padding: 0 14px !important;
+  border-radius: 7px !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) :is(.el-input__wrapper, .el-select__wrapper, .el-date-editor) {
+  min-height: 36px !important;
+  border-radius: 7px !important;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) .search-bar {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 14px !important;
+  margin: 0 !important;
+  padding: 14px 16px !important;
+  border: 1px solid var(--opshub-border) !important;
+  border-radius: var(--opshub-radius) !important;
+  background: var(--opshub-surface) !important;
+  box-shadow: none !important;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) :is(.search-input, .head-search, .type-filter, .month-picker, .publish-month-picker) {
+  min-width: 0;
+  height: 36px !important;
+}
+
+:where(
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .alert-logs-container
+) :is(.stats-cards, .overview-strip) {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 12px !important;
+  margin: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+:where(
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .alert-logs-container
+) .stat-card {
+  display: flex !important;
+  align-items: center !important;
+  gap: 14px !important;
+  min-height: 92px !important;
+  padding: 16px !important;
+  border: 1px solid var(--opshub-border) !important;
+  border-radius: var(--opshub-radius) !important;
+  background: var(--opshub-surface) !important;
+  box-shadow: none !important;
+}
+
+:where(
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .alert-logs-container
+) .stat-icon {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 0 0 42px !important;
+  width: 42px !important;
+  height: 42px !important;
+  border-radius: var(--opshub-radius) !important;
+  font-size: 21px !important;
+  box-shadow: none !important;
+}
+
+:where(
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .alert-logs-container
+) .stat-label {
+  color: var(--opshub-text-muted) !important;
+  font-size: 13px !important;
+  line-height: 1.2 !important;
+}
+
+:where(
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .alert-logs-container
+) .stat-value {
+  margin-top: 4px !important;
+  color: #111827 !important;
+  font-size: 28px !important;
+  font-weight: 750 !important;
+  line-height: 1 !important;
+}
+
+:where(
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) :is(.table-wrapper, .table-panel, .rule-workspace, .events-section, .schedule-panel, .table-list) {
+  border: 1px solid var(--opshub-border) !important;
+  border-radius: var(--opshub-radius) !important;
+  background: var(--opshub-surface) !important;
+  box-shadow: none !important;
+  overflow: hidden;
+}
+
+:where(
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) .el-table th.el-table__cell {
+  height: 46px !important;
+  background: #f8fafc !important;
+  color: #475467 !important;
+  font-size: 13px !important;
+  font-weight: 650 !important;
+}
+
+:where(
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) .el-table td.el-table__cell {
+  color: #344054 !important;
+  font-size: 13px !important;
+}
+
+.monitor-rules-page .rule-workspace {
+  grid-template-columns: 240px minmax(0, 1fr) !important;
+}
+
+.monitor-rules-page .group-sidebar {
+  padding: 14px !important;
+  border-right: 1px solid var(--opshub-border) !important;
+  background: #fbfcfe !important;
+}
+
+.monitor-rules-page .sidebar-head {
+  margin-bottom: 12px !important;
+  color: #111827 !important;
+  font-size: 13px !important;
+  font-weight: 750 !important;
+}
+
+.monitor-rules-page .group-item {
+  min-height: 36px !important;
+  padding: 0 10px !important;
+  border-radius: 7px !important;
+  font-size: 13px !important;
+}
+
+.fault-centers-page .center-grid {
+  grid-template-columns: repeat(4, minmax(240px, 1fr)) !important;
+  gap: 12px !important;
+}
+
+.fault-centers-page .center-card {
+  min-height: 176px !important;
+  padding: 16px !important;
+  border: 1px solid var(--opshub-border) !important;
+  border-radius: var(--opshub-radius) !important;
+  background: var(--opshub-surface) !important;
+  box-shadow: none !important;
+}
+
+.fault-centers-page .detail-hint {
+  display: inline-flex !important;
+  align-items: center !important;
+  height: 24px !important;
+  padding: 0 9px !important;
+  border: 1px solid #e0e7ff !important;
+  border-radius: 999px !important;
+  background: #f5f7ff !important;
+  color: #3151a3 !important;
+  font-size: 12px !important;
+  font-weight: 650 !important;
+}
+
+.fault-centers-page .center-desc {
+  min-height: 38px !important;
+  margin: 10px 0 14px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  color: var(--opshub-text-muted) !important;
+  font-size: 13px !important;
+  line-height: 19px !important;
+}
+
+.fault-centers-page .metric-row {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+}
+
+.fault-centers-page .metric-item {
+  padding: 10px 8px !important;
+  border: 1px solid #edf1f7 !important;
+  border-radius: var(--opshub-radius) !important;
+  background: #fbfcfe !important;
+  text-align: center !important;
+}
+
+.fault-centers-page .metric-value {
+  font-size: 22px !important;
+  font-weight: 780 !important;
+}
+
+.notice-template-page .template-layout {
+  display: grid !important;
+  grid-template-columns: 280px minmax(0, 1fr) !important;
+  gap: 14px !important;
+}
+
+.notice-template-page .type-rail {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  padding: 14px !important;
+  border: 1px solid var(--opshub-border) !important;
+  border-radius: var(--opshub-radius) !important;
+  background: var(--opshub-surface) !important;
+  box-shadow: none !important;
+}
+
+.notice-template-page .type-item {
+  min-height: 52px !important;
+  border-radius: 7px !important;
+}
+
+.duty-page .duty-layout {
+  display: grid !important;
+  grid-template-columns: 320px minmax(0, 1fr) !important;
+  gap: 14px !important;
+}
+
+.duty-page .schedule-toolbar {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 14px !important;
+  margin: 0 !important;
+  padding: 16px !important;
+  border-bottom: 1px solid var(--opshub-border) !important;
+}
+
+.duty-page .schedule-panel {
+  padding: 0 !important;
+}
+
+.duty-page .weekday-row,
+.duty-page .calendar-grid {
+  margin-right: 16px;
+  margin-left: 16px;
+}
+
+.duty-page .calendar-grid {
+  margin-bottom: 16px;
+}
+
+@media (max-width: 1200px) {
+  :where(
+    .fault-centers-page,
+    .monitor-datasources-container,
+    .monitor-rules-page,
+    .domain-monitor-container,
+    .notice-object-page,
+    .alert-logs-container
+  ) :is(.stats-cards, .overview-strip) {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .fault-centers-page .center-grid {
+    grid-template-columns: repeat(2, minmax(240px, 1fr)) !important;
+  }
+
+  .notice-template-page .template-layout,
+  .duty-page .duty-layout,
+  .monitor-rules-page .rule-workspace {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+:where(
+  .monitor-rules-page,
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .domain-monitor-container,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) .page-header,
+:where(
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page
+) .page-head,
+.fault-detail-page .detail-header {
+  margin-bottom: 0 !important;
+  padding: 16px 18px !important;
+  background: var(--opshub-surface) !important;
+  border: 1px solid var(--opshub-border) !important;
+  border-radius: var(--opshub-radius) !important;
+  box-shadow: none !important;
+}
+
+:where(
+  .monitor-rules-page,
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .domain-monitor-container,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) .page-title-icon {
+  width: 40px !important;
+  height: 40px !important;
+  background: var(--opshub-surface-soft) !important;
+  border: 1px solid #edf1f7 !important;
+  border-radius: var(--opshub-radius) !important;
+  color: #111827 !important;
+  box-shadow: none !important;
+}
+
+:where(
+  .monitor-rules-page,
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .domain-monitor-container,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) .page-title,
+:where(
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page
+) .page-head h2,
+.fault-detail-page .title-line h2 {
+  color: #111827 !important;
+  font-size: 21px !important;
+  font-weight: 750 !important;
+  letter-spacing: 0 !important;
+}
+
+:where(
+  .monitor-rules-page,
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .domain-monitor-container,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) .page-subtitle,
+:where(
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page
+) .page-head p,
+.fault-detail-page .detail-header p {
+  color: var(--opshub-text-muted) !important;
+  font-size: 13px !important;
+}
+
+:where(
+  .monitor-rules-page,
+  .fault-centers-page,
+  .fault-detail-page,
+  .monitor-datasources-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .domain-monitor-container,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) :is(.header-actions, .head-actions, .search-actions) .el-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  border-radius: 7px !important;
+  padding: 0 13px !important;
+}
+
+:where(
+  .monitor-rules-page,
+  .fault-centers-page,
+  .fault-detail-page,
+  .monitor-datasources-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .domain-monitor-container,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) :is(
+  .search-bar,
+  .table-wrapper,
+  .table-panel,
+  .rule-workspace,
+  .events-section,
+  .overview-strip,
+  .type-rail,
+  .table-list,
+  .schedule-panel,
+  .slo-panel,
+  .config-panel,
+  .overview-card,
+  .stat-card,
+  .center-card
+) {
+  background: var(--opshub-surface) !important;
+  border: 1px solid var(--opshub-border) !important;
+  border-radius: var(--opshub-radius) !important;
+  box-shadow: none !important;
+}
+
+:where(
+  .monitor-rules-page,
+  .fault-centers-page,
+  .fault-detail-page,
+  .monitor-datasources-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .domain-monitor-container,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) :is(.modern-table, .dense-table, .domain-monitor-table) {
+  --el-table-border-color: #edf1f7;
+  --el-table-header-bg-color: #f8fafc;
+  --el-table-row-hover-bg-color: #f8fafc;
+  width: 100% !important;
+}
+
+:where(
+  .monitor-rules-page,
+  .fault-centers-page,
+  .fault-detail-page,
+  .monitor-datasources-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .domain-monitor-container,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) .el-table th.el-table__cell {
+  background: #f8fafc !important;
+  color: #475467 !important;
+  font-size: 13px !important;
+  font-weight: 650 !important;
+}
+
+:where(
+  .monitor-rules-page,
+  .fault-centers-page,
+  .fault-detail-page,
+  .monitor-datasources-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .domain-monitor-container,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) .el-table td.el-table__cell {
+  color: #344054 !important;
+  font-size: 13px !important;
+}
+
+.monitor-rules-page .rule-workspace {
+  grid-template-columns: 196px minmax(0, 1fr) !important;
+}
+
+.monitor-rules-page .group-sidebar {
+  background: #fbfcfe !important;
+}
+
+.monitor-rules-page .sidebar-head {
+  font-size: 13px !important;
+}
+
+.monitor-rules-page .group-item {
+  min-height: 34px !important;
+  font-size: 13px !important;
+}
+
+.fault-centers-page .center-grid {
+  grid-template-columns: repeat(4, minmax(220px, 1fr)) !important;
+}
+
+:where(
+  .monitor-rules-page,
+  .fault-centers-page,
+  .fault-detail-page,
+  .monitor-datasources-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page
+) .el-button--primary {
+  --el-button-bg-color: #000;
+  --el-button-border-color: #000;
+  --el-button-hover-bg-color: #000;
+  --el-button-hover-border-color: #000;
+  --el-button-active-bg-color: #000;
+  --el-button-active-border-color: #000;
+  --el-button-text-color: #fff;
+}
+
+:where(
+  .monitor-rules-page,
+  .fault-centers-page,
+  .fault-detail-page,
+  .monitor-datasources-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page
+) :is(.el-input__wrapper, .el-select__wrapper) {
+  min-height: 34px;
+  border-radius: 6px !important;
+}
+
+:where(
+  .monitor-rules-page,
+  .fault-centers-page,
+  .fault-detail-page,
+  .monitor-datasources-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page
+) .el-table th.el-table__cell {
+  background: #fafafa !important;
+  color: #111827 !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+}
+
+:where(
+  .monitor-rules-page,
+  .fault-centers-page,
+  .fault-detail-page,
+  .monitor-datasources-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page
+) {
+  min-height: calc(100vh - 96px);
+  background: #fff !important;
+}
+
+.monitor-rules-page .page-header {
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+
+.monitor-rules-page .page-title-icon,
+.monitor-rules-page .page-subtitle {
+  display: none !important;
+}
+
+.monitor-rules-page .page-title {
+  font-size: 14px !important;
+  font-weight: 500 !important;
+}
+
+:where(.notice-object-page, .notice-template-page, .duty-page) .page-head {
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+
+:where(.notice-object-page, .notice-template-page, .duty-page) .page-head h2 {
+  color: #111827 !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+}
+
+:where(.notice-object-page, .notice-template-page, .duty-page) .page-head p {
+  display: none !important;
+}
+
+.notice-object-page .overview-strip {
+  display: none !important;
+}
+
+.notice-template-page .template-layout {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.notice-template-page .type-rail {
+  display: none !important;
+}
+
+.monitor-drawer .el-drawer__header,
+.monitor-dialog .el-dialog__header {
+  background: #fff !important;
+  border-bottom-color: #f0f0f0 !important;
+}
+
+.monitor-drawer .el-drawer__footer,
+.monitor-dialog .el-dialog__footer {
+  background: #fff !important;
+  border-top-color: #f0f0f0 !important;
+}
+
+.notice-template-page .type-item,
+.duty-page .duty-table-card {
+  border-radius: var(--opshub-radius) !important;
+}
+
+.fault-detail-page .detail-tabs {
+  background: var(--opshub-surface) !important;
+  border: 1px solid var(--opshub-border) !important;
+  border-radius: var(--opshub-radius) !important;
+  padding: 0 14px 14px !important;
+}
+
+.fault-detail-page .detail-tabs .el-tabs__header {
+  margin-bottom: 14px !important;
+}
+
+.fault-detail-page .detail-tabs .el-tabs__nav-wrap::after {
+  height: 1px !important;
+  background: #edf1f7 !important;
+}
+
+.fault-detail-page .detail-tabs .el-tabs__item {
+  height: 44px !important;
+  color: #667085 !important;
+  font-size: 13px !important;
+  font-weight: 650 !important;
+}
+
+.fault-detail-page .detail-tabs .el-tabs__item.is-active {
+  color: #111827 !important;
+}
+
+.fault-detail-page .detail-tabs .el-tabs__active-bar {
+  background: #111827 !important;
+}
+
+/* Asset management child pages: keep title icons consistent with terminal audit. */
+:where(
+  .hosts-page-container,
+  .credentials-page-container,
+  .groups-container,
+  .cloud-accounts-page,
+  .permission-container,
+  .terminal-audit-container
+) .page-title-icon {
+  width: 42px !important;
+  height: 42px !important;
+  background: #f8fafc !important;
+  border: 1px solid #edf1f7 !important;
+  border-radius: 8px !important;
+  color: #111827 !important;
+  box-shadow: none !important;
+}
+
+/* SSL certificate workspace */
+.certificate-container.certificate-container,
+.dns-provider-container.dns-provider-container,
+.deploy-config-container.deploy-config-container,
+.task-list-container.task-list-container {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.certificate-container.certificate-container .page-header,
+.dns-provider-container.dns-provider-container .page-header,
+.deploy-config-container.deploy-config-container .page-header,
+.task-list-container.task-list-container .page-header {
+  align-items: center !important;
+  gap: 18px !important;
+  margin-bottom: 0 !important;
+  padding: 18px 20px !important;
+  background: var(--opshub-surface) !important;
+  border: 1px solid var(--opshub-border) !important;
+  border-radius: var(--opshub-radius) !important;
+  box-shadow: none !important;
+}
+
+.certificate-container.certificate-container .page-title-group,
+.dns-provider-container.dns-provider-container .page-title-group,
+.deploy-config-container.deploy-config-container .page-title-group,
+.task-list-container.task-list-container .page-title-group {
+  align-items: center !important;
+  min-width: 0;
+}
+
+.certificate-container.certificate-container .page-title-icon,
+.dns-provider-container.dns-provider-container .page-title-icon,
+.deploy-config-container.deploy-config-container .page-title-icon,
+.task-list-container.task-list-container .page-title-icon,
+.certificate-container.certificate-container .domain-icon {
+  width: 42px !important;
+  height: 42px !important;
+  background: var(--opshub-surface-soft) !important;
+  border: 1px solid #edf1f7 !important;
+  border-radius: var(--opshub-radius) !important;
+  color: var(--opshub-text) !important;
+  box-shadow: none !important;
+}
+
+.certificate-container.certificate-container .page-title,
+.dns-provider-container.dns-provider-container .page-title,
+.deploy-config-container.deploy-config-container .page-title,
+.task-list-container.task-list-container .page-title {
+  color: #111827 !important;
+  font-size: 22px !important;
+  font-weight: 750 !important;
+}
+
+.certificate-container.certificate-container .page-subtitle,
+.dns-provider-container.dns-provider-container .page-subtitle,
+.deploy-config-container.deploy-config-container .page-subtitle,
+.task-list-container.task-list-container .page-subtitle {
+  color: var(--opshub-text-muted) !important;
+}
+
+.certificate-container.certificate-container .header-actions,
+.dns-provider-container.dns-provider-container .header-actions,
+.deploy-config-container.deploy-config-container .header-actions,
+.task-list-container.task-list-container .header-actions {
+  align-items: center !important;
+  gap: 10px !important;
+}
+
+.certificate-container.certificate-container .header-actions .el-button,
+.dns-provider-container.dns-provider-container .header-actions .el-button,
+.deploy-config-container.deploy-config-container .header-actions .el-button,
+.task-list-container.task-list-container .header-actions .el-button,
+.certificate-container.certificate-container .search-actions .el-button,
+.task-list-container.task-list-container .search-actions .el-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  border-radius: 7px !important;
+  padding: 0 14px !important;
+}
+
+.certificate-container.certificate-container .search-bar,
+.deploy-config-container.deploy-config-container .search-bar,
+.task-list-container.task-list-container .search-bar {
+  margin-bottom: 0 !important;
+  padding: 14px 16px !important;
+  background: var(--opshub-surface) !important;
+  border: 1px solid var(--opshub-border) !important;
+  border-radius: var(--opshub-radius) !important;
+  box-shadow: none !important;
+}
+
+.certificate-container.certificate-container .search-inputs,
+.deploy-config-container.deploy-config-container .search-inputs,
+.task-list-container.task-list-container .search-inputs {
+  flex-wrap: wrap;
+  gap: 12px !important;
+}
+
+.certificate-container.certificate-container .search-input,
+.deploy-config-container.deploy-config-container .search-input,
+.task-list-container.task-list-container .search-input {
+  width: clamp(180px, 18vw, 240px) !important;
+}
+
+.certificate-container.certificate-container .stats-cards {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 14px !important;
+  margin-bottom: 0 !important;
+}
+
+.certificate-container.certificate-container .stat-card {
+  min-height: 96px;
+  padding: 18px 20px !important;
+  background: var(--opshub-surface) !important;
+  border: 1px solid var(--opshub-border) !important;
+  border-radius: var(--opshub-radius) !important;
+  box-shadow: none !important;
+}
+
+.certificate-container.certificate-container .stat-icon {
+  width: 52px !important;
+  height: 52px !important;
+  border-radius: var(--opshub-radius) !important;
+  box-shadow: none !important;
+}
+
+.certificate-container.certificate-container .stat-icon-primary {
+  background: var(--opshub-surface-soft) !important;
+  border: 1px solid #edf1f7 !important;
+  color: var(--opshub-text) !important;
+}
+
+.certificate-container.certificate-container .stat-icon-success {
+  background: #ecfdf3 !important;
+  border: 1px solid #bbf7d0 !important;
+  color: var(--opshub-green) !important;
+}
+
+.certificate-container.certificate-container .stat-icon-warning {
+  background: #fffbeb !important;
+  border: 1px solid #fde68a !important;
+  color: var(--opshub-amber) !important;
+}
+
+.certificate-container.certificate-container .stat-icon-danger {
+  background: #fff1f2 !important;
+  border: 1px solid #fecdd3 !important;
+  color: #e11d48 !important;
+}
+
+.certificate-container.certificate-container .stat-label {
+  color: var(--opshub-text-muted) !important;
+  font-size: 13px !important;
+}
+
+.certificate-container.certificate-container .stat-value {
+  color: #111827 !important;
+  font-size: 30px !important;
+  font-weight: 750 !important;
+  line-height: 1;
+}
+
+.certificate-container.certificate-container .table-wrapper,
+.dns-provider-container.dns-provider-container .table-wrapper,
+.deploy-config-container.deploy-config-container .table-wrapper,
+.task-list-container.task-list-container .table-wrapper {
+  margin-bottom: 0 !important;
+  background: var(--opshub-surface) !important;
+  border: 1px solid var(--opshub-border) !important;
+  border-radius: var(--opshub-radius) !important;
+  box-shadow: none !important;
+}
+
+.certificate-container.certificate-container .modern-table,
+.dns-provider-container.dns-provider-container .modern-table,
+.deploy-config-container.deploy-config-container .modern-table,
+.task-list-container.task-list-container .modern-table {
+  --el-table-border-color: #edf1f7;
+  --el-table-header-bg-color: #f8fafc;
+  --el-table-row-hover-bg-color: #f8fafc;
+  width: 100% !important;
+  color: #344054;
+}
+
+.certificate-container.certificate-container .modern-table th.el-table__cell,
+.dns-provider-container.dns-provider-container .modern-table th.el-table__cell,
+.deploy-config-container.deploy-config-container .modern-table th.el-table__cell,
+.task-list-container.task-list-container .modern-table th.el-table__cell {
+  background: #f8fafc !important;
+  color: #667085 !important;
+  font-weight: 650 !important;
+}
+
+.certificate-container.certificate-container .modern-table td.el-table__cell,
+.dns-provider-container.dns-provider-container .modern-table td.el-table__cell,
+.deploy-config-container.deploy-config-container .modern-table td.el-table__cell,
+.task-list-container.task-list-container .modern-table td.el-table__cell {
+  padding: 12px 0 !important;
+}
+
+.certificate-container.certificate-container .domain-main,
+.certificate-container.certificate-container .domain-name,
+.certificate-container.certificate-container .file-name,
+.task-list-container.task-list-container .detail-task-id {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace !important;
+}
+
+.certificate-container.certificate-container .expiry-cell {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  line-height: 1.35;
+}
+
+.certificate-container.certificate-container .expiry-time,
+.task-list-container.task-list-container .el-table__cell span,
+.dns-provider-container.dns-provider-container .el-table__cell span,
+.deploy-config-container.deploy-config-container .el-table__cell span {
+  white-space: nowrap;
+}
+
+.certificate-container.certificate-container .expiry-days {
+  color: var(--opshub-text-soft) !important;
+  font-size: 12px !important;
+}
+
+.certificate-container.certificate-container .action-btn,
+.dns-provider-container.dns-provider-container .action-btn,
+.deploy-config-container.deploy-config-container .action-btn,
+.task-list-container.task-list-container .action-btn {
+  border-radius: 7px !important;
+  color: #667085;
+}
+
+.certificate-container.certificate-container .action-btn:hover,
+.dns-provider-container.dns-provider-container .action-btn:hover,
+.deploy-config-container.deploy-config-container .action-btn:hover,
+.task-list-container.task-list-container .action-btn:hover {
+  transform: none !important;
+}
+
+.certificate-container.certificate-container .pagination-wrapper,
+.dns-provider-container.dns-provider-container .pagination-wrapper,
+.deploy-config-container.deploy-config-container .pagination-wrapper,
+.task-list-container.task-list-container .pagination-wrapper {
+  padding: 14px 16px !important;
+  border-top: 1px solid #edf1f7;
+}
+
+.certificate-container.certificate-container .el-tag--dark {
+  --el-tag-text-color: var(--el-tag-color);
+  background: var(--el-tag-bg-color) !important;
+  border-color: var(--el-tag-border-color) !important;
+}
+
+.certificate-container.certificate-container .download-card-header {
+  padding-top: 4px !important;
+}
+
+.certificate-container.certificate-container .download-files {
+  background: #f8fafc !important;
+  border-color: #edf1f7 !important;
+}
+
+.certificate-container.certificate-container .format-option {
+  border: 1px solid var(--opshub-border) !important;
+  border-radius: var(--opshub-radius) !important;
+}
+
+.certificate-container.certificate-container .format-option.active {
+  background: #eff6ff !important;
+  border-color: #bfdbfe !important;
+}
+
+.certificate-container.certificate-container .format-option.active .format-icon {
+  background: #2563eb !important;
+  color: #fff !important;
+}
+
+.certificate-container.certificate-container .download-action .el-button {
+  background: var(--opshub-brand) !important;
+  border-color: var(--opshub-brand) !important;
+}
+
+.certificate-upload-container.certificate-upload-container .upload-box {
+  background: #f8fafc !important;
+  border-color: #d8dee9 !important;
+  border-radius: var(--opshub-radius) !important;
+}
+
+.certificate-upload-container.certificate-upload-container .upload-box:hover {
+  background: #eff6ff !important;
+  border-color: #bfdbfe !important;
+}
+
+.certificate-upload-container.certificate-upload-container .upload-icon {
+  color: #2563eb !important;
+}
+
+.certificate-upload-container.certificate-upload-container .cert-status-bar {
+  border-radius: var(--opshub-radius) !important;
+  background: #f8fafc !important;
+  border-color: #edf1f7 !important;
+}
+
+@media (max-width: 900px) {
+  .certificate-container.certificate-container .page-header,
+  .dns-provider-container.dns-provider-container .page-header,
+  .deploy-config-container.deploy-config-container .page-header,
+  .task-list-container.task-list-container .page-header,
+  .certificate-container.certificate-container .search-bar,
+  .task-list-container.task-list-container .search-bar {
+    align-items: stretch !important;
+    flex-direction: column;
+  }
+
+  .certificate-container.certificate-container .stats-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+/* Monitor center unified OpsHub UI */
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-logs-container
+) {
+  display: flex !important;
+  flex-direction: column;
+  gap: 14px !important;
+  min-height: calc(100vh - 96px);
+  background: transparent !important;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-logs-container
+) :is(.page-header, .page-head) {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 20px !important;
+  min-height: 112px !important;
+  margin: 0 !important;
+  padding: 22px 26px !important;
+  border: 1px solid #dfe6f2 !important;
+  border-radius: 8px !important;
+  background: #fff !important;
+  box-shadow: none !important;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-logs-container
+) .page-title-group {
+  display: flex !important;
+  align-items: center !important;
+  gap: 18px !important;
+  min-width: 0;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-logs-container
+) .page-title-icon {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 0 0 auto !important;
+  width: 54px !important;
+  height: 54px !important;
+  border: 1px solid #dfe6f2 !important;
+  border-radius: 10px !important;
+  background: #f8fafc !important;
+  color: #111827 !important;
+  font-size: 24px !important;
+  box-shadow: none !important;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-logs-container
+) :is(.page-title, .page-head h2) {
+  display: block !important;
+  margin: 0 !important;
+  color: #111827 !important;
+  font-size: 26px !important;
+  font-weight: 750 !important;
+  line-height: 1.25 !important;
+  letter-spacing: 0 !important;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-logs-container
+) :is(.page-subtitle, .page-head p) {
+  display: block !important;
+  margin: 6px 0 0 !important;
+  color: #667085 !important;
+  font-size: 15px !important;
+  line-height: 1.45 !important;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-logs-container
+) :is(.header-actions, .head-actions, .search-actions, .schedule-actions) {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 12px !important;
+  flex-wrap: wrap;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-logs-container
+) :is(.header-actions, .head-actions, .search-actions, .schedule-actions) .el-button {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  height: 44px !important;
+  min-height: 44px !important;
+  padding: 0 20px !important;
+  border-radius: 8px !important;
+  font-size: 15px !important;
+  font-weight: 650 !important;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-logs-container
+) .el-button--primary {
+  --el-button-bg-color: #111827;
+  --el-button-border-color: #111827;
+  --el-button-hover-bg-color: #111827;
+  --el-button-hover-border-color: #111827;
+  --el-button-active-bg-color: #111827;
+  --el-button-active-border-color: #111827;
+  --el-button-text-color: #fff;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .alert-logs-container
+) .search-bar {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 16px !important;
+  margin: 0 !important;
+  padding: 18px 22px !important;
+  border: 1px solid #dfe6f2 !important;
+  border-radius: 8px !important;
+  background: #fff !important;
+  box-shadow: none !important;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .alert-logs-container
+) .search-inputs {
+  display: flex !important;
+  align-items: center !important;
+  gap: 14px !important;
+  flex-wrap: wrap;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-logs-container
+) :is(.search-input, .head-search, .type-filter, .month-picker, .publish-month-picker) {
+  min-width: 240px;
+  height: 42px !important;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-logs-container
+) :is(.el-input__wrapper, .el-select__wrapper, .el-date-editor) {
+  min-height: 42px !important;
+  border-radius: 8px !important;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-logs-container
+) :is(.stats-cards, .overview-strip) {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 14px !important;
+  margin: 0 !important;
+  overflow: visible !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+:where(
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .alert-logs-container
+) .stat-card {
+  display: flex !important;
+  align-items: center !important;
+  gap: 18px !important;
+  min-height: 114px !important;
+  padding: 20px 24px !important;
+  border: 1px solid #dfe6f2 !important;
+  border-radius: 8px !important;
+  background: #fff !important;
+  box-shadow: none !important;
+}
+
+:where(
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .alert-logs-container
+) .stat-icon {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 0 0 auto !important;
+  width: 54px !important;
+  height: 54px !important;
+  border-radius: 10px !important;
+  font-size: 25px !important;
+  box-shadow: none !important;
+}
+
+:where(
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .alert-logs-container
+) .stat-label {
+  color: #667085 !important;
+  font-size: 15px !important;
+  line-height: 1.2 !important;
+}
+
+:where(
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .alert-logs-container
+) .stat-value {
+  margin-top: 8px !important;
+  color: #111827 !important;
+  font-size: 34px !important;
+  font-weight: 780 !important;
+  line-height: 1 !important;
+}
+
+:where(
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-logs-container
+) :is(.table-wrapper, .table-panel, .rule-workspace, .events-section, .schedule-panel, .table-list) {
+  border: 1px solid #dfe6f2 !important;
+  border-radius: 8px !important;
+  background: #fff !important;
+  box-shadow: none !important;
+  overflow: hidden;
+}
+
+:where(
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-logs-container
+) .el-table th.el-table__cell {
+  height: 54px !important;
+  background: #f8fafc !important;
+  color: #475467 !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+}
+
+:where(
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-logs-container
+) .el-table td.el-table__cell {
+  color: #344054 !important;
+  font-size: 15px !important;
+}
+
+.monitor-rules-page .stats-cards {
+  display: grid !important;
+}
+
+.monitor-rules-page .page-title-icon,
+.monitor-rules-page .page-subtitle {
+  display: inline-flex !important;
+}
+
+.monitor-rules-page .page-subtitle {
+  display: block !important;
+}
+
+.monitor-rules-page .rule-workspace {
+  grid-template-columns: 260px minmax(0, 1fr) !important;
+}
+
+.monitor-rules-page .group-sidebar {
+  padding: 16px !important;
+  border-right: 1px solid #dfe6f2 !important;
+  background: #fbfcfe !important;
+}
+
+.monitor-rules-page .sidebar-head {
+  margin-bottom: 14px !important;
+  color: #111827 !important;
+  font-size: 15px !important;
+  font-weight: 750 !important;
+}
+
+.monitor-rules-page .group-item {
+  min-height: 42px !important;
+  padding: 0 12px !important;
+  border-radius: 8px !important;
+  font-size: 15px !important;
+}
+
+.fault-centers-page .center-grid {
+  grid-template-columns: repeat(4, minmax(260px, 1fr)) !important;
+  gap: 16px !important;
+}
+
+.fault-centers-page .center-card {
+  min-height: 176px !important;
+  padding: 16px !important;
+  border: 1px solid #dfe6f2 !important;
+  border-radius: 8px !important;
+  background: #fff !important;
+  box-shadow: none !important;
+}
+
+.fault-centers-page .metric-row {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+}
+
+.fault-centers-page .metric-item {
+  padding: 10px 8px !important;
+  border: 1px solid #edf1f7 !important;
+  border-radius: 8px !important;
+  background: #fbfcfe !important;
+}
+
+.fault-centers-page .metric-value {
+  font-size: 22px !important;
+  font-weight: 780 !important;
+}
+
+.fault-centers-page .metric-value.warning {
+  color: #d97706 !important;
+}
+
+.fault-centers-page .metric-value.danger {
+  color: #e11d48 !important;
+}
+
+.fault-centers-page .metric-value.success {
+  color: #16a34a !important;
+}
+
+.notice-template-page .template-layout {
+  display: grid !important;
+  grid-template-columns: 300px minmax(0, 1fr) !important;
+  gap: 14px !important;
+}
+
+.notice-template-page .type-rail {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  padding: 18px !important;
+  border: 1px solid #dfe6f2 !important;
+  border-radius: 8px !important;
+  background: #fff !important;
+  box-shadow: none !important;
+}
+
+.notice-template-page .type-item {
+  min-height: 58px !important;
+  border-radius: 8px !important;
+}
+
+.duty-page .duty-layout {
+  display: grid !important;
+  grid-template-columns: 400px minmax(0, 1fr) !important;
+  gap: 14px !important;
+}
+
+.duty-page .table-list {
+  padding: 14px !important;
+}
+
+.duty-page .schedule-toolbar {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 16px !important;
+  padding: 20px !important;
+  border-bottom: 1px solid #dfe6f2 !important;
+}
+
+@media (max-width: 1200px) {
+  :where(
+    .fault-centers-page,
+    .monitor-datasources-container,
+    .monitor-rules-page,
+    .domain-monitor-container,
+    .notice-object-page,
+    .alert-logs-container
+  ) :is(.stats-cards, .overview-strip) {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .fault-centers-page .center-grid {
+    grid-template-columns: repeat(2, minmax(260px, 1fr)) !important;
+  }
+
+  .notice-template-page .template-layout,
+  .duty-page .duty-layout,
+  .monitor-rules-page .rule-workspace {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Monitor center effective normalization */
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) :is(.page-header, .page-head) {
+  gap: 18px !important;
+  min-height: 88px !important;
+  padding: 18px 20px !important;
+  border: 1px solid var(--opshub-border) !important;
+  border-radius: var(--opshub-radius) !important;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) .page-title-group {
+  gap: 14px !important;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) .page-title-icon {
+  flex: 0 0 42px !important;
+  width: 42px !important;
+  height: 42px !important;
+  border: 1px solid #edf1f7 !important;
+  border-radius: var(--opshub-radius) !important;
+  background: var(--opshub-surface-soft) !important;
+  color: var(--opshub-text) !important;
+  font-size: 22px !important;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) :is(.page-title, .page-head h2) {
+  font-size: 22px !important;
+  font-weight: 750 !important;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) :is(.page-subtitle, .page-head p) {
+  margin-top: 5px !important;
+  font-size: 13px !important;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) :is(.header-actions, .head-actions, .search-actions, .schedule-actions) .el-button {
+  height: 36px !important;
+  min-height: 36px !important;
+  padding: 0 14px !important;
+  border-radius: 7px !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) :is(.el-input__wrapper, .el-select__wrapper, .el-date-editor) {
+  min-height: 36px !important;
+  border-radius: 7px !important;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) .search-bar {
+  gap: 14px !important;
+  padding: 14px 16px !important;
+  border: 1px solid var(--opshub-border) !important;
+  border-radius: var(--opshub-radius) !important;
+}
+
+:where(
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .alert-logs-container
+) :is(.stats-cards, .overview-strip) {
+  gap: 12px !important;
+}
+
+:where(
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .alert-logs-container
+) .stat-card {
+  gap: 14px !important;
+  min-height: 92px !important;
+  padding: 16px !important;
+  border: 1px solid var(--opshub-border) !important;
+  border-radius: var(--opshub-radius) !important;
+}
+
+:where(
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .alert-logs-container
+) .stat-icon {
+  flex: 0 0 42px !important;
+  width: 42px !important;
+  height: 42px !important;
+  border-radius: var(--opshub-radius) !important;
+  font-size: 21px !important;
+}
+
+:where(
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .alert-logs-container
+) .stat-label {
+  font-size: 13px !important;
+}
+
+:where(
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .alert-logs-container
+) .stat-value {
+  margin-top: 4px !important;
+  font-size: 28px !important;
+  font-weight: 750 !important;
+}
+
+:where(
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) .el-table th.el-table__cell {
+  height: 46px !important;
+  font-size: 13px !important;
+  font-weight: 650 !important;
+}
+
+:where(
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) .el-table td.el-table__cell {
+  font-size: 13px !important;
+}
+
+.monitor-rules-page .rule-workspace {
+  grid-template-columns: 240px minmax(0, 1fr) !important;
+}
+
+.monitor-rules-page .page-header {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 18px !important;
+  min-height: 88px !important;
+  padding: 18px 20px !important;
+  border: 1px solid var(--opshub-border) !important;
+  border-radius: var(--opshub-radius) !important;
+  background: var(--opshub-surface) !important;
+}
+
+.monitor-rules-page .group-sidebar {
+  padding: 14px !important;
+}
+
+.monitor-rules-page .sidebar-head {
+  margin-bottom: 12px !important;
+  font-size: 13px !important;
+}
+
+.monitor-rules-page .group-item {
+  min-height: 36px !important;
+  padding: 0 10px !important;
+  font-size: 13px !important;
+}
+
+.fault-centers-page .center-grid {
+  grid-template-columns: repeat(4, minmax(240px, 1fr)) !important;
+  gap: 12px !important;
+}
+
+.fault-centers-page .center-card {
+  min-height: 176px !important;
+  padding: 16px !important;
+  border: 1px solid var(--opshub-border) !important;
+  border-radius: var(--opshub-radius) !important;
+}
+
+.fault-centers-page .detail-hint {
+  height: 24px !important;
+  padding: 0 9px !important;
+  border-radius: 999px !important;
+  font-size: 12px !important;
+}
+
+.fault-centers-page .center-desc {
+  min-height: 38px !important;
+  margin: 10px 0 14px !important;
+  padding: 0 !important;
+  font-size: 13px !important;
+  line-height: 19px !important;
+}
+
+.fault-centers-page .metric-row {
+  gap: 8px !important;
+}
+
+.fault-centers-page .metric-item {
+  padding: 10px 8px !important;
+  border-radius: var(--opshub-radius) !important;
+}
+
+.fault-centers-page .metric-value {
+  font-size: 22px !important;
+}
+
+.notice-template-page .template-layout {
+  grid-template-columns: 280px minmax(0, 1fr) !important;
+}
+
+.notice-object-page .page-title-group,
+.notice-template-page .page-title-group {
+  flex: 1 1 auto !important;
+  min-width: 0;
+}
+
+.notice-object-page .page-title-group > div:last-child,
+.notice-template-page .page-title-group > div:last-child {
+  min-width: 0;
+}
+
+.notice-object-page .page-head p,
+.notice-template-page .page-head p {
+  overflow: hidden !important;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notice-object-page .head-actions,
+.notice-template-page .head-actions {
+  flex: 0 0 auto !important;
+  flex-wrap: nowrap !important;
+}
+
+.notice-object-page .head-search,
+.notice-template-page .head-search {
+  min-width: 0 !important;
+  height: 36px !important;
+  width: 220px !important;
+  flex: 0 0 220px !important;
+}
+
+.notice-template-page .type-filter {
+  min-width: 0 !important;
+  height: 36px !important;
+  width: 140px !important;
+  flex: 0 0 140px !important;
+}
+
+:where(
+  .fault-centers-page,
+  .monitor-datasources-container,
+  .monitor-rules-page,
+  .domain-monitor-container,
+  .notice-object-page,
+  .notice-template-page,
+  .duty-page,
+  .alert-channels-container,
+  .alert-receivers-container,
+  .alert-logs-container
+) :is(.search-input, .head-search, .type-filter, .month-picker, .publish-month-picker) {
+  min-width: 0 !important;
+  height: 36px !important;
+}
+
+.notice-template-page .type-rail {
+  padding: 14px !important;
+}
+
+.notice-template-page .type-item {
+  min-height: 52px !important;
+}
+
+.duty-page .duty-layout {
+  grid-template-columns: 320px minmax(0, 1fr) !important;
+}
+
+.duty-page .schedule-toolbar {
+  gap: 14px !important;
+  margin: 0 !important;
+  padding: 16px !important;
+}
+
+.duty-page .schedule-panel {
+  padding: 0 !important;
+}
+
+.duty-page .weekday-row,
+.duty-page .calendar-grid {
+  margin-right: 16px;
+  margin-left: 16px;
+}
+
+.duty-page .calendar-grid {
+  margin-bottom: 16px;
+}
+
+@media (max-width: 1200px) {
+  .fault-centers-page .center-grid {
+    grid-template-columns: repeat(2, minmax(240px, 1fr)) !important;
+  }
+
+  .notice-template-page .template-layout,
+  .duty-page .duty-layout,
+  .monitor-rules-page .rule-workspace {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Monitor probing and final detail spacing fixes */
+:where(.probe-tasks-page, .instant-probe-page) :is(.page-header, .page-head) {
+  gap: 18px !important;
+  min-height: 88px !important;
+  padding: 18px 20px !important;
+  border: 1px solid var(--opshub-border) !important;
+  border-radius: var(--opshub-radius) !important;
+}
+
+:where(.probe-tasks-page, .instant-probe-page) .page-title-group {
+  gap: 14px !important;
+}
+
+:where(.probe-tasks-page, .instant-probe-page) .page-title-icon,
+.monitor-rules-page.monitor-rules-page .page-title-icon {
+  flex: 0 0 42px !important;
+  width: 42px !important;
+  height: 42px !important;
+  border: 1px solid #edf1f7 !important;
+  border-radius: var(--opshub-radius) !important;
+  background: var(--opshub-surface-soft) !important;
+  color: var(--opshub-text) !important;
+  font-size: 22px !important;
+}
+
+:where(.probe-tasks-page, .instant-probe-page) .page-title,
+.monitor-rules-page.monitor-rules-page .page-title {
+  font-size: 22px !important;
+  font-weight: 750 !important;
+  line-height: 1.3 !important;
+}
+
+:where(.probe-tasks-page, .instant-probe-page) .page-subtitle,
+.monitor-rules-page.monitor-rules-page .page-subtitle {
+  margin-top: 5px !important;
+  font-size: 13px !important;
+}
+
+:where(.probe-tasks-page, .instant-probe-page) :is(.header-actions, .search-actions) .el-button {
+  height: 36px !important;
+  min-height: 36px !important;
+  padding: 0 14px !important;
+  border-radius: 7px !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+}
+
+:where(.probe-tasks-page, .instant-probe-page) :is(.el-input__wrapper, .el-select__wrapper, .el-date-editor) {
+  min-height: 36px !important;
+  border-radius: 7px !important;
+}
+
+:where(.probe-tasks-page, .instant-probe-page) .search-bar {
+  gap: 14px !important;
+  padding: 14px 16px !important;
+  border: 1px solid var(--opshub-border) !important;
+  border-radius: var(--opshub-radius) !important;
+}
+
+:where(.probe-tasks-page, .instant-probe-page) .stats-cards {
+  gap: 12px !important;
+}
+
+:where(.probe-tasks-page, .instant-probe-page) .stat-card {
+  gap: 14px !important;
+  min-height: 92px !important;
+  padding: 16px !important;
+  border: 1px solid var(--opshub-border) !important;
+  border-radius: var(--opshub-radius) !important;
+}
+
+:where(.probe-tasks-page, .instant-probe-page) .stat-icon {
+  flex: 0 0 42px !important;
+  width: 42px !important;
+  height: 42px !important;
+  border-radius: var(--opshub-radius) !important;
+  font-size: 21px !important;
+}
+
+:where(.probe-tasks-page, .instant-probe-page) .stat-label {
+  font-size: 13px !important;
+}
+
+:where(.probe-tasks-page, .instant-probe-page) .stat-value {
+  margin-top: 4px !important;
+  font-size: 28px !important;
+  font-weight: 750 !important;
+}
+
+:where(.probe-tasks-page, .instant-probe-page) .el-table th.el-table__cell {
+  height: 46px !important;
+  font-size: 13px !important;
+  font-weight: 650 !important;
+}
+
+:where(.probe-tasks-page, .instant-probe-page) .el-table td.el-table__cell {
+  font-size: 13px !important;
+}
+
+.fault-detail-page.fault-detail-page {
+  box-sizing: border-box !important;
+  padding: 18px !important;
+  gap: 16px !important;
+}
+
+.fault-detail-page.fault-detail-page .watch-tabs {
+  margin-top: 0 !important;
+}
+
+.fault-detail-page.fault-detail-page :is(.fault-identity, .watch-chart-card, .event-board, .config-section, .setting-card) {
+  border-color: var(--opshub-border) !important;
+  border-radius: var(--opshub-radius) !important;
+}
+
+.fault-detail-page.fault-detail-page .fault-identity {
+  padding: 18px 22px 14px !important;
+  border: 1px solid var(--opshub-border) !important;
+  background: var(--opshub-surface) !important;
+}
+
+/* Kubernetes workspace: align container-management pages with the monitor center look. */
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container
+) {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 14px !important;
+  background: transparent !important;
+}
+
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container
+) > * {
+  order: 20;
+}
+
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container
+) > :is(.page-header, .header-card) {
+  order: 1;
+}
+
+#app :is(
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container
+) > :is(.search-bar, .network-types-bar, .config-types-bar, .storage-types-bar, .workload-types-bar, .access-types-bar, .access-tabs) {
+  order: 2;
+}
+
+#app .app-diagnosis-container > .selector-bar {
+  order: 2;
+}
+
+#app :is(
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container
+) > :is(.action-bar, .batch-action-bar) {
+  order: 3;
+}
+
+#app :is(
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .cluster-detail-container,
+  .node-detail-container
+) > .stats-grid {
+  order: 3;
+}
+
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container
+) > :is(.table-wrapper, .content-wrapper, .info-grid, .labels-annotations-grid, .section-card) {
+  order: 4;
+}
+
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container
+) :is(.page-header, .header-card) {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 18px !important;
+  min-height: 88px !important;
+  margin: 0 !important;
+  padding: 18px 20px !important;
+  border: 1px solid var(--opshub-border) !important;
+  border-radius: var(--opshub-radius) !important;
+  background: var(--opshub-surface) !important;
+  color: var(--opshub-text) !important;
+  box-shadow: none !important;
+}
+
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container
+) .page-title-group {
+  display: flex !important;
+  align-items: center !important;
+  gap: 14px !important;
+  min-width: 0;
+}
+
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container
+) .page-title-icon {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 0 0 42px !important;
+  width: 42px !important;
+  height: 42px !important;
+  border: 1px solid #edf1f7 !important;
+  border-radius: var(--opshub-radius) !important;
+  background: var(--opshub-surface-soft) !important;
+  color: var(--opshub-text) !important;
+  font-size: 22px !important;
+  box-shadow: none !important;
+}
+
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container
+) .page-title {
+  margin: 0 !important;
+  color: #111827 !important;
+  font-size: 22px !important;
+  font-weight: 750 !important;
+  line-height: 1.25 !important;
+  letter-spacing: 0 !important;
+}
+
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container
+) .page-subtitle {
+  margin: 5px 0 0 !important;
+  color: var(--opshub-text-muted) !important;
+  font-size: 13px !important;
+  line-height: 1.45 !important;
+}
+
+#app :is(
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .cluster-detail-container,
+  .node-detail-container
+) .stats-grid {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 12px !important;
+  margin: 0 !important;
+}
+
+#app :is(
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .cluster-detail-container,
+  .node-detail-container
+) .stat-card {
+  display: flex !important;
+  align-items: center !important;
+  gap: 14px !important;
+  min-height: 92px !important;
+  padding: 16px !important;
+  border: 1px solid var(--opshub-border) !important;
+  border-radius: var(--opshub-radius) !important;
+  background: var(--opshub-surface) !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+#app :is(
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .cluster-detail-container,
+  .node-detail-container
+) .stat-card:hover {
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+#app :is(
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .cluster-detail-container,
+  .node-detail-container
+) .stat-icon {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 0 0 42px !important;
+  width: 42px !important;
+  height: 42px !important;
+  border-radius: var(--opshub-radius) !important;
+  font-size: 21px !important;
+  box-shadow: none !important;
+}
+
+#app :is(
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .cluster-detail-container,
+  .node-detail-container
+) :is(.stat-icon-blue, .stat-icon-cpu) {
+  border: 1px solid #dbe8ff !important;
+  background: #eef4ff !important;
+  color: var(--opshub-blue) !important;
+}
+
+#app :is(
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .cluster-detail-container,
+  .node-detail-container
+) :is(.stat-icon-green, .stat-icon-memory) {
+  border: 1px solid #bbf7d0 !important;
+  background: #ecfdf3 !important;
+  color: var(--opshub-green) !important;
+}
+
+#app :is(
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .cluster-detail-container,
+  .node-detail-container
+) :is(.stat-orange, .stat-icon-pod) {
+  border: 1px solid #fde68a !important;
+  background: #fffbeb !important;
+  color: var(--opshub-amber) !important;
+}
+
+#app :is(
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .cluster-detail-container,
+  .node-detail-container
+) :is(.stat-icon-purple, .stat-icon-uptime) {
+  border: 1px solid #e0e7ff !important;
+  background: #f5f7ff !important;
+  color: #3151a3 !important;
+}
+
+#app :is(
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .cluster-detail-container,
+  .node-detail-container
+) .stat-label {
+  margin: 0 !important;
+  color: var(--opshub-text-muted) !important;
+  font-size: 13px !important;
+  line-height: 1.2 !important;
+}
+
+#app :is(
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .cluster-detail-container,
+  .node-detail-container
+) .stat-value {
+  margin-top: 4px !important;
+  color: #111827 !important;
+  font-size: 28px !important;
+  font-weight: 750 !important;
+  line-height: 1 !important;
+}
+
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container
+) :is(.search-bar, .selector-bar, .network-types-bar, .config-types-bar, .storage-types-bar, .workload-types-bar, .access-types-bar, .access-tabs, .action-bar, .batch-action-bar, .content-wrapper, .table-wrapper, .info-card, .section-card, .yaml-card, .terminal-card) {
+  border: 1px solid var(--opshub-border) !important;
+  border-radius: var(--opshub-radius) !important;
+  background: var(--opshub-surface) !important;
+  box-shadow: none !important;
+}
+
+#app :is(
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container
+) :is(.search-bar, .selector-bar) {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 14px !important;
+  margin: 0 !important;
+  padding: 14px 16px !important;
+}
+
+#app :is(
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container
+) :is(.workload-types-bar, .access-types-bar, .network-types-bar, .config-types-bar, .storage-types-bar) {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  margin: 0 !important;
+  padding: 12px 16px !important;
+  box-shadow: none !important;
+}
+
+#app :is(
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container
+) :is(.action-bar, .batch-action-bar) {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 14px !important;
+  margin: 0 !important;
+  padding: 14px 16px !important;
+  box-shadow: none !important;
+}
+
+#app :is(
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container
+) :is(.header-actions, .search-actions, .search-bar-right, .selector-actions, .action-section, .action-buttons, .batch-actions-right) {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 10px !important;
+  flex-wrap: wrap;
+}
+
+#app :is(
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container
+) :is(.header-actions, .search-actions, .search-bar-right, .selector-actions, .action-section, .action-buttons, .batch-actions-right) .el-button {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  padding: 0 14px !important;
+  border-radius: 7px !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+#app :is(
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container
+) :is(.black-button, .search-btn).el-button {
+  border-color: var(--opshub-brand) !important;
+  background: var(--opshub-brand) !important;
+  color: #fff !important;
+}
+
+#app :is(
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container
+) :is(.black-button, .search-btn).el-button:hover {
+  border-color: #2b3445 !important;
+  background: #2b3445 !important;
+  color: #fff !important;
+}
+
+#app :is(
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container
+) :is(.sync-button, .reset-btn).el-button {
+  border: 1px solid var(--opshub-border-strong) !important;
+  background: #fff !important;
+  color: #344054 !important;
+}
+
+#app :is(
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container
+) :is(.sync-button, .reset-btn).el-button:hover {
+  border-color: var(--opshub-border-strong) !important;
+  background: var(--opshub-surface-soft) !important;
+  color: #111827 !important;
+}
+
+#app :is(
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container
+) :is(.el-input__wrapper, .el-select__wrapper, .el-date-editor) {
+  min-height: 36px !important;
+  border-radius: 7px !important;
+  box-shadow: 0 0 0 1px var(--opshub-border-strong) inset !important;
+}
+
+#app :is(
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container
+) :is(.el-input__wrapper.is-focus, .el-select__wrapper.is-focused) {
+  box-shadow: 0 0 0 1px var(--opshub-brand) inset, 0 0 0 3px rgba(17, 24, 39, 0.08) !important;
+}
+
+#app :is(
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container
+) :is(.type-tab, .resource-tab, .access-tab, .tab-item) {
+  border: 1px solid transparent !important;
+  border-radius: 7px !important;
+  background: transparent !important;
+  color: #475467 !important;
+}
+
+#app :is(
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container
+) :is(.type-tab.active, .resource-tab.active, .access-tab.active, .tab-item.active) {
+  border-color: #dbe8ff !important;
+  background: #eef4ff !important;
+  color: var(--opshub-blue) !important;
+}
+
+#app :is(
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container
+) :is(.type-icon, .search-icon, .header-icon, .cluster-icon, .pod-icon, .user-icon, .name-icon, .action-btn) {
+  color: #667085 !important;
+}
+
+#app :is(
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container
+) :is(.node-icon-wrapper, .name-icon-wrapper, .namespace-icon-wrapper, .workload-icon-wrapper, .workload-type-icon-box, .resource-icon, .pod-icon-wrapper, .cluster-icon-wrapper, .name-icon) {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border: 1px solid #edf1f7 !important;
+  border-radius: var(--opshub-radius) !important;
+  background: var(--opshub-surface-soft) !important;
+  color: #667085 !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+#app :is(
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container
+) :is(.namespace-icon, .workload-icon, .workload-type-icon-gold, .name-icon svg, .node-icon-wrapper .el-icon, .cluster-icon-wrapper .el-icon, .pod-icon-wrapper .el-icon) {
+  color: #667085 !important;
+}
+
+#app :is(
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container
+) .el-table th.el-table__cell {
+  height: 46px !important;
+  background: #f8fafc !important;
+  color: #475467 !important;
+  font-size: 13px !important;
+  font-weight: 650 !important;
+}
+
+#app :is(
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container
+) .el-table td.el-table__cell {
+  color: #344054 !important;
+  font-size: 13px !important;
+}
+
+#app :is(
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container
+) :is(.cluster-name-link, .link-text, .name-text) {
+  color: #111827 !important;
+  font-weight: 650 !important;
+}
+
+#app :is(
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container
+) :is(.action-edit, .action-sync, .action-auth, .action-run):hover {
+  color: var(--opshub-blue) !important;
+}
+
+#app :is(
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container
+) .action-delete:hover {
+  color: var(--opshub-red) !important;
+}
+
+#app :is(
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container
+) .batch-actions-bar {
+  margin: 0 !important;
+  border: 1px solid #dbe8ff !important;
+  border-radius: var(--opshub-radius) !important;
+  background: #eef4ff !important;
+  box-shadow: none !important;
+}
+
+#app :is(
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container
+) :is(.el-checkbox__inner, .el-radio__inner) {
+  border-color: var(--opshub-border-strong) !important;
+}
+
+#app :is(
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container
+) :is(.el-checkbox__input.is-checked .el-checkbox__inner, .el-checkbox__input.is-indeterminate .el-checkbox__inner, .el-radio__input.is-checked .el-radio__inner) {
+  border-color: var(--opshub-brand) !important;
+  background: var(--opshub-brand) !important;
+}
+
+#app .access-control-container > .content-wrapper {
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Unified tables for container-management subpages and terminal audit. */
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container,
+  .terminal-audit-container
+) .table-wrapper {
+  margin: 0 !important;
+  overflow: hidden !important;
+  border: 1px solid var(--opshub-border) !important;
+  border-radius: var(--opshub-radius) !important;
+  background: var(--opshub-surface) !important;
+  box-shadow: none !important;
+}
+
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container,
+  .terminal-audit-container
+) .modern-table.el-table {
+  width: 100% !important;
+  border-radius: 0 !important;
+  color: #344054 !important;
+  font-size: 13px !important;
+  --el-table-border-color: #edf1f7;
+  --el-table-header-bg-color: #f8fafc;
+  --el-table-row-hover-bg-color: #f8fafc;
+}
+
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container,
+  .terminal-audit-container
+) .modern-table.el-table :is(.el-table__inner-wrapper, .el-table__body-wrapper, .el-scrollbar__view) {
+  border-radius: 0 !important;
+}
+
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container,
+  .terminal-audit-container
+) .modern-table.el-table .el-table__inner-wrapper::before,
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container,
+  .terminal-audit-container
+) .modern-table.el-table .el-table__inner-wrapper::after {
+  display: none !important;
+}
+
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container,
+  .terminal-audit-container
+) .modern-table.el-table th.el-table__cell {
+  height: 48px !important;
+  padding: 0 !important;
+  border-bottom: 1px solid #edf1f7 !important;
+  background: #f8fafc !important;
+  color: #475467 !important;
+  font-size: 13px !important;
+  font-weight: 650 !important;
+  letter-spacing: 0 !important;
+}
+
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container,
+  .terminal-audit-container
+) .modern-table.el-table td.el-table__cell {
+  height: 64px !important;
+  padding: 10px 0 !important;
+  border-bottom: 1px solid #edf1f7 !important;
+  background: #fff !important;
+  color: #344054 !important;
+  font-size: 13px !important;
+  line-height: 1.45 !important;
+  vertical-align: middle !important;
+}
+
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container,
+  .terminal-audit-container
+) .modern-table.el-table :is(th.el-table__cell, td.el-table__cell) .cell {
+  display: flex !important;
+  align-items: center !important;
+  min-height: 28px !important;
+  padding: 0 16px !important;
+  color: inherit !important;
+  line-height: 1.45 !important;
+  word-break: normal !important;
+}
+
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container,
+  .terminal-audit-container
+) .modern-table.el-table :is(.is-center, [align="center"]) .cell {
+  justify-content: center !important;
+  text-align: center !important;
+}
+
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container,
+  .terminal-audit-container
+) .modern-table.el-table .el-table__row {
+  height: 64px !important;
+  background: #fff !important;
+  transition: background-color 0.16s ease !important;
+}
+
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container,
+  .terminal-audit-container
+) .modern-table.el-table .el-table__row:hover > td.el-table__cell {
+  background: #f8fafc !important;
+}
+
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container,
+  .terminal-audit-container
+) .modern-table.el-table :is(.header-with-icon, .name-cell, .namespace-name-cell, .workload-name-cell, .age-cell, .status-cell, .resource-cell) {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  min-width: 0 !important;
+  color: inherit !important;
+}
+
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container,
+  .terminal-audit-container
+) .modern-table.el-table :is(.cluster-name-link, .name-text, .namespace-name, .workload-name, .host-name, .user-name) {
+  color: #111827 !important;
+  font-size: 13px !important;
+  font-weight: 650 !important;
+  line-height: 1.35 !important;
+}
+
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container,
+  .terminal-audit-container
+) .modern-table.el-table :is(.namespace-text, .namespace-status, .workload-namespace, .host-ip, .user-roles, .time-text, .duration-text) {
+  margin-top: 2px !important;
+  color: #667085 !important;
+  font-size: 12px !important;
+  line-height: 1.35 !important;
+}
+
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container,
+  .terminal-audit-container
+) .modern-table.el-table .el-tag {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-height: 24px !important;
+  padding: 0 9px !important;
+  border-radius: 6px !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  line-height: 1 !important;
+}
+
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container,
+  .terminal-audit-container
+) .modern-table.el-table :is(td.el-table-fixed-column--right, th.el-table-fixed-column--right) {
+  background: #fff !important;
+  box-shadow: inset 1px 0 0 #edf1f7 !important;
+}
+
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container,
+  .terminal-audit-container
+) .modern-table.el-table th.el-table-fixed-column--right {
+  background: #f8fafc !important;
+}
+
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container,
+  .terminal-audit-container
+) .modern-table.el-table td.el-table-fixed-column--right .cell {
+  justify-content: center !important;
+  gap: 6px !important;
+  overflow: visible !important;
+  white-space: nowrap !important;
+}
+
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container,
+  .terminal-audit-container
+) .modern-table.el-table th.el-table-fixed-column--right .cell {
+  justify-content: center !important;
+  text-align: center !important;
+  white-space: nowrap !important;
+}
+
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container,
+  .terminal-audit-container
+) .modern-table.el-table :is(.action-buttons, .table-actions),
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container,
+  .terminal-audit-container
+) .modern-table.el-table .el-table__fixed-right .cell {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-wrap: nowrap !important;
+  gap: 6px !important;
+  width: max-content !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  white-space: nowrap !important;
+}
+
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container,
+  .terminal-audit-container
+) .modern-table.el-table td.el-table-fixed-column--right .cell > .el-button,
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container,
+  .terminal-audit-container
+) .modern-table.el-table .el-table__fixed-right .cell > .el-button {
+  flex: 0 0 auto !important;
+}
+
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container,
+  .terminal-audit-container
+) .modern-table.el-table :is(.action-btn, .table-actions .el-button, td.el-table-fixed-column--right .cell > .el-button, .el-table__fixed-right .cell > .el-button) {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 0 0 30px !important;
+  width: 30px !important;
+  height: 30px !important;
+  min-width: 30px !important;
+  min-height: 30px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 7px !important;
+  background: transparent !important;
+  color: #667085 !important;
+  font-size: 15px !important;
+  line-height: 1 !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container,
+  .terminal-audit-container
+) .modern-table.el-table :is(.action-btn, .table-actions .el-button, td.el-table-fixed-column--right .cell > .el-button, .el-table__fixed-right .cell > .el-button) .el-icon {
+  margin: 0 !important;
+  color: currentColor !important;
+  font-size: 16px !important;
+}
+
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container,
+  .terminal-audit-container
+) .modern-table.el-table :is(.action-btn, .table-actions .el-button, td.el-table-fixed-column--right .cell > .el-button, .el-table__fixed-right .cell > .el-button):hover {
+  background: #f2f4f7 !important;
+  color: #2563eb !important;
+  transform: none !important;
+}
+
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container,
+  .terminal-audit-container
+) .modern-table.el-table :is(.action-btn.danger, .action-delete, .action-revoke):hover {
+  background: #fff1f2 !important;
+  color: var(--opshub-red) !important;
+}
+
+#app :is(
+  .kubernetes-container,
+  .clusters-container,
+  .nodes-container,
+  .namespaces-container,
+  .workloads-container,
+  .network-container,
+  .config-container,
+  .storage-container,
+  .access-control-container,
+  .audit-container,
+  .app-diagnosis-container,
+  .inspection-container,
+  .cluster-detail-container,
+  .node-detail-container,
+  .terminal-audit-container
+) :is(.pagination-wrapper, .pagination-container) {
+  display: flex !important;
+  justify-content: flex-end !important;
+  margin: 0 !important;
+  padding: 14px 16px !important;
+  border-top: 1px solid #edf1f7 !important;
+  background: #fff !important;
+}
+
+@media (max-width: 1200px) {
+  #app :is(
+    .clusters-container,
+    .nodes-container,
+    .namespaces-container,
+    .cluster-detail-container,
+    .node-detail-container
+  ) .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 768px) {
+  #app :is(
+    .clusters-container,
+    .nodes-container,
+    .namespaces-container,
+    .workloads-container,
+    .network-container,
+    .config-container,
+    .storage-container,
+    .access-control-container,
+    .audit-container,
+    .app-diagnosis-container,
+    .inspection-container,
+    .cluster-detail-container,
+    .node-detail-container
+  ) :is(.page-header, .header-card, .search-bar, .selector-bar) {
+    align-items: stretch !important;
+    flex-direction: column !important;
+  }
+
+  #app :is(
+    .clusters-container,
+    .nodes-container,
+    .namespaces-container,
+    .cluster-detail-container,
+    .node-detail-container
+  ) .stats-grid {
+    grid-template-columns: 1fr !important;
   }
 }

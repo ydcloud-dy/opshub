@@ -180,7 +180,7 @@
 
       <template #footer>
         <el-button @click="previewDialogVisible = false">取消</el-button>
-        <el-button class="black-button" @click="handleConfirmUpload" :loading="confirming">
+        <el-button type="primary" @click="handleConfirmUpload" :loading="confirming">
           确认上传
         </el-button>
       </template>
@@ -494,13 +494,13 @@ const resetForms = () => {
 }
 
 .upload-box:hover {
-  border-color: #d4af37;
-  background-color: #fff9f0;
+  border-color: #bfdbfe;
+  background-color: #eff6ff;
 }
 
 .upload-icon {
   font-size: 32px;
-  color: #d4af37;
+  color: #2563eb;
   margin-bottom: 12px;
 }
 
@@ -545,20 +545,6 @@ const resetForms = () => {
   margin-top: 20px;
   padding-top: 20px;
   border-top: 1px solid #f0f0f0;
-}
-
-.black-button {
-  background-color: #000000 !important;
-  color: #ffffff !important;
-  border-color: #000000 !important;
-  border-radius: 8px;
-  padding: 10px 20px;
-  font-weight: 500;
-}
-
-.black-button:hover {
-  background-color: #333333 !important;
-  border-color: #333333 !important;
 }
 
 /* 证书预览 */

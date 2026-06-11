@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -494,6 +495,7 @@ func (s *UserService) CreateUser(c *gin.Context) {
 		response.ErrorCode(c, http.StatusBadRequest, "参数错误: "+err.Error())
 		return
 	}
+	normalizeNotificationUserIDs(&req)
 
 	// 验证密码长度
 	minLength := 6
@@ -540,6 +542,7 @@ func (s *UserService) UpdateUser(c *gin.Context) {
 		response.ErrorCode(c, http.StatusBadRequest, "参数错误: "+err.Error())
 		return
 	}
+	normalizeNotificationUserIDs(&req)
 
 	req.ID = uint(id)
 	if err := s.userUseCase.Update(c.Request.Context(), &req); err != nil {
@@ -953,4 +956,36 @@ func (s *UserService) MFALogin(c *gin.Context) {
 		Token: token,
 		User:  user,
 	})
+}
+
+func normalizeNotificationUserIDs(user *rbac.SysUser) {
+	notifyID := strings.TrimSpace(user.NotifyUserID)
+	if notifyID == "" {
+		notifyID = firstNonEmptyString(user.FeishuOpenID, user.FeishuUserID, user.DingTalkUserID, user.WeComUserID)
+	}
+	user.NotifyUserID = notifyID
+	if notifyID == "" {
+		return
+	}
+	if strings.TrimSpace(user.FeishuUserID) == "" {
+		user.FeishuUserID = notifyID
+	}
+	if strings.TrimSpace(user.FeishuOpenID) == "" {
+		user.FeishuOpenID = notifyID
+	}
+	if strings.TrimSpace(user.DingTalkUserID) == "" {
+		user.DingTalkUserID = notifyID
+	}
+	if strings.TrimSpace(user.WeComUserID) == "" {
+		user.WeComUserID = notifyID
+	}
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }

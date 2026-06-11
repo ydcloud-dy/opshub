@@ -59,6 +59,10 @@ func (r *hostRepo) CreateOrUpdate(ctx context.Context, host *asset.Host) error {
 			// 记录已被软删除，恢复它
 			existing.Name = host.Name
 			existing.GroupID = host.GroupID
+			existing.Type = host.Type
+			existing.CloudProvider = host.CloudProvider
+			existing.CloudInstanceID = host.CloudInstanceID
+			existing.CloudAccountID = host.CloudAccountID
 			existing.SSHUser = host.SSHUser
 			existing.IP = host.IP
 			existing.Port = host.Port
@@ -66,6 +70,16 @@ func (r *hostRepo) CreateOrUpdate(ctx context.Context, host *asset.Host) error {
 			existing.Tags = host.Tags
 			existing.Description = host.Description
 			existing.Status = host.Status
+			if existing.Type == "cloud" || existing.CloudProvider != "" || existing.CloudInstanceID != "" || existing.CloudAccountID > 0 {
+				existing.AgentID = ""
+				existing.AgentVersion = ""
+				existing.AgentStatus = ""
+				existing.AgentLastSeen = nil
+				existing.AgentLastCollectAt = nil
+				existing.AgentTokenHash = ""
+				existing.AgentInstallTokenHash = ""
+				existing.AgentInstallTokenExpiresAt = nil
+			}
 			existing.DeletedAt.Time = *new(time.Time) // 清除删除时间
 			existing.DeletedAt.Valid = false
 			return r.db.WithContext(ctx).Unscoped().Save(&existing).Error
@@ -99,7 +113,7 @@ func (r *hostRepo) GetByID(ctx context.Context, id uint) (*asset.Host, error) {
 }
 
 // List 列表查询
-func (r *hostRepo) List(ctx context.Context, page, pageSize int, keyword string, groupIDs []uint, accessibleHostIDs []uint, status *int) ([]*asset.Host, int64, error) {
+func (r *hostRepo) List(ctx context.Context, page, pageSize int, keyword string, groupIDs []uint, accessibleHostIDs []uint, status *int, collectMode, agentStatus string) ([]*asset.Host, int64, error) {
 	var hosts []*asset.Host
 	var total int64
 
@@ -117,6 +131,31 @@ func (r *hostRepo) List(ctx context.Context, page, pageSize int, keyword string,
 	// 添加状态筛选
 	if status != nil {
 		query = query.Where("status = ?", *status)
+	}
+
+	cloudHostCondition := "(type = ? OR cloud_provider <> '' OR cloud_instance_id <> '' OR cloud_account_id > ?)"
+	cloudHostArgs := []any{"cloud", 0}
+
+	switch collectMode {
+	case "agent":
+		query = query.Where("agent_id <> '' AND NOT "+cloudHostCondition, cloudHostArgs...)
+	case "agent_pending":
+		query = query.Where("agent_id = '' AND agent_install_token_hash <> '' AND NOT "+cloudHostCondition, cloudHostArgs...)
+	case "ssh":
+		query = query.Where("("+cloudHostCondition+" OR (agent_id = '' AND agent_install_token_hash = ''))", cloudHostArgs...)
+	}
+
+	switch agentStatus {
+	case "online":
+		args := append([]any{"online", time.Now().Add(-2 * time.Minute)}, cloudHostArgs...)
+		query = query.Where("agent_id <> '' AND agent_status = ? AND agent_last_seen > ? AND NOT "+cloudHostCondition, args...)
+	case "offline":
+		args := append([]any{time.Now().Add(-2 * time.Minute), "offline"}, cloudHostArgs...)
+		query = query.Where("agent_id <> '' AND (agent_last_seen IS NULL OR agent_last_seen <= ? OR agent_status = ?) AND NOT "+cloudHostCondition, args...)
+	case "pending":
+		query = query.Where("agent_id = '' AND agent_install_token_hash <> '' AND NOT "+cloudHostCondition, cloudHostArgs...)
+	case "uninstalled":
+		query = query.Where("agent_id = '' AND agent_install_token_hash = '' AND NOT "+cloudHostCondition, cloudHostArgs...)
 	}
 
 	// 添加可访问主机ID筛选
@@ -167,6 +206,28 @@ func (r *hostRepo) GetByIP(ctx context.Context, ip string) (*asset.Host, error) 
 func (r *hostRepo) GetByCloudInstanceID(ctx context.Context, instanceID string) (*asset.Host, error) {
 	var host asset.Host
 	err := r.db.WithContext(ctx).Where("cloud_instance_id = ?", instanceID).First(&host).Error
+	if err != nil {
+		return nil, err
+	}
+	return &host, nil
+}
+
+// GetByAgentID 根据Agent ID获取主机
+func (r *hostRepo) GetByAgentID(ctx context.Context, agentID string) (*asset.Host, error) {
+	var host asset.Host
+	err := r.db.WithContext(ctx).Where("agent_id = ?", agentID).First(&host).Error
+	if err != nil {
+		return nil, err
+	}
+	return &host, nil
+}
+
+// GetByAgentInstallTokenHash 根据安装注册码哈希获取主机
+func (r *hostRepo) GetByAgentInstallTokenHash(ctx context.Context, tokenHash string) (*asset.Host, error) {
+	var host asset.Host
+	err := r.db.WithContext(ctx).
+		Where("agent_install_token_hash = ? AND agent_install_token_expires_at > ?", tokenHash, time.Now()).
+		First(&host).Error
 	if err != nil {
 		return nil, err
 	}

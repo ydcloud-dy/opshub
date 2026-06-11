@@ -1,31 +1,53 @@
 <template>
   <div class="dashboard">
-    <!-- 顶部统计卡片 -->
-    <el-row :gutter="20" class="stats-row">
-      <el-col :span="6" v-for="(stat, index) in topStats" :key="index">
-        <el-card class="stat-card" shadow="hover">
+    <section class="dashboard-command">
+      <div class="command-copy">
+        <div class="command-title-row">
+          <h1>仪表盘</h1>
+        </div>
+        <p>聚合资产、集群、操作审计与告警数据，快速判断当前运维状态。</p>
+      </div>
+      <div class="command-actions">
+        <el-button plain @click="refreshDashboard">
+          <el-icon><Refresh /></el-icon>
+          刷新
+        </el-button>
+      </div>
+    </section>
+
+    <el-row :gutter="14" class="stats-row">
+      <el-col
+        v-for="(stat, index) in topStats"
+        :key="index"
+        :xs="24"
+        :sm="12"
+        :lg="6"
+      >
+        <el-card class="stat-card" shadow="never" :style="{ '--stat-color': stat.color }">
           <div class="stat-content">
-            <div class="stat-icon" :style="{ backgroundColor: stat.color }">
-              <el-icon :size="32" :color="'#fff'">
+            <div class="stat-icon">
+              <el-icon :size="26">
                 <component :is="stat.icon" />
               </el-icon>
             </div>
             <div class="stat-info">
-              <div class="stat-value">{{ stat.value }}</div>
               <div class="stat-label">{{ stat.label }}</div>
+              <div class="stat-value">{{ stat.value }}</div>
             </div>
           </div>
         </el-card>
       </el-col>
     </el-row>
 
-    <!-- 图表展示区域 -->
-    <el-row :gutter="20" class="chart-row">
-      <el-col :span="12">
-        <el-card class="chart-card" shadow="hover">
+    <el-row :gutter="14" class="chart-row">
+      <el-col :xs="24" :lg="12">
+        <el-card class="chart-card" shadow="never">
           <template #header>
             <div class="card-header">
-              <span class="card-title">主机状态分布</span>
+              <div>
+                <span class="card-title">主机状态分布</span>
+                <span class="card-desc">在线与离线资产占比</span>
+              </div>
               <el-button type="primary" link size="small" @click="$router.push('/asset/hosts')">查看全部</el-button>
             </div>
           </template>
@@ -33,11 +55,14 @@
         </el-card>
       </el-col>
 
-      <el-col :span="12">
-        <el-card class="chart-card" shadow="hover">
+      <el-col :xs="24" :lg="12">
+        <el-card class="chart-card" shadow="never">
           <template #header>
             <div class="card-header">
-              <span class="card-title">K8s集群资源概览</span>
+              <div>
+                <span class="card-title">K8s 集群资源概览</span>
+                <span class="card-desc">节点与 Pod 规模对比</span>
+              </div>
               <el-button type="primary" link size="small" @click="$router.push('/kubernetes/clusters')">查看全部</el-button>
             </div>
           </template>
@@ -46,12 +71,15 @@
       </el-col>
     </el-row>
 
-    <el-row :gutter="20" class="chart-row">
-      <el-col :span="12">
-        <el-card class="chart-card" shadow="hover">
+    <el-row :gutter="14" class="chart-row">
+      <el-col :xs="24" :lg="12">
+        <el-card class="chart-card" shadow="never">
           <template #header>
             <div class="card-header">
-              <span class="card-title">操作趋势（最近7天）</span>
+              <div>
+                <span class="card-title">操作趋势</span>
+                <span class="card-desc">最近 7 天操作记录</span>
+              </div>
               <el-button type="primary" link size="small" @click="$router.push('/audit/operation-logs')">查看全部</el-button>
             </div>
           </template>
@@ -59,12 +87,15 @@
         </el-card>
       </el-col>
 
-      <el-col :span="12">
-        <el-card class="chart-card" shadow="hover">
+      <el-col :xs="24" :lg="12">
+        <el-card class="chart-card" shadow="never">
           <template #header>
             <div class="card-header">
-              <span class="card-title">告警统计</span>
-              <el-button type="primary" link size="small" @click="$router.push('/monitor/alert-logs')">查看全部</el-button>
+              <div>
+                <span class="card-title">告警统计</span>
+                <span class="card-desc">按告警类型聚合</span>
+              </div>
+              <el-button type="primary" link size="small" @click="$router.push('/monitor/fault-centers')">查看全部</el-button>
             </div>
           </template>
           <div ref="alertStatsChart" class="chart-container"></div>
@@ -72,10 +103,9 @@
       </el-col>
     </el-row>
 
-    <!-- 快速入口 -->
-    <el-row :gutter="20" class="quick-access-row">
+    <el-row :gutter="14" class="quick-access-row">
       <el-col :span="24">
-        <el-card class="quick-access-card" shadow="hover">
+        <el-card class="quick-access-card" shadow="never">
           <template #header>
             <div class="card-header">
               <span class="card-title">快速入口</span>
@@ -83,27 +113,27 @@
           </template>
           <div class="quick-access-grid">
             <div class="quick-item" @click="$router.push('/asset/hosts')">
-              <el-icon :size="32" color="#409EFF"><OfficeBuilding /></el-icon>
+              <el-icon><OfficeBuilding /></el-icon>
               <span>主机管理</span>
             </div>
             <div class="quick-item" @click="$router.push('/kubernetes/clusters')">
-              <el-icon :size="32" color="#67C23A"><Connection /></el-icon>
-              <span>K8s集群</span>
+              <el-icon><Connection /></el-icon>
+              <span>K8s 集群</span>
             </div>
             <div class="quick-item" @click="$router.push('/audit/operation-logs')">
-              <el-icon :size="32" color="#E6A23C"><Document /></el-icon>
+              <el-icon><Document /></el-icon>
               <span>操作日志</span>
             </div>
-            <div class="quick-item" @click="$router.push('/monitor/alert-logs')">
-              <el-icon :size="32" color="#F56C6C"><Warning /></el-icon>
-              <span>告警日志</span>
+            <div class="quick-item" @click="$router.push('/monitor/fault-centers')">
+              <el-icon><Warning /></el-icon>
+              <span>故障中心</span>
             </div>
             <div class="quick-item" @click="$router.push('/asset/credentials')">
-              <el-icon :size="32" color="#909399"><Key /></el-icon>
+              <el-icon><Key /></el-icon>
               <span>凭据管理</span>
             </div>
             <div class="quick-item" @click="$router.push('/asset/cloud-accounts')">
-              <el-icon :size="32" color="#606266"><Cloudy /></el-icon>
+              <el-icon><Cloudy /></el-icon>
               <span>云账号</span>
             </div>
           </div>
@@ -121,7 +151,8 @@ import {
   Document,
   Warning,
   Key,
-  Cloudy
+  Cloudy,
+  Refresh
 } from '@element-plus/icons-vue'
 import { getHostList } from '@/api/host'
 import { getClusterList } from '@/api/kubernetes'
@@ -272,26 +303,36 @@ const renderHostStatusChart = () => {
   const offlineCount = hosts.value.filter(h => h.status !== 1).length
 
   const option = {
+    color: ['#16a34a', '#98a2b3'],
     tooltip: {
       trigger: 'item',
-      formatter: '{b}: {c} ({d}%)'
+      formatter: '{b}: {c} ({d}%)',
+      backgroundColor: 'rgba(17, 24, 39, 0.92)',
+      borderWidth: 0,
+      textStyle: { color: '#fff' }
     },
     legend: {
       orient: 'vertical',
       right: 10,
-      top: 'center'
+      top: 'center',
+      itemWidth: 10,
+      itemHeight: 10,
+      textStyle: {
+        color: '#667085',
+        fontSize: 12
+      }
     },
     series: [
       {
         name: '主机状态',
         type: 'pie',
-        radius: ['40%', '70%'],
+        radius: ['48%', '72%'],
         center: ['40%', '50%'],
         avoidLabelOverlap: false,
         itemStyle: {
-          borderRadius: 10,
+          borderRadius: 8,
           borderColor: '#fff',
-          borderWidth: 2
+          borderWidth: 3
         },
         label: {
           show: false,
@@ -308,8 +349,8 @@ const renderHostStatusChart = () => {
           show: false
         },
         data: [
-          { value: onlineCount, name: '在线', itemStyle: { color: '#67C23A' } },
-          { value: offlineCount, name: '离线', itemStyle: { color: '#909399' } }
+          { value: onlineCount, name: '在线', itemStyle: { color: '#16a34a' } },
+          { value: offlineCount, name: '离线', itemStyle: { color: '#98a2b3' } }
         ]
       }
     ]
@@ -332,21 +373,29 @@ const renderK8sResourceChart = () => {
   const podCounts = clusters.value.map(c => c.podCount || 0)
 
   const option = {
+    color: ['#2563eb', '#16a34a'],
     tooltip: {
       trigger: 'axis',
       axisPointer: {
         type: 'shadow'
-      }
+      },
+      backgroundColor: 'rgba(17, 24, 39, 0.92)',
+      borderWidth: 0,
+      textStyle: { color: '#fff' }
     },
     legend: {
       data: ['节点数', 'Pod数'],
-      top: 10
+      top: 4,
+      textStyle: {
+        color: '#667085',
+        fontSize: 12
+      }
     },
     grid: {
-      left: '3%',
-      right: '4%',
-      bottom: '3%',
-      top: '15%',
+      left: 8,
+      right: 12,
+      bottom: 8,
+      top: 44,
       containLabel: true
     },
     xAxis: {
@@ -354,25 +403,44 @@ const renderK8sResourceChart = () => {
       data: clusterNames.length > 0 ? clusterNames : ['暂无数据'],
       axisLabel: {
         interval: 0,
-        rotate: clusterNames.length > 3 ? 30 : 0
+        rotate: clusterNames.length > 3 ? 30 : 0,
+        color: '#667085'
+      },
+      axisLine: {
+        lineStyle: { color: '#e5e9f2' }
+      },
+      axisTick: {
+        show: false
       }
     },
     yAxis: {
-      type: 'value'
+      type: 'value',
+      axisLabel: {
+        color: '#667085'
+      },
+      splitLine: {
+        lineStyle: { color: '#edf1f7', type: 'dashed' }
+      }
     },
     series: [
       {
         name: '节点数',
         type: 'bar',
         data: nodeCounts.length > 0 ? nodeCounts : [0],
-        itemStyle: { color: '#409EFF' },
+        itemStyle: {
+          color: '#2563eb',
+          borderRadius: [6, 6, 0, 0]
+        },
         barMaxWidth: 40
       },
       {
         name: 'Pod数',
         type: 'bar',
         data: podCounts.length > 0 ? podCounts : [0],
-        itemStyle: { color: '#67C23A' },
+        itemStyle: {
+          color: '#16a34a',
+          borderRadius: [6, 6, 0, 0]
+        },
         barMaxWidth: 40
       }
     ]
@@ -409,22 +477,40 @@ const renderOperationTrendChart = () => {
 
   const option = {
     tooltip: {
-      trigger: 'axis'
+      trigger: 'axis',
+      backgroundColor: 'rgba(17, 24, 39, 0.92)',
+      borderWidth: 0,
+      textStyle: { color: '#fff' }
     },
     grid: {
-      left: '3%',
-      right: '4%',
-      bottom: '3%',
-      top: '10%',
+      left: 8,
+      right: 12,
+      bottom: 8,
+      top: 18,
       containLabel: true
     },
     xAxis: {
       type: 'category',
       boundaryGap: false,
-      data: dates
+      data: dates,
+      axisLabel: {
+        color: '#667085'
+      },
+      axisLine: {
+        lineStyle: { color: '#e5e9f2' }
+      },
+      axisTick: {
+        show: false
+      }
     },
     yAxis: {
-      type: 'value'
+      type: 'value',
+      axisLabel: {
+        color: '#667085'
+      },
+      splitLine: {
+        lineStyle: { color: '#edf1f7', type: 'dashed' }
+      }
     },
     series: [
       {
@@ -433,13 +519,12 @@ const renderOperationTrendChart = () => {
         smooth: true,
         data: counts,
         areaStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(230, 162, 60, 0.3)' },
-            { offset: 1, color: 'rgba(230, 162, 60, 0.05)' }
-          ])
+          color: 'rgba(217, 119, 6, 0.08)'
         },
-        itemStyle: { color: '#E6A23C' },
-        lineStyle: { width: 2 }
+        symbol: 'circle',
+        symbolSize: 7,
+        itemStyle: { color: '#d97706' },
+        lineStyle: { width: 3, color: '#d97706' }
       }
     ]
   }
@@ -470,22 +555,37 @@ const renderAlertStatsChart = () => {
     .slice(0, 5)
 
   const option = {
+    color: ['#2563eb', '#16a34a', '#d97706', '#dc2626', '#7c3aed'],
     tooltip: {
       trigger: 'item',
-      formatter: '{b}: {c} ({d}%)'
+      formatter: '{b}: {c} ({d}%)',
+      backgroundColor: 'rgba(17, 24, 39, 0.92)',
+      borderWidth: 0,
+      textStyle: { color: '#fff' }
     },
     legend: {
       orient: 'vertical',
       right: 10,
       top: 'center',
-      data: typeData.map(d => d.name)
+      data: typeData.map(d => d.name),
+      itemWidth: 10,
+      itemHeight: 10,
+      textStyle: {
+        color: '#667085',
+        fontSize: 12
+      }
     },
     series: [
       {
         name: '告警类型',
         type: 'pie',
-        radius: ['40%', '70%'],
+        radius: ['48%', '72%'],
         center: ['40%', '50%'],
+        itemStyle: {
+          borderRadius: 8,
+          borderColor: '#fff',
+          borderWidth: 3
+        },
         data: typeData.length > 0 ? typeData : [{ name: '暂无数据', value: 1 }],
         emphasis: {
           itemStyle: {
@@ -502,173 +602,279 @@ const renderAlertStatsChart = () => {
   window.addEventListener('resize', () => chart.resize())
 }
 
-// 页面加载时获取数据
-onMounted(() => {
+const refreshDashboard = () => {
   fetchHosts()
   fetchClusters()
   fetchOperationLogs()
   fetchAlertLogs()
+}
+
+// 页面加载时获取数据
+onMounted(() => {
+  refreshDashboard()
 })
 </script>
 
 <style scoped>
 .dashboard {
-  padding: 0;
-  background-color: transparent;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
-.stats-row {
-  margin-bottom: 20px;
+.dashboard-command {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px 20px;
+  background: #ffffff;
+  border: 1px solid #e5e9f2;
+  border-radius: 8px;
+}
+
+.command-copy {
+  min-width: 0;
+}
+
+.command-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.command-title-row h1 {
+  margin: 0;
+  color: #111827;
+  font-size: 22px;
+  font-weight: 750;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.command-copy p {
+  margin: 5px 0 0;
+  color: #667085;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.command-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.command-actions :deep(.el-button) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  border-radius: 7px;
+}
+
+.stats-row,
+.chart-row,
+.quick-access-row {
+  row-gap: 16px;
 }
 
 .stat-card {
+  height: 100%;
+  border: 1px solid #e5e9f2;
   border-radius: 8px;
   overflow: hidden;
+  background: #ffffff;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.stat-card:hover {
+  border-color: #d8dee9;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
+  transform: translateY(-1px);
 }
 
 .stat-card :deep(.el-card__body) {
-  padding: 20px;
+  padding: 16px;
 }
 
 .stat-content {
   display: flex;
   align-items: center;
+  gap: 14px;
 }
 
 .stat-icon {
-  width: 64px;
-  height: 64px;
-  border-radius: 12px;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-right: 16px;
+  color: var(--stat-color);
+  background: #f8fafc;
+  border: 1px solid #edf1f7;
 }
 
 .stat-info {
   flex: 1;
+  min-width: 0;
 }
 
 .stat-value {
+  margin-top: 4px;
+  color: #111827;
   font-size: 28px;
-  font-weight: bold;
-  color: #303133;
+  font-weight: 760;
   line-height: 1;
-  margin-bottom: 8px;
+  letter-spacing: 0;
 }
 
 .stat-label {
-  font-size: 14px;
-  color: #909399;
-}
-
-.chart-row {
-  margin-bottom: 20px;
+  color: #667085;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .chart-card {
-  border-radius: 8px;
   height: 100%;
+  border: 1px solid #e5e9f2;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.045);
 }
 
 .chart-card :deep(.el-card__header) {
-  padding: 15px 20px;
-  border-bottom: 1px solid #ebeef5;
+  padding: 14px 16px;
+  border-bottom: 1px solid #eef2f7;
+  background: #fbfcfe;
 }
 
 .chart-card :deep(.el-card__body) {
-  padding: 20px;
+  padding: 10px 14px 14px;
 }
 
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
 }
 
 .card-title {
+  display: block;
+  color: #111827;
   font-size: 16px;
-  font-weight: 500;
-  color: #303133;
+  font-weight: 680;
+}
+
+.card-desc {
+  display: block;
+  margin-top: 3px;
+  color: #98a2b3;
+  font-size: 12px;
 }
 
 .chart-container {
   width: 100%;
-  height: 300px;
-}
-
-.quick-access-row {
-  margin-bottom: 20px;
+  height: 260px;
 }
 
 .quick-access-card {
-  border-radius: 8px;
+  border: 1px solid #e5e9f2;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.045);
 }
 
 .quick-access-card :deep(.el-card__header) {
-  padding: 15px 20px;
-  border-bottom: 1px solid #ebeef5;
+  padding: 14px 16px;
+  border-bottom: 1px solid #eef2f7;
+  background: #fbfcfe;
 }
 
 .quick-access-card :deep(.el-card__body) {
-  padding: 20px;
+  padding: 16px;
 }
 
 .quick-access-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(6, minmax(120px, 1fr));
+  gap: 12px;
 }
 
 .quick-item {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 20px;
+  justify-content: flex-start;
+  gap: 10px;
+  min-height: 58px;
+  padding: 11px 12px;
   border-radius: 8px;
-  background-color: #f5f7fa;
+  background: #f8fafc;
+  border: 1px solid #edf1f7;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: border-color 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
 }
 
 .quick-item:hover {
-  background-color: #ecf5ff;
-  transform: translateY(-4px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  background: #ffffff;
+  border-color: #ffaf35;
+  transform: translateY(-1px);
+}
+
+.quick-item .el-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #111827;
+  background: rgba(255, 175, 53, 0.18);
+  font-size: 20px;
 }
 
 .quick-item span {
-  margin-top: 12px;
+  color: #344054;
   font-size: 14px;
-  color: #606266;
-  font-weight: 500;
+  font-weight: 650;
+  white-space: nowrap;
 }
 
-/* 响应式设计 */
 @media (max-width: 1200px) {
   .stat-value {
-    font-size: 24px;
-  }
-
-  .stat-icon {
-    width: 56px;
-    height: 56px;
+    font-size: 26px;
   }
 
   .chart-container {
-    height: 250px;
+    height: 240px;
+  }
+
+  .quick-access-grid {
+    grid-template-columns: repeat(3, minmax(140px, 1fr));
   }
 }
 
 @media (max-width: 768px) {
+  .dashboard-command {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .command-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
   .quick-access-grid {
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-    gap: 15px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .quick-item {
-    padding: 15px;
+    min-height: 64px;
+    padding: 12px;
   }
 }
 </style>

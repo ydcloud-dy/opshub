@@ -12,8 +12,8 @@
         </div>
       </div>
       <div class="header-actions">
-        <el-button class="black-button" @click="handleAdd">
-          <el-icon style="margin-right: 6px;"><Plus /></el-icon>
+        <el-button type="primary" @click="handleAdd">
+          <el-icon><Plus /></el-icon>
           新增通道
         </el-button>
         <el-button @click="loadData">
@@ -174,7 +174,7 @@
       <template #footer>
         <div class="dialog-footer">
           <el-button @click="dialogVisible = false">取消</el-button>
-          <el-button class="black-button" @click="handleSubmit" :loading="submitting">确定</el-button>
+          <el-button type="primary" @click="handleSubmit" :loading="submitting">确定</el-button>
         </div>
       </template>
     </el-dialog>
