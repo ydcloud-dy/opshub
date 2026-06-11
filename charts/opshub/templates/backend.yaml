@@ -39,7 +39,7 @@ spec:
               mkdir -p /app/data
               wget -q -O "$GEOIP_FILE" "https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-City.mmdb" || \
               wget -q -O "$GEOIP_FILE" "https://cdn.jsdelivr.net/gh/P3TERX/GeoLite.mmdb@download/GeoLite2-City.mmdb" || \
-              echo "Warning: Failed to download GeoIP database"
+              { echo "Warning: Failed to download GeoIP database"; touch "$GEOIP_FILE"; }
               echo "Download complete!"
           volumeMounts:
             - name: geoip-data
@@ -126,7 +126,8 @@ spec:
             {{- toYaml .Values.backend.resources | nindent 12 }}
           volumeMounts:
             - name: geoip-data
-              mountPath: /app/data
+              mountPath: /app/data/GeoLite2-City.mmdb
+              subPath: GeoLite2-City.mmdb
             {{- if .Values.backend.terminalRecordings.persistence.enabled }}
             - name: terminal-recordings
               mountPath: /app/data/terminal-recordings

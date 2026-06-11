@@ -47,7 +47,7 @@ func ensureAgentBinary(filename string) (string, error) {
 	arch := strings.TrimPrefix(filename, "opshub-agent-linux-")
 	sourceRoot, err := findAgentSourceRoot()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("Agent二进制 %s 不存在，且当前运行环境没有OpsHub源码，无法运行时自动构建；请使用新版Dockerfile重新构建后端镜像，确保镜像内包含 /app/data/agent-binaries/%s", filename, filename)
 	}
 
 	outDir := filepath.Join(sourceRoot, agentBinaryDir)
@@ -63,8 +63,8 @@ func ensureAgentBinary(filename string) (string, error) {
 	cmd := exec.Command("go", "build", "-ldflags", "-X main.version=0.1.0", "-o", outPath, "./cmd/opshub-agent")
 	cmd.Dir = sourceRoot
 	cmd.Env = withBuildEnv(os.Environ(), map[string]string{
-		"GOOS":   "linux",
-		"GOARCH": arch,
+		"GOOS":    "linux",
+		"GOARCH":  arch,
 		"GOCACHE": goCacheDir,
 	})
 

@@ -19,8 +19,11 @@ COPY . .
 #COPY go.mod go.sum ./
 # Download dependencies
 RUN go mod download
-# Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o opshub main.go
+# Build the application and Linux Agent binaries used by one-click install
+RUN CGO_ENABLED=0 GOOS=linux go build -o opshub main.go && \
+    mkdir -p data/agent-binaries && \
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=0.1.0" -o data/agent-binaries/opshub-agent-linux-amd64 ./cmd/opshub-agent && \
+    CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "-X main.version=0.1.0" -o data/agent-binaries/opshub-agent-linux-arm64 ./cmd/opshub-agent
 
 # Runtime stage
 FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/selectdb/alpine:latest
@@ -38,12 +41,13 @@ WORKDIR /app
 
 # Copy the binary from builder
 COPY --from=builder /build/opshub .
+COPY --from=builder /build/data/agent-binaries ./data/agent-binaries
 
 # Copy config template as default config
 COPY config/config.yaml.example config/config.yaml
 
-# Create logs directory
-RUN mkdir -p logs
+# Create runtime directories. Keep /app/data available for bundled Agent binaries.
+RUN mkdir -p logs data/terminal-recordings && chmod 755 data/agent-binaries/opshub-agent-linux-*
 
 # Expose port
 EXPOSE 9876
