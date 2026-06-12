@@ -73,7 +73,7 @@
       <aside class="group-sidebar">
         <div class="sidebar-head">
           <span>规则组</span>
-          <el-button link type="primary" @click="groupDialogVisible = true">
+          <el-button link type="primary" @click="openGroupCreate">
             <el-icon><Plus /></el-icon>
           </el-button>
         </div>
@@ -91,7 +91,31 @@
             <el-icon><Folder /></el-icon>
             <span>{{ group.name }}</span>
           </span>
-          <em>{{ getGroupCount(group.id || 0) }}</em>
+          <span class="group-tail">
+            <em>{{ getGroupCount(group.id || 0) }}</em>
+            <el-dropdown
+              v-if="Number(group.id) > 0"
+              trigger="click"
+              placement="bottom-end"
+              popper-class="rule-group-dropdown"
+              @click.stop
+              @command="command => handleRuleGroupCommand(String(command), group)"
+            >
+              <el-button class="group-more" text :icon="MoreFilled" aria-label="规则组操作" @click.stop />
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="edit">
+                    <el-icon><Edit /></el-icon>
+                    编辑规则组
+                  </el-dropdown-item>
+                  <el-dropdown-item command="delete" divided class="danger-item">
+                    <el-icon><Delete /></el-icon>
+                    删除规则组
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </span>
         </div>
       </aside>
 
@@ -610,7 +634,7 @@
       </template>
     </el-drawer>
 
-    <el-dialog v-model="groupDialogVisible" title="新增规则组" width="520px" class="group-dialog">
+    <el-dialog v-model="groupDialogVisible" :title="groupDialogTitle" width="520px" class="group-dialog" @closed="resetGroupForm">
       <el-form :model="groupForm" label-width="96px">
         <el-form-item label="名称">
           <el-input v-model="groupForm.name" placeholder="请输入规则组名称" />
@@ -929,6 +953,7 @@ import {
   Folder,
   Grid,
   Histogram,
+  MoreFilled,
   Plus,
   Refresh,
   RefreshLeft,
@@ -945,6 +970,7 @@ import {
   createMonitorAlertRule,
   createMonitorRuleGroup,
   deleteMonitorAlertRule,
+  deleteMonitorRuleGroup,
   evaluateMonitorAlertRule,
   exportMonitorAlertRules,
   getMonitorAlertEventStats,
@@ -959,6 +985,7 @@ import {
   importPrometheusRuleYaml,
   queryMonitorDataSource,
   updateMonitorAlertRule,
+  updateMonitorRuleGroup,
   type DataSourceType,
   type DataSourceQueryRequest,
   type MonitorAlertEvent,
@@ -1229,6 +1256,7 @@ const batchDialogVisible = ref(false)
 const importDialogVisible = ref(false)
 const drawerTitle = ref('新增规则')
 const selectedGroupId = ref(0)
+const groupEditingId = ref<number>()
 const formRef = ref<FormInstance>()
 const evalResult = ref<EvaluationResult | null>(null)
 const suggestions = ref<MonitorQuerySuggestion[]>([])
@@ -1384,6 +1412,7 @@ const importDataSources = computed(() => dataSources.value.filter(item => item.e
 const currentImportDataSources = computed(() => importForm.mode === 'prometheusRule' ? promCompatibleSources.value : importDataSources.value)
 const importDialogTitle = computed(() => importForm.mode === 'prometheusRule' ? '导入 PrometheusRule' : '导入 OpsHub / WatchAlert JSON')
 const importContentLabel = computed(() => importForm.mode === 'prometheusRule' ? 'YAML' : 'JSON')
+const groupDialogTitle = computed(() => groupEditingId.value ? '编辑规则组' : '新增规则组')
 const importTipText = computed(() => importForm.mode === 'prometheusRule'
   ? '导入 PrometheusRule 常用 rules: 根结构，会使用下方选择的数据源、规则组和故障中心。仅支持 Prometheus / VictoriaMetrics 数据源。'
   : '导入 OpsHub 导出的 JSON，同时兼容 WatchAlert 导出的规则 JSON。跨环境导入时会优先使用下方选择的数据源、规则组和故障中心。'
@@ -2405,17 +2434,74 @@ const handleDelete = async (row: MonitorAlertRule) => {
   await Promise.all([loadRules(), loadEvents(), loadStats(), loadMeta()])
 }
 
+const resetGroupForm = () => {
+  groupEditingId.value = undefined
+  groupForm.name = ''
+  groupForm.description = ''
+}
+
+const openGroupCreate = () => {
+  resetGroupForm()
+  groupDialogVisible.value = true
+}
+
+const openGroupEdit = (group: MonitorRuleGroup) => {
+  if (!group.id) return
+  groupEditingId.value = group.id
+  groupForm.name = group.name || ''
+  groupForm.description = group.description || ''
+  groupDialogVisible.value = true
+}
+
+const handleRuleGroupCommand = (command: string, group: MonitorRuleGroup) => {
+  if (command === 'edit') {
+    openGroupEdit(group)
+    return
+  }
+  if (command === 'delete') {
+    void handleDeleteRuleGroup(group)
+  }
+}
+
 const submitGroup = async () => {
   if (!groupForm.name.trim()) {
     ElMessage.warning('请输入规则组名称')
     return
   }
-  await createMonitorRuleGroup({ name: groupForm.name.trim(), description: groupForm.description.trim(), sort: ruleGroups.value.length + 1 })
-  groupForm.name = ''
-  groupForm.description = ''
+  if (groupEditingId.value) {
+    const current = ruleGroups.value.find(item => item.id === groupEditingId.value)
+    await updateMonitorRuleGroup(groupEditingId.value, {
+      name: groupForm.name.trim(),
+      description: groupForm.description.trim(),
+      sort: current?.sort
+    })
+    ElMessage.success('更新成功')
+  } else {
+    await createMonitorRuleGroup({ name: groupForm.name.trim(), description: groupForm.description.trim(), sort: ruleGroups.value.length + 1 })
+    ElMessage.success('创建成功')
+  }
   groupDialogVisible.value = false
-  ElMessage.success('创建成功')
   await loadMeta()
+}
+
+const handleDeleteRuleGroup = async (group: MonitorRuleGroup) => {
+  if (!group.id) return
+  const count = getGroupCount(group.id)
+  const message = count > 0
+    ? `规则组「${group.name}」下还有 ${count} 条告警规则，删除前请确认这些规则是否已经迁移。确定继续删除吗？`
+    : `确定删除规则组「${group.name}」吗？`
+  await ElMessageBox.confirm(message, '删除规则组', {
+    type: 'warning',
+    confirmButtonText: '删除',
+    cancelButtonText: '取消',
+    confirmButtonClass: 'el-button--danger'
+  })
+  await deleteMonitorRuleGroup(group.id)
+  if (selectedGroupId.value === group.id) {
+    selectedGroupId.value = 0
+  }
+  ElMessage.success('删除成功')
+  await Promise.all([loadMeta(), loadRules(), loadStats()])
 }
 
 const resetForm = () => {
@@ -3419,25 +3505,29 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  min-height: 34px;
-  padding: 0 8px;
+  min-height: 38px;
+  padding: 0 8px 0 10px;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: 8px;
   background: transparent;
   color: #344054;
   font-size: 13px;
   cursor: pointer;
   text-align: left;
   outline: none;
-  transition: background-color .16s ease, border-color .16s ease, color .16s ease;
+  transition: background-color .16s ease, border-color .16s ease, color .16s ease, box-shadow .16s ease;
 }
 
 .group-item.active,
 .group-item:hover,
 .group-item:focus-visible {
-  border-color: #dbe8ff;
-  background: #eef4ff;
+  border-color: #d6e4ff;
+  background: #f5f8ff;
   color: #1d4ed8;
+}
+
+.group-item.active {
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .05);
 }
 
 .group-name {
@@ -3445,6 +3535,7 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 6px;
   min-width: 0;
+  flex: 1;
 }
 
 .group-name > span {
@@ -3456,7 +3547,7 @@ onBeforeUnmount(() => {
 
 .group-item em {
   flex-shrink: 0;
-  min-width: 22px;
+  min-width: 26px;
   height: 20px;
   display: inline-flex;
   align-items: center;
@@ -3467,6 +3558,43 @@ onBeforeUnmount(() => {
   color: #667085;
   font-style: normal;
   font-size: 12px;
+  font-weight: 650;
+}
+
+.group-tail {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
+  min-width: 56px;
+  margin-left: 8px;
+}
+
+.group-more {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 6px;
+  color: #98a2b3;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(2px);
+  transition: opacity .16s ease, transform .16s ease, background-color .16s ease, color .16s ease;
+}
+
+.group-item:hover .group-more,
+.group-item.active .group-more,
+.group-item:focus-within .group-more {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+}
+
+.group-more:hover,
+.group-more:focus {
+  background: #eaf2ff;
+  color: #2563eb;
 }
 
 .group-item.active em,
@@ -5034,6 +5162,48 @@ onBeforeUnmount(() => {
   line-height: 1.45;
 }
 
+:global(.rule-group-dropdown) {
+  min-width: 136px;
+}
+
+:global(.rule-group-dropdown .el-dropdown-menu) {
+  padding: 6px;
+}
+
+:global(.rule-group-dropdown .el-dropdown-menu__item) {
+  height: 32px;
+  border-radius: 6px;
+  color: #344054;
+  font-size: 13px;
+}
+
+:global(.rule-group-dropdown .el-dropdown-menu__item .el-icon) {
+  margin-right: 6px;
+  color: #667085;
+}
+
+:global(.rule-group-dropdown .el-dropdown-menu__item:hover) {
+  background: #f0f5ff;
+  color: #1d4ed8;
+}
+
+:global(.rule-group-dropdown .el-dropdown-menu__item:hover .el-icon) {
+  color: #1d4ed8;
+}
+
+:global(.rule-group-dropdown .danger-item) {
+  color: #cf1322;
+}
+
+:global(.rule-group-dropdown .danger-item .el-icon) {
+  color: #cf1322;
+}
+
+:global(.rule-group-dropdown .danger-item:hover) {
+  background: #fff1f0;
+  color: #cf1322;
+}
+
 :deep(.rule-drawer .el-drawer__header),
 :deep(.rule-dialog .el-dialog__header),
 :deep(.group-dialog .el-dialog__header) {
@@ -5159,17 +5329,21 @@ onBeforeUnmount(() => {
 }
 
 .monitor-rules-page .group-item {
-  min-height: 34px;
-  border-radius: 6px;
+  min-height: 38px;
+  border-radius: 8px;
   font-size: 13px;
+}
+
+.monitor-rules-page .group-tail {
+  min-width: 58px;
 }
 
 .monitor-rules-page .group-item.active,
 .monitor-rules-page .group-item:hover,
 .monitor-rules-page .group-item:focus-visible {
-  border-color: #d9d9d9;
-  background: #fafafa;
-  color: #111827;
+  border-color: #d6e4ff;
+  background: #f5f8ff;
+  color: #1d4ed8;
 }
 
 .monitor-rules-page .rules-main {

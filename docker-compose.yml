@@ -53,7 +53,7 @@ services:
       - opshub-network
 
   backend:
-    image: docker.1ms.run/dyclouds/opshub-api:v0.0.5
+    image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/dyclouds/opshub-api:v0.0.5
     container_name: opshub-backend
     restart: unless-stopped
     ports:
@@ -86,7 +86,7 @@ services:
       - opshub-network
 
   frontend:
-    image: docker.1ms.run/dyclouds/opshub-web:v0.0.5
+    image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/dyclouds/opshub-web:v0.0.5
     container_name: opshub-frontend
     restart: unless-stopped
     ports:
