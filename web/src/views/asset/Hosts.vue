@@ -966,6 +966,30 @@
           <span class="agent-target-ip">{{ agentInstallTarget.ip }}:{{ agentInstallTarget.port }}</span>
           <el-tag size="small" type="warning">令牌24小时有效</el-tag>
         </div>
+        <div class="agent-install-server" :class="{ warning: agentInstallServerUrlWarning }">
+          <div class="agent-install-server-header">
+            <div>
+              <div class="agent-install-server-title">Agent访问地址</div>
+              <div class="agent-install-server-desc">
+                必须填写目标主机能访问到的 OpsHub 或 Agent Gateway 地址，和 Agent管理页共用同一配置。
+              </div>
+            </div>
+          </div>
+          <el-input
+            v-model="agentInstallServerUrl"
+            placeholder="例如：http://10.122.24.107:32160"
+            clearable
+            :disabled="agentInstallLoading"
+            @blur="persistAgentInstallServerUrl"
+          />
+        </div>
+        <el-alert
+          v-if="agentInstallServerUrlWarning"
+          type="warning"
+          :closable="false"
+          show-icon
+          :title="agentInstallServerUrlWarning"
+        />
         <el-input
           v-model="agentInstallCommand"
           type="textarea"
@@ -980,6 +1004,9 @@
       </div>
       <template #footer>
         <el-button @click="agentInstallDialogVisible = false">关闭</el-button>
+        <el-button @click="generateAgentInstallCommand" :loading="agentInstallLoading" :disabled="!agentInstallTarget">
+          重新生成
+        </el-button>
         <el-button type="primary" @click="copyAgentInstallCommand" :disabled="!agentInstallCommand">
           复制命令
         </el-button>
@@ -1514,6 +1541,8 @@ const agentInstallDialogVisible = ref(false)
 const agentInstallLoading = ref(false)
 const agentInstallCommand = ref('')
 const agentInstallTarget = ref<any>(null)
+const agentInstallServerUrl = ref('')
+const AGENT_INSTALL_SERVER_URL_KEY = 'opshub_agent_install_server_url'
 
 // 主机详情
 const showHostDetailDialog = ref(false)
@@ -1828,6 +1857,69 @@ const getAgentActionTip = (host: any) => {
     return host?.agentDisabledReason || '云主机仅支持SSH采集'
   }
   return host?.agentId ? '重新安装Agent' : '安装Agent'
+}
+
+const normalizeAgentInstallServerUrl = (value: string) => value.trim().replace(/\/+$/, '')
+
+const parseAgentInstallServerUrl = (value: string) => {
+  try {
+    const url = new URL(normalizeAgentInstallServerUrl(value))
+    if (!['http:', 'https:'].includes(url.protocol)) return null
+    return url
+  } catch {
+    return null
+  }
+}
+
+const isLocalAgentInstallServer = (value: string) => {
+  const url = parseAgentInstallServerUrl(value)
+  if (!url) return false
+  return ['localhost', '127.0.0.1', '::1', '0.0.0.0'].includes(url.hostname)
+}
+
+const agentInstallServerUrlWarning = computed(() => {
+  if (!agentInstallServerUrl.value.trim()) return ''
+  if (isLocalAgentInstallServer(agentInstallServerUrl.value)) {
+    return '当前地址是 localhost/127.0.0.1，远端主机会连接它自己，Agent 安装会失败。'
+  }
+  return ''
+})
+
+const initAgentInstallServerUrl = () => {
+  const saved = localStorage.getItem(AGENT_INSTALL_SERVER_URL_KEY)
+  agentInstallServerUrl.value = saved || window.location.origin
+}
+
+const persistAgentInstallServerUrl = () => {
+  const normalized = normalizeAgentInstallServerUrl(agentInstallServerUrl.value)
+  agentInstallServerUrl.value = normalized
+  if (normalized) {
+    localStorage.setItem(AGENT_INSTALL_SERVER_URL_KEY, normalized)
+  }
+}
+
+const ensureAgentInstallServerUrl = async () => {
+  const normalized = normalizeAgentInstallServerUrl(agentInstallServerUrl.value)
+  const parsed = parseAgentInstallServerUrl(normalized)
+  if (!parsed) {
+    await ElMessageBox.alert(
+      '请先填写正确的 Agent 访问地址，必须以 http:// 或 https:// 开头。',
+      'Agent访问地址无效',
+      { type: 'warning', confirmButtonText: '知道了' }
+    )
+    return ''
+  }
+  if (isLocalAgentInstallServer(normalized)) {
+    await ElMessageBox.alert(
+      '当前地址是 localhost/127.0.0.1。这个地址会在远端主机上执行，远端会连接它自己。请改成目标主机能访问到的 OpsHub 或 Agent Gateway 地址。',
+      'Agent访问地址不可用',
+      { type: 'warning', confirmButtonText: '去修改' }
+    )
+    return ''
+  }
+  agentInstallServerUrl.value = normalized
+  localStorage.setItem(AGENT_INSTALL_SERVER_URL_KEY, normalized)
+  return normalized
 }
 
 // 加载分组树
@@ -2543,10 +2635,18 @@ const handleAgentInstall = async (row: any) => {
   }
   agentInstallTarget.value = row
   agentInstallDialogVisible.value = true
+  await generateAgentInstallCommand()
+}
+
+const generateAgentInstallCommand = async () => {
+  const row = agentInstallTarget.value
+  if (!row?.id) return
   agentInstallLoading.value = true
   agentInstallCommand.value = ''
   try {
-    const data = await getAgentInstallCommand(row.id) as any
+    const serverUrl = await ensureAgentInstallServerUrl()
+    if (!serverUrl) return
+    const data = await getAgentInstallCommand(row.id, { server: serverUrl }) as any
     agentInstallCommand.value = data.command || ''
     if (!agentInstallCommand.value) {
       ElMessage.warning('未获取到Agent安装命令')
@@ -2850,6 +2950,7 @@ onBeforeUnmount(() => {
 })
 
 onMounted(() => {
+  initAgentInstallServerUrl()
   loadGroupTree()
   loadHostList()
   loadCredentialList()
@@ -3785,6 +3886,39 @@ onMounted(() => {
 .agent-target-ip {
   color: #606266;
   font-size: 13px;
+}
+
+.agent-install-server {
+  padding: 12px 14px;
+  background: #fbfcfe;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+}
+
+.agent-install-server.warning {
+  border-color: #fed7aa;
+  background: #fffaf3;
+}
+
+.agent-install-server-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.agent-install-server-title {
+  color: #111827;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.agent-install-server-desc {
+  margin-top: 4px;
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .agent-command-input :deep(.el-textarea__inner) {

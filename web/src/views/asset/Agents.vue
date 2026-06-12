@@ -15,6 +15,16 @@
           <el-icon><Lightning /></el-icon>
           批量一键安装
         </el-button>
+        <el-button
+          type="danger"
+          plain
+          :disabled="selectedRevokableHosts.length === 0"
+          :loading="batchRevoking"
+          @click="handleBatchRevoke"
+        >
+          <el-icon><Delete /></el-icon>
+          批量解除
+        </el-button>
         <el-button @click="loadAgents">
           <el-icon><Refresh /></el-icon>
           刷新
@@ -277,6 +287,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Connection,
+  Delete,
   Lightning,
   Monitor,
   Refresh,
@@ -292,6 +303,7 @@ import {
 
 const loading = ref(false)
 const batchInstalling = ref(false)
+const batchRevoking = ref(false)
 const agentHosts = ref<any[]>([])
 const selectedHosts = ref<any[]>([])
 const installingIds = ref<Set<number>>(new Set())
@@ -332,6 +344,7 @@ const pageStats = computed(() => {
 })
 
 const selectedInstallableHosts = computed(() => selectedHosts.value.filter(isAgentInstallable))
+const selectedRevokableHosts = computed(() => selectedHosts.value.filter(isAgentRevokable))
 
 const isCloudHost = (host: any) => {
   return host?.type === 'cloud' || !!host?.cloudProvider || !!host?.cloudInstanceId || !!host?.cloudAccountId
@@ -344,6 +357,10 @@ const isAgentSupported = (host: any) => {
 }
 
 const isAgentInstallable = (host: any) => isAgentSupported(host)
+
+const isAgentRevokable = (host: any) => {
+  return isAgentSupported(host) && !!(host?.agentId || host?.collectMode === 'agent_pending')
+}
 
 const getAgentDisabledReason = (host: any) => {
   if (isAgentInstallable(host)) return ''
@@ -622,6 +639,52 @@ const handleRevoke = async (row: any) => {
     if (error !== 'cancel' && error !== 'close') {
       ElMessage.error(error.message || '解除Agent绑定失败')
     }
+  }
+}
+
+const handleBatchRevoke = async () => {
+  const hosts = selectedRevokableHosts.value
+  if (hosts.length === 0) {
+    ElMessage.warning('请先选择已安装或待安装的Agent主机')
+    return
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      `确定解除选中的 ${hosts.length} 台主机Agent绑定吗？解除后这些Agent将无法继续上报，需要重新安装才能恢复。`,
+      '批量解除Agent绑定',
+      {
+        confirmButtonText: '解除绑定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+
+    batchRevoking.value = true
+    const failures: string[] = []
+    for (const host of hosts) {
+      try {
+        await revokeHostAgent(host.id)
+      } catch (error: any) {
+        failures.push(`${host.name || host.ip}: ${error.message || '解除失败'}`)
+      }
+    }
+
+    selectedHosts.value = []
+    await loadAgents()
+
+    if (failures.length > 0) {
+      ElMessage.warning(`批量解除完成，成功 ${hosts.length - failures.length} 台，失败 ${failures.length} 台`)
+      console.warn('批量解除Agent失败明细:', failures)
+    } else {
+      ElMessage.success(`已解除 ${hosts.length} 台主机的Agent绑定`)
+    }
+  } catch (error: any) {
+    if (error !== 'cancel' && error !== 'close') {
+      ElMessage.error(error.message || '批量解除Agent绑定失败')
+    }
+  } finally {
+    batchRevoking.value = false
   }
 }
 
