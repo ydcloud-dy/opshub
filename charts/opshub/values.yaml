@@ -20,7 +20,7 @@ backend:
   replicaCount: 2
 
   image:
-    repository: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/dyclouds/opshub-api
+    repository: docker.1ms.run/dyclouds/opshub-api
     tag: v0.0.5
     pullPolicy: Always
 
@@ -83,7 +83,7 @@ frontend:
   replicaCount: 2
 
   image:
-    repository: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/dyclouds/opshub-web
+    repository: docker.1ms.run/dyclouds/opshub-web
     tag: v0.0.5
     pullPolicy: Always
 
