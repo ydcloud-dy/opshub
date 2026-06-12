@@ -42,6 +42,7 @@ WORKDIR /app
 # Copy the binary from builder
 COPY --from=builder /build/opshub .
 COPY --from=builder /build/data/agent-binaries ./data/agent-binaries
+COPY data/GeoLite2-City.mmdb ./data/GeoLite2-City.mmdb
 
 # Copy config template as default config
 COPY config/config.yaml.example config/config.yaml

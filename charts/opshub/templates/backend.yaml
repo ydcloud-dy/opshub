@@ -20,30 +20,6 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       initContainers:
-        # 下载 GeoIP 数据库
-        - name: download-geoip
-          image: "{{ .Values.global.busybox.repository }}:{{ .Values.global.busybox.tag }}"
-          command:
-            - sh
-            - -c
-            - |
-              GEOIP_FILE="/app/data/GeoLite2-City.mmdb"
-              if [ -f "$GEOIP_FILE" ]; then
-                FILE_SIZE=$(stat -c%s "$GEOIP_FILE" 2>/dev/null || echo "0")
-                if [ "$FILE_SIZE" -gt 10000000 ]; then
-                  echo "GeoLite2-City.mmdb already exists, skipping download"
-                  exit 0
-                fi
-              fi
-              echo "Downloading GeoLite2-City.mmdb..."
-              mkdir -p /app/data
-              wget -q -O "$GEOIP_FILE" "https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-City.mmdb" || \
-              wget -q -O "$GEOIP_FILE" "https://cdn.jsdelivr.net/gh/P3TERX/GeoLite.mmdb@download/GeoLite2-City.mmdb" || \
-              { echo "Warning: Failed to download GeoIP database"; touch "$GEOIP_FILE"; }
-              echo "Download complete!"
-          volumeMounts:
-            - name: geoip-data
-              mountPath: /app/data
         # 等待 MySQL 就绪
         - name: wait-for-mysql
           image: "{{ .Values.global.busybox.repository }}:{{ .Values.global.busybox.tag }}"
@@ -124,14 +100,11 @@ spec:
               {{- end }}
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
+          {{- if .Values.backend.terminalRecordings.persistence.enabled }}
           volumeMounts:
-            - name: geoip-data
-              mountPath: /app/data/GeoLite2-City.mmdb
-              subPath: GeoLite2-City.mmdb
-            {{- if .Values.backend.terminalRecordings.persistence.enabled }}
             - name: terminal-recordings
               mountPath: /app/data/terminal-recordings
-            {{- end }}
+          {{- end }}
           {{- if .Values.backend.livenessProbe.enabled }}
           livenessProbe:
             httpGet:
@@ -162,14 +135,12 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if .Values.backend.terminalRecordings.persistence.enabled }}
       volumes:
-        - name: geoip-data
-          emptyDir: {}
-        {{- if .Values.backend.terminalRecordings.persistence.enabled }}
         - name: terminal-recordings
           persistentVolumeClaim:
             claimName: {{ include "opshub.fullname" . }}-terminal-recordings
-        {{- end }}
+      {{- end }}
 ---
 apiVersion: v1
 kind: Service

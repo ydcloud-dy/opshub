@@ -84,7 +84,7 @@ Nginx 日志分析插件提供全面的 Nginx 访问日志采集、分析和可�
 
 ### GeoIP 数据库
 
-插件使用 MaxMind GeoLite2 数据库进行 IP 地理位置解析。Helm 部署时会自动下载，手动部署需要：
+插件使用 MaxMind GeoLite2 数据库进行 IP 地理位置解析。Helm 部署使用后端镜像内置的 `data/GeoLite2-City.mmdb`，手动部署需要：
 
 ```bash
 # 下载 GeoLite2-City 数据库
