@@ -248,6 +248,23 @@ func TestLokiMatchedLogsAnnotationsAndNoticeVariables(t *testing.T) {
 	}
 }
 
+func TestLokiMatchedLogLookbackUsesLogQLRange(t *testing.T) {
+	rule := &model.AlertRule{
+		Query:            `sum(count_over_time({project="bibf",env="prod"} |= "### Error updating database" [100h]))`,
+		ForSeconds:       20,
+		EvaluateInterval: 10,
+	}
+
+	if got, want := lokiMatchedLogLookbackSeconds(rule), 100*60*60; got != want {
+		t.Fatalf("expected Loki matched log lookback to follow LogQL range, got %d want %d", got, want)
+	}
+
+	rule.Query = `sum(count_over_time({project="bibf",env="prod"} |= "ERROR" [30d]))`
+	if got, want := lokiMatchedLogLookbackSeconds(rule), maxLokiMatchedLogLookbackSeconds; got != want {
+		t.Fatalf("expected Loki matched log lookback to be capped, got %d want %d", got, want)
+	}
+}
+
 func TestLegacyMarkdownNoticeAppendsMatchedLogsBlock(t *testing.T) {
 	logs := "2026-06-11 10:40:10 ERROR sage接口报错\n2026-06-11 10:40:11 ERROR 查询文章详情失败"
 	text := appendMatchedLogsBlockIfMissing("### OpsHub 告警中\n\n> 事件说明：日志过多", logs, noticeMatchedLogsBlock(logs), false)

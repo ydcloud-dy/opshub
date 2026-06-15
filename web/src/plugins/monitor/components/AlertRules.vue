@@ -1237,7 +1237,8 @@ const fallbackLabelKeysBySource: Record<string, string[]> = {
 
 const logDataSourceTypes: DataSourceType[] = ['loki']
 const lokiMatchedLogsPendingText = '请先点击“数据预览”，系统会用上面的日志查询去 Loki 拉取最近命中日志。'
-const lokiMatchedLogsEmptyText = '最近查询窗口内未查询到命中日志；请确认 Loki 中当前时间范围有匹配日志，或放宽 LogQL / 时间范围。'
+const lokiMatchedLogsEmptyText = '当前查询窗口内未查询到命中日志；请确认 Loki 中对应时间范围有匹配日志，或放宽 LogQL / 时间范围。'
+const maxLokiPreviewLookbackSeconds = 7 * 24 * 60 * 60
 
 const createLabelToken = (key: string): DetailTemplateToken => ({
   token: `\${labels.${key}}`,
@@ -2833,7 +2834,7 @@ const getLokiPreviewLookbackSeconds = (query: string) => {
   const forSeconds = Math.max(...form.severityRules.map(item => Number(item.forSeconds) || 0), 0)
   const intervalSeconds = Number(form.evaluateInterval) || 0
   const value = Math.max(rangeSeconds, forSeconds, intervalSeconds, 300)
-  return Math.min(Math.max(value, 60), 3600)
+  return Math.min(Math.max(value, 60), maxLokiPreviewLookbackSeconds)
 }
 
 const extractLastLokiPreviewRangeSeconds = (query: string) => {

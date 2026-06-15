@@ -57,9 +57,10 @@ var (
 )
 
 const (
-	maxMatchedLogLinesPerEvent = 5
-	maxMatchedLogLineChars     = 700
-	maxMatchedLogsTextChars    = 2400
+	maxMatchedLogLinesPerEvent       = 5
+	maxMatchedLogLineChars           = 700
+	maxMatchedLogsTextChars          = 2400
+	maxLokiMatchedLogLookbackSeconds = 7 * 24 * 60 * 60
 )
 
 func NewDataSourceHandler(db *gorm.DB) *DataSourceHandler {
@@ -4169,8 +4170,8 @@ func lokiMatchedLogLookbackSeconds(rule *model.AlertRule) int {
 	if window < 60 {
 		window = 60
 	}
-	if window > 3600 {
-		window = 3600
+	if window > maxLokiMatchedLogLookbackSeconds {
+		window = maxLokiMatchedLogLookbackSeconds
 	}
 	return window
 }
