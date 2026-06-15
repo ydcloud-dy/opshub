@@ -3018,6 +3018,7 @@ func (h *DataSourceHandler) enrichLokiMatchedLogs(ctx context.Context, ds *model
 	if strings.TrimSpace(logQuery) == "" {
 		return
 	}
+	result.MatchedLogQuery = logQuery
 	windowSeconds := lokiMatchedLogLookbackSeconds(rule)
 	end := now
 	start := end.Add(-time.Duration(windowSeconds) * time.Second)
@@ -3042,6 +3043,73 @@ func (h *DataSourceHandler) enrichLokiMatchedLogs(ctx context.Context, ds *model
 	result.MatchedLogs = logs
 	result.MatchedLogCount = count
 	result.MatchedLogQuery = logQuery
+}
+
+func (h *DataSourceHandler) ensureLokiMatchedLogsForNotificationEvents(ctx context.Context, events []*model.AlertEvent) {
+	rules := map[uint]*model.AlertRule{}
+	dataSources := map[uint]*model.DataSource{}
+	for _, event := range events {
+		if event == nil || !strings.EqualFold(strings.TrimSpace(event.DataSourceType), "loki") {
+			continue
+		}
+		annotations := parseStringMap(event.Annotations)
+		if strings.TrimSpace(firstNonEmpty(annotations["matched_logs"], annotations["matchedLogs"])) != "" {
+			continue
+		}
+		if event.RuleID == 0 || event.DataSourceID == 0 {
+			continue
+		}
+
+		rule := rules[event.RuleID]
+		if rule == nil {
+			var item model.AlertRule
+			if err := h.db.First(&item, event.RuleID).Error; err != nil {
+				continue
+			}
+			rule = &item
+			rules[event.RuleID] = rule
+		}
+		ds := dataSources[event.DataSourceID]
+		if ds == nil {
+			var item model.DataSource
+			if err := h.db.First(&item, event.DataSourceID).Error; err != nil {
+				continue
+			}
+			ds = &item
+			dataSources[event.DataSourceID] = ds
+		}
+		if !strings.EqualFold(strings.TrimSpace(ds.Type), "loki") {
+			continue
+		}
+
+		labels := parseStringMap(event.Labels)
+		evaluatedAt := event.LastEvalAt
+		if evaluatedAt.IsZero() {
+			evaluatedAt = time.Now()
+		}
+		result := &alertRuleEvaluationResult{
+			RuleID:          event.RuleID,
+			RuleName:        event.RuleName,
+			DataSourceName:  event.DataSourceName,
+			DataSourceType:  event.DataSourceType,
+			Severity:        event.Severity,
+			State:           event.State,
+			Value:           event.Value,
+			Condition:       event.Condition,
+			Threshold:       event.Threshold,
+			Labels:          labels,
+			Fingerprint:     event.Fingerprint,
+			Message:         event.Message,
+			MatchedLogQuery: strings.TrimSpace(firstNonEmpty(annotations["matched_log_query"], annotations["matchedLogQuery"])),
+			EvaluatedAt:     evaluatedAt,
+		}
+		h.enrichLokiMatchedLogs(ctx, ds, rule, result, evaluatedAt)
+		if strings.TrimSpace(result.MatchedLogQuery) == "" && len(result.MatchedLogs) == 0 && result.MatchedLogCount == 0 {
+			continue
+		}
+		event.Annotations = buildRuleAnnotations(rule, result, labels, event.Fingerprint)
+		_ = h.db.Model(event).Update("annotations", event.Annotations).Error
+	}
 }
 
 func matchedLogsForSampleLabels(samples []ruleEvaluationSample, labels map[string]string, limit int) ([]matchedLogEntry, int) {
@@ -5182,6 +5250,7 @@ func (h *DataSourceHandler) sendAndRecordRuleNotifications(ctx context.Context, 
 	if len(events) == 0 {
 		return false
 	}
+	h.ensureLokiMatchedLogsForNotificationEvents(ctx, events)
 
 	if h.shouldAggregateRuleNotifications(rule, events) {
 		payload := buildAggregatedRuleNotificationPayload(events)
@@ -5256,6 +5325,7 @@ func (h *DataSourceHandler) processFaultCenterEscalations(ctx context.Context, r
 	if len(dueEvents) == 0 {
 		return
 	}
+	h.ensureLokiMatchedLogsForNotificationEvents(ctx, dueEvents)
 
 	if strings.EqualFold(strings.TrimSpace(center.AggregationType), "Rule") && len(dueEvents) > 1 {
 		payload := buildAggregatedRuleNotificationPayload(dueEvents)
