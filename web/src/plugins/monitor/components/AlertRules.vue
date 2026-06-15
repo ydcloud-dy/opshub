@@ -564,7 +564,7 @@
                   :rows="5"
                   maxlength="2000"
                   show-word-limit
-                  placeholder="例如：节点：${labels.instance}，CPU 使用率过高，当前：${value}%，阈值：${threshold}%，请及时处理。"
+                  placeholder="例如：节点：${labels.instance}，CPU 使用率过高，当前：${labels.value}%，阈值：${threshold}%，请及时处理。"
                 />
               </el-form-item>
               <div class="template-token-row">
@@ -1162,9 +1162,9 @@ interface EvaluationResult {
 const tableHeaderStyle = { background: '#fafbfc', color: '#606266', fontWeight: '600' }
 const baseDetailTemplateTokens: DetailTemplateToken[] = [
   {
-    token: '${value}',
+    token: '${labels.value}',
     label: '当前值',
-    description: '当前查询返回并参与判断的数值；需要评估或数据预览后才会有真实值。'
+    description: '当前查询返回并参与判断的数值，兼容 WatchAlert 的 {{ $labels.value }} 写法。'
   },
   {
     token: '${condition}',
@@ -1430,7 +1430,7 @@ const jsonImportPlaceholder = `[
     "repeatNoticeInterval": 3600,
     "prometheusConfig": {
       "promQL": "(1 - avg by(instance) (rate(node_cpu_seconds_total{mode=\\"idle\\"}[5m]))) * 100",
-      "annotations": "CPU 使用率过高，当前值 \${value}%",
+      "annotations": "CPU 使用率过高，当前值 \${labels.value}%",
       "rules": [{ "forDuration": 60, "severity": "P1", "expr": ">80" }]
     }
   }
@@ -1466,6 +1466,7 @@ const availableDetailTemplateTokens = computed<DetailTemplateToken[]>(() => {
   })
   Array.from(labelKeys)
     .filter(Boolean)
+    .filter(key => key !== 'value')
     .slice(0, 8)
     .forEach(key => tokens.push(createLabelToken(key)))
   tokens.push(...baseDetailTemplateTokens)
@@ -2716,12 +2717,13 @@ const currentLokiMatchedLogPreview = () => {
 }
 
 const withFormLabels = (context: DetailPreviewContext): DetailPreviewContext => {
-  const labels = { ...context.labels }
+  const labels = labelsWithCurrentValue(context.labels, context.value)
   form.labels.forEach(item => {
     const key = item.key.trim()
     if (!key) return
     labels[key] = renderSimpleDetailTemplateValue(item.value, context, labels)
   })
+  labels.value = context.value
   return { ...context, labels }
 }
 
@@ -2737,6 +2739,7 @@ const renderDetailTemplatePreview = (template: string, context: DetailPreviewCon
 
 const renderSimpleDetailTemplateValue = (value: string, context: DetailPreviewContext, labels: Record<string, string>) => {
   const matchedLogsBlock = context.matchedLogs ? `\`\`\`text\n${sanitizePreviewCodeBlock(context.matchedLogs)}\n\`\`\`` : ''
+  const labelsText = formatPreviewLabels(labels)
   const replacements: Record<string, string> = {
     '{{ruleName}}': form.name || '告警规则',
     '{{rule_name}}': form.name || '告警规则',
@@ -2746,6 +2749,7 @@ const renderSimpleDetailTemplateValue = (value: string, context: DetailPreviewCo
     '{{state}}': context.state,
     '${state}': context.state,
     '{{value}}': context.value,
+    '{{ $value }}': context.value,
     '${value}': context.value,
     '{{condition}}': context.condition,
     '${condition}': context.condition,
@@ -2759,6 +2763,9 @@ const renderSimpleDetailTemplateValue = (value: string, context: DetailPreviewCo
     '${message}': context.message,
     '{{fingerprint}}': context.fingerprint,
     '${fingerprint}': context.fingerprint,
+    '{{labels}}': labelsText,
+    '{{ $labels }}': labelsText,
+    '${labels}': labelsText,
     '{{matchedLogs}}': context.matchedLogs,
     '{{matched_logs}}': context.matchedLogs,
     '${matched_logs}': context.matchedLogs,
@@ -2776,10 +2783,25 @@ const renderSimpleDetailTemplateValue = (value: string, context: DetailPreviewCo
   Object.entries(replacements).forEach(([key, replacement]) => {
     rendered = rendered.replaceAll(key, replacement)
   })
-  return rendered.replace(/\$\{labels\.([A-Za-z0-9_.:-]+)\}|{{\s*labels\.([A-Za-z0-9_.:-]+)\s*}}/g, (_match, keyA, keyB) => {
+  rendered = rendered.replace(/{{\s*\$?value\s*}}/g, context.value)
+  rendered = rendered.replace(/{{\s*\$?labels\s*}}|\$\{labels\}/g, labelsText)
+  return rendered.replace(/\$\{labels\.([A-Za-z0-9_.:-]+)\}|{{\s*\$?labels\.([A-Za-z0-9_.:-]+)\s*}}/g, (_match, keyA, keyB) => {
     const key = keyA || keyB
     return labels[key] || ''
   })
+}
+
+const labelsWithCurrentValue = (labels: Record<string, string>, value: string) => ({
+  ...labels,
+  value
+})
+
+const formatPreviewLabels = (labels: Record<string, string>) => {
+  const entries = Object.entries(labels)
+    .filter(([key, value]) => key.trim() && String(value || '').trim())
+    .sort(([left], [right]) => left.localeCompare(right))
+  if (!entries.length) return ''
+  return entries.map(([key, value]) => `${key}=${value}`).join(', ')
 }
 
 const splitDetailPreviewBlocks = (text: string): DetailPreviewBlock[] => {

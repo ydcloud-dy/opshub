@@ -46,10 +46,10 @@ type DataSourceHandler struct {
 }
 
 var (
-	noticeLabelTemplatePattern      = regexp.MustCompile(`\$\{labels\.([A-Za-z0-9_.:-]+)\}`)
-	noticeAnnotationTemplatePattern = regexp.MustCompile(`\$\{annotations\.([A-Za-z0-9_.:-]+)\}`)
-	alertLabelTemplatePattern       = regexp.MustCompile(`\$\{labels\.([A-Za-z0-9_.:-]+)\}|{{\s*labels\.([A-Za-z0-9_.:-]+)\s*}}`)
-	alertAnnotationTemplatePattern  = regexp.MustCompile(`\$\{annotations\.([A-Za-z0-9_.:-]+)\}|{{\s*annotations\.([A-Za-z0-9_.:-]+)\s*}}`)
+	noticeLabelTemplatePattern      = regexp.MustCompile(`\$\{labels\.([A-Za-z0-9_.:-]+)\}|{{\s*\$?labels\.([A-Za-z0-9_.:-]+)\s*}}`)
+	noticeAnnotationTemplatePattern = regexp.MustCompile(`\$\{annotations\.([A-Za-z0-9_.:-]+)\}|{{\s*\$?annotations\.([A-Za-z0-9_.:-]+)\s*}}`)
+	alertLabelTemplatePattern       = regexp.MustCompile(`\$\{labels\.([A-Za-z0-9_.:-]+)\}|{{\s*\$?labels\.([A-Za-z0-9_.:-]+)\s*}}`)
+	alertAnnotationTemplatePattern  = regexp.MustCompile(`\$\{annotations\.([A-Za-z0-9_.:-]+)\}|{{\s*\$?annotations\.([A-Za-z0-9_.:-]+)\s*}}`)
 	alertTemplateVariableNameRegexp = regexp.MustCompile(`[A-Za-z0-9_.:-]+`)
 	lokiRangeSelectorRegexp         = regexp.MustCompile(`(?is)\s*\[((?:\d+(?:\.\d+)?(?:ms|s|m|h|d|w|y))+)\]\s*$`)
 	lokiAnyRangeSelectorRegexp      = regexp.MustCompile(`(?is)\[((?:\d+(?:\.\d+)?(?:ms|s|m|h|d|w|y))+)\]`)
@@ -1785,7 +1785,7 @@ func (h *DataSourceHandler) buildAlertRuleFromWatchAlertExport(exported watchAle
 	callbackQueries := watchAlertImportCallbackQueries(config.CallbackPromQLs, ds.ID)
 	detail := firstNonEmpty(config.Annotations, exported.Description)
 	if detail == "" {
-		detail = fmt.Sprintf("WatchAlert 规则 %s 触发，当前值 ${value} %s ${threshold}", strings.TrimSpace(exported.RuleName), getConditionText(primary.Condition))
+		detail = fmt.Sprintf("WatchAlert 规则 %s 触发，当前值 ${labels.value} %s ${threshold}", strings.TrimSpace(exported.RuleName), getConditionText(primary.Condition))
 	}
 	return model.AlertRule{
 		Name:             firstNonEmpty(strings.TrimSpace(exported.RuleName), strings.TrimSpace(exported.RuleID), "WatchAlert 导入规则"),
@@ -2025,7 +2025,7 @@ func buildAlertRuleFromPrometheusRule(promRule prometheusRuleSpec, groupName str
 	}
 	detail := firstNonEmpty(annotations["description"], annotations["summary"], annotations["message"], annotations["runbook_url"])
 	if detail == "" {
-		detail = fmt.Sprintf("PrometheusRule %s 触发，当前值 ${value} %s ${threshold}", strings.TrimSpace(promRule.Alert), getConditionText(condition))
+		detail = fmt.Sprintf("PrometheusRule %s 触发，当前值 ${labels.value} %s ${threshold}", strings.TrimSpace(promRule.Alert), getConditionText(condition))
 	}
 	labelJSON := marshalStringMap(labels)
 	annotationJSON := marshalStringMap(annotations)
@@ -3771,7 +3771,7 @@ func buildAlertFingerprint(ruleID uint, ruleName, severity string, labels map[st
 	keys := make([]string, 0, len(fingerprintLabels))
 	for key := range fingerprintLabels {
 		key = strings.TrimSpace(key)
-		if key != "" {
+		if key != "" && key != "value" {
 			keys = append(keys, key)
 		}
 	}
@@ -4630,6 +4630,7 @@ func buildRuleLabelMap(rule *model.AlertRule, result *alertRuleEvaluationResult)
 			}
 			labels[key] = strings.TrimSpace(value)
 		}
+		labels["value"] = formatRuleValue(result.Value)
 	}
 	for key, value := range parseStringMap(rule.Labels) {
 		key = strings.TrimSpace(key)
@@ -4637,6 +4638,9 @@ func buildRuleLabelMap(rule *model.AlertRule, result *alertRuleEvaluationResult)
 			continue
 		}
 		labels[key] = renderAlertTemplateText(value, rule, result, labels, nil, "")
+	}
+	if result != nil {
+		labels["value"] = formatRuleValue(result.Value)
 	}
 	return labels
 }
@@ -4771,6 +4775,8 @@ func renderAlertTemplateText(text string, rule *model.AlertRule, result *alertRu
 	if labels == nil {
 		labels = map[string]string{}
 	}
+	labels = cloneStringMap(labels)
+	labels["value"] = formatRuleValue(result.Value)
 	if annotations == nil {
 		annotations = map[string]string{}
 	}
@@ -4781,6 +4787,7 @@ func renderAlertTemplateText(text string, rule *model.AlertRule, result *alertRu
 	}
 	matchedLogs := matchedLogsText(result.MatchedLogs, matchedLogCount)
 	matchedLogsBlock := matchedLogsCodeBlock(matchedLogs)
+	labelText := formatTemplateStringMap(labels)
 	replacements := map[string]string{
 		"{{ruleName}}":           ruleName,
 		"{{rule_name}}":          ruleName,
@@ -4790,6 +4797,7 @@ func renderAlertTemplateText(text string, rule *model.AlertRule, result *alertRu
 		"{{state}}":              result.State,
 		"${state}":               result.State,
 		"{{value}}":              formatRuleValue(result.Value),
+		"{{ $value }}":           formatRuleValue(result.Value),
 		"${value}":               formatRuleValue(result.Value),
 		"{{condition}}":          getConditionText(result.Condition),
 		"${condition}":           getConditionText(result.Condition),
@@ -4803,6 +4811,9 @@ func renderAlertTemplateText(text string, rule *model.AlertRule, result *alertRu
 		"${message}":             result.Message,
 		"{{fingerprint}}":        fingerprint,
 		"${fingerprint}":         fingerprint,
+		"{{labels}}":             labelText,
+		"{{ $labels }}":          labelText,
+		"${labels}":              labelText,
 		"{{matchedLogs}}":        matchedLogs,
 		"{{matched_logs}}":       matchedLogs,
 		"${matched_logs}":        matchedLogs,
@@ -4819,6 +4830,8 @@ func renderAlertTemplateText(text string, rule *model.AlertRule, result *alertRu
 	for key, value := range replacements {
 		text = strings.ReplaceAll(text, key, value)
 	}
+	text = regexp.MustCompile(`{{\s*\$?value\s*}}`).ReplaceAllString(text, formatRuleValue(result.Value))
+	text = regexp.MustCompile(`{{\s*\$?labels\s*}}|\$\{labels\}`).ReplaceAllString(text, labelText)
 	text = replaceAlertScopedVariables(text, alertLabelTemplatePattern, labels)
 	text = replaceAlertScopedVariables(text, alertAnnotationTemplatePattern, annotations)
 	return text
@@ -4834,6 +4847,26 @@ func replaceAlertScopedVariables(text string, pattern *regexp.Regexp, values map
 		}
 		return match
 	})
+}
+
+func formatTemplateStringMap(values map[string]string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(values))
+	for key, value := range values {
+		key = strings.TrimSpace(key)
+		if key == "" || strings.TrimSpace(value) == "" {
+			continue
+		}
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%s", key, strings.TrimSpace(values[key])))
+	}
+	return strings.Join(parts, ", ")
 }
 
 type ruleNotificationPayload struct {
@@ -7662,6 +7695,10 @@ func (h *DataSourceHandler) renderNoticeRouteText(object model.NoticeObject, rou
 	eventURL := buildNoticeEventURL(payload)
 	eventLinkText := noticeEventLinkText(payload)
 	valueText := formatRuleValue(payload.Value)
+	labels = cloneStringMap(labels)
+	labels["value"] = valueText
+	labelsText := formatTemplateStringMap(labels)
+	labelsJSON := marshalStringMap(labels)
 	instancesText := aggregatePayloadInstancesText(payload)
 	fingerprintsText := aggregatePayloadFingerprintsText(payload)
 	aggregateDetails := aggregatePayloadDetailsText(payload)
@@ -7675,13 +7712,15 @@ func (h *DataSourceHandler) renderNoticeRouteText(object model.NoticeObject, rou
 		"{{severity}}":                         noticeTemplateValue(normalizeSeverityLevel(payload.Severity), jsonTemplate),
 		"{{state}}":                            noticeTemplateValue(getStateText(payload.State), jsonTemplate),
 		"{{value}}":                            noticeTemplateValue(valueText, jsonTemplate),
+		"{{ $value }}":                         noticeTemplateValue(valueText, jsonTemplate),
 		"{{condition}}":                        noticeTemplateValue(getConditionText(payload.Condition), jsonTemplate),
 		"{{threshold}}":                        noticeTemplateValue(formatRuleValue(payload.Threshold), jsonTemplate),
 		"{{message}}":                          noticeTemplateValue(payload.Message, jsonTemplate),
 		"{{dataSourceName}}":                   noticeTemplateValue(payload.DataSourceName, jsonTemplate),
 		"{{dataSourceType}}":                   noticeTemplateValue(payload.DataSourceType, jsonTemplate),
 		"{{time}}":                             noticeTemplateValue(payload.Time.Format("2006-01-02 15:04:05"), jsonTemplate),
-		"{{labels}}":                           noticeTemplateValue(payload.Labels, jsonTemplate),
+		"{{labels}}":                           noticeTemplateValue(labelsJSON, jsonTemplate),
+		"{{ $labels }}":                        noticeTemplateValue(labelsText, jsonTemplate),
 		"{{annotations}}":                      noticeTemplateValue(annotationText, jsonTemplate),
 		"{{matchedLogs}}":                      noticeTemplateValue(matchedLogs, jsonTemplate),
 		"{{matched_logs}}":                     noticeTemplateValue(matchedLogs, jsonTemplate),
@@ -7719,6 +7758,7 @@ func (h *DataSourceHandler) renderNoticeRouteText(object model.NoticeObject, rou
 		"${fingerprints}":                      noticeTemplateValue(fingerprintsText, jsonTemplate),
 		"${severity}":                          noticeTemplateValue(normalizeSeverityLevel(payload.Severity), jsonTemplate),
 		"${value}":                             noticeTemplateValue(valueText, jsonTemplate),
+		"${labels}":                            noticeTemplateValue(labelsText, jsonTemplate),
 		"${annotations}":                       noticeTemplateValue(annotationText, jsonTemplate),
 		"${matched_logs}":                      noticeTemplateValue(matchedLogs, jsonTemplate),
 		"${matched_logs_block}":                noticeTemplateValue(matchedLogsBlock, jsonTemplate),
@@ -7819,20 +7859,24 @@ func aggregatePayloadDetailsText(payload ruleNotificationPayload) string {
 func replaceNoticeLabelVariables(text string, labels map[string]string, escapeJSON bool) string {
 	return noticeLabelTemplatePattern.ReplaceAllStringFunc(text, func(match string) string {
 		parts := noticeLabelTemplatePattern.FindStringSubmatch(match)
-		if len(parts) != 2 {
-			return match
+		for _, part := range parts[1:] {
+			if part != "" {
+				return noticeTemplateValue(labels[part], escapeJSON)
+			}
 		}
-		return noticeTemplateValue(labels[parts[1]], escapeJSON)
+		return match
 	})
 }
 
 func replaceNoticeAnnotationVariables(text string, annotations map[string]string, escapeJSON bool) string {
 	return noticeAnnotationTemplatePattern.ReplaceAllStringFunc(text, func(match string) string {
 		parts := noticeAnnotationTemplatePattern.FindStringSubmatch(match)
-		if len(parts) != 2 {
-			return match
+		for _, part := range parts[1:] {
+			if part != "" {
+				return noticeTemplateValue(annotations[part], escapeJSON)
+			}
 		}
-		return noticeTemplateValue(annotations[parts[1]], escapeJSON)
+		return match
 	})
 }
 

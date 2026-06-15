@@ -56,8 +56,8 @@ func TestAlertRuleLabelsAnnotationsAndCallbackVariables(t *testing.T) {
 		Name:           "CPU 使用率",
 		Query:          `node_cpu_seconds_total{mode!="idle"}`,
 		Labels:         `{"team":"ops","target":"${labels.instance}"}`,
-		Annotations:    `{"summary":"${labels.instance} CPU 高于 ${threshold}","value":"${value}"}`,
-		DetailTemplate: `节点：${labels.instance}，CPU 使用率过高，当前：${value}%，阈值：${threshold}%`,
+		Annotations:    `{"summary":"${labels.instance} CPU 高于 ${threshold}","value":"${labels.value}","watchValue":"{{ $labels.value }}","labelText":"{{ $labels }}"}`,
+		DetailTemplate: `节点：${labels.instance}，CPU 使用率过高，当前：{{ $labels.value }}%，旧变量：{{ $value }}%，阈值：${threshold}%`,
 	}
 
 	labels := buildRuleLabelMap(rule, result)
@@ -70,6 +70,9 @@ func TestAlertRuleLabelsAnnotationsAndCallbackVariables(t *testing.T) {
 	if labels["team"] != "ops" {
 		t.Fatalf("expected rule label override/addition, got %q", labels["team"])
 	}
+	if labels["value"] != "95.2" {
+		t.Fatalf("expected current value to be exposed as labels.value, got %q", labels["value"])
+	}
 
 	annotations := parseStringMap(buildRuleAnnotations(rule, result, labels, "fingerprint-1"))
 	if annotations["summary"] != "10.0.0.1:9100 CPU 高于 90" {
@@ -78,7 +81,13 @@ func TestAlertRuleLabelsAnnotationsAndCallbackVariables(t *testing.T) {
 	if annotations["value"] != "95.2" {
 		t.Fatalf("expected rendered annotation value, got %q", annotations["value"])
 	}
-	if annotations["description"] != "节点：10.0.0.1:9100，CPU 使用率过高，当前：95.2%，阈值：90%" {
+	if annotations["watchValue"] != "95.2" {
+		t.Fatalf("expected WatchAlert-style labels.value to render, got %q", annotations["watchValue"])
+	}
+	if !strings.Contains(annotations["labelText"], "instance=10.0.0.1:9100") || !strings.Contains(annotations["labelText"], "value=95.2") {
+		t.Fatalf("expected WatchAlert-style labels map to render, got %q", annotations["labelText"])
+	}
+	if annotations["description"] != "节点：10.0.0.1:9100，CPU 使用率过高，当前：95.2%，旧变量：95.2%，阈值：90%" {
 		t.Fatalf("expected rendered alert detail, got %q", annotations["description"])
 	}
 	if noticeAnnotationText("", annotations) != annotations["description"] {
@@ -443,6 +452,11 @@ func TestBuildAlertFingerprintUsesSeriesLabels(t *testing.T) {
 		"instance": "10.0.0.1:9100",
 		"job":      "node",
 	})
+	otherValue := buildAlertFingerprint(7, "CPU 使用率", "p1", map[string]string{
+		"instance": "10.0.0.1:9100",
+		"job":      "node",
+		"value":    "99.9",
+	})
 
 	if first != sameDifferentOrder {
 		t.Fatalf("expected fingerprint to be stable regardless of label order")
@@ -452,6 +466,9 @@ func TestBuildAlertFingerprintUsesSeriesLabels(t *testing.T) {
 	}
 	if first == otherSeverity {
 		t.Fatalf("expected severity to participate in fingerprint like WatchAlert")
+	}
+	if first != otherValue {
+		t.Fatalf("expected dynamic labels.value to be ignored by fingerprint")
 	}
 }
 
