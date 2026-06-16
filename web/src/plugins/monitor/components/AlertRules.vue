@@ -581,7 +581,7 @@
                   </span>
                 </el-tooltip>
               </div>
-              <div class="detail-preview-box">
+              <div class="detail-preview-box" v-loading="detailPreviewLoading">
                 <div class="detail-preview-head">
                   <span>告警详情预览</span>
                   <el-tag size="small" :type="detailPreviewSourceType" effect="light">{{ detailPreviewSourceText }}</el-tag>
@@ -1246,7 +1246,7 @@ const fallbackLabelKeysBySource: Record<string, string[]> = {
 }
 
 const logDataSourceTypes: DataSourceType[] = ['loki']
-const lokiMatchedLogsPendingText = '请先点击“数据预览”，系统会用上面的日志查询去 Loki 拉取最近命中日志。'
+const lokiMatchedLogsPendingText = '系统会根据上方日志查询自动拉取最近命中日志；如果暂未返回，会先显示当前模板预览。'
 const lokiMatchedLogsEmptyText = '当前查询窗口内未查询到命中日志；请确认 Loki 中对应时间范围有匹配日志，或放宽 LogQL / 时间范围。'
 const maxLokiPreviewLookbackSeconds = 7 * 24 * 60 * 60
 
@@ -1261,6 +1261,7 @@ const loading = ref(false)
 const eventsLoading = ref(false)
 const submitting = ref(false)
 const previewLoading = ref(false)
+const detailPreviewLoading = ref(false)
 const drawerVisible = ref(false)
 const groupDialogVisible = ref(false)
 const evalDialogVisible = ref(false)
@@ -1291,6 +1292,7 @@ const previewSignature = ref('')
 const evalResultSignature = ref('')
 const previewChartRef = ref<HTMLElement>()
 let suggestionTimer: ReturnType<typeof setTimeout> | undefined
+let detailPreviewTimer: ReturnType<typeof setTimeout> | undefined
 let previewChart: echarts.ECharts | null = null
 
 const ruleData = ref<RuleRow[]>([])
@@ -1494,8 +1496,9 @@ const detailPreviewSourceText = computed(() => {
   const map: Record<DetailPreviewContext['source'], string> = {
     evaluation: '使用评估结果',
     preview: '使用数据预览',
-    empty: '等待数据预览'
+    empty: '模板预览'
   }
+  if (detailPreviewLoading.value) return '正在获取样本'
   return map[detailPreviewContext.value.source]
 })
 const detailPreviewSourceType = computed(() => {
@@ -1504,6 +1507,7 @@ const detailPreviewSourceType = computed(() => {
     preview: 'primary',
     empty: 'info'
   }
+  if (detailPreviewLoading.value) return 'warning'
   return map[detailPreviewContext.value.source]
 })
 const previewQueryModeText = computed(() => {
@@ -1565,6 +1569,7 @@ watch(
       evalResult.value = null
       evalResultSignature.value = ''
     }
+    scheduleDetailAutoPreview()
   }
 )
 
@@ -1798,6 +1803,7 @@ const handleAdd = () => {
   resetForm()
   drawerTitle.value = '新增规则'
   drawerVisible.value = true
+  nextTick(() => scheduleDetailAutoPreview(0))
 }
 
 const handleEdit = (row: MonitorAlertRule) => {
@@ -1826,6 +1832,7 @@ const handleEdit = (row: MonitorAlertRule) => {
     callbackQueries: parseCallbackQueryRows(row.callbackQueries)
   })
   drawerVisible.value = true
+  nextTick(() => scheduleDetailAutoPreview(0))
 }
 
 const handleDrawerClose = () => {
@@ -1922,13 +1929,19 @@ const applyElasticsearchDslTemplate = (item: ElasticsearchDslTemplate) => {
 }
 
 const handlePreviewQuery = async () => {
+  await runPreviewQuery({ openDialog: true, showValidationMessage: true })
+}
+
+const runPreviewQuery = async (options: { openDialog?: boolean; showValidationMessage?: boolean } = {}) => {
+  const openDialog = Boolean(options.openDialog)
+  const showValidationMessage = options.showValidationMessage ?? openDialog
   const source = getFormPrimarySource()
   if (!source?.id) {
-    ElMessage.warning('请先选择数据源')
+    if (showValidationMessage) ElMessage.warning('请先选择数据源')
     return
   }
   if (!form.query.trim() && source.type !== 'elasticsearch') {
-    ElMessage.warning('请输入查询语句')
+    if (showValidationMessage) ElMessage.warning('请输入查询语句')
     return
   }
 
@@ -1946,8 +1959,14 @@ const handlePreviewQuery = async () => {
   previewError.value = ''
   previewErrorDetail.value = ''
   previewSignature.value = requestSignature
-  previewDialogVisible.value = true
-  previewLoading.value = true
+  if (openDialog) {
+    previewDialogVisible.value = true
+  }
+  if (openDialog) {
+    previewLoading.value = true
+  } else {
+    detailPreviewLoading.value = true
+  }
   disposePreviewChart()
 
   try {
@@ -2003,8 +2022,35 @@ const handlePreviewQuery = async () => {
   } catch (error: any) {
     setPreviewError(error)
   } finally {
-    previewLoading.value = false
+    if (openDialog) {
+      previewLoading.value = false
+    } else {
+      detailPreviewLoading.value = false
+    }
   }
+}
+
+function scheduleDetailAutoPreview(delay = 650) {
+  if (!drawerVisible.value) return
+  if (detailPreviewTimer) {
+    clearTimeout(detailPreviewTimer)
+    detailPreviewTimer = undefined
+  }
+  const source = getFormPrimarySource()
+  if (!source?.id) return
+  if (!form.query.trim() && source.type !== 'elasticsearch') return
+  const signature = buildDetailPreviewSignature()
+  const hasCurrentPreview = previewSignature.value === signature && (
+    previewFetchedAt.value ||
+    previewItems.value.length > 0 ||
+    previewError.value ||
+    previewMatchedLogSignature.value === signature
+  )
+  if (hasCurrentPreview) return
+  detailPreviewTimer = setTimeout(() => {
+    detailPreviewTimer = undefined
+    void runPreviewQuery({ openDialog: false, showValidationMessage: false })
+  }, delay)
 }
 
 const assertPreviewQueryOk = (value: any) => {
@@ -2648,8 +2694,13 @@ const buildRulePreviewSignature = (row: MonitorAlertRule) => {
 }
 
 const clearRuntimePreviewContext = () => {
+  if (detailPreviewTimer) {
+    clearTimeout(detailPreviewTimer)
+    detailPreviewTimer = undefined
+  }
   evalResult.value = null
   evalResultSignature.value = ''
+  detailPreviewLoading.value = false
   previewResult.value = undefined
   previewGraphResult.value = undefined
   previewMatchedLog.value = null
@@ -3439,6 +3490,7 @@ watch(() => route.query.ruleId, () => {
 onMounted(loadAll)
 onBeforeUnmount(() => {
   if (suggestionTimer) clearTimeout(suggestionTimer)
+  if (detailPreviewTimer) clearTimeout(detailPreviewTimer)
   disposePreviewChart()
 })
 </script>
