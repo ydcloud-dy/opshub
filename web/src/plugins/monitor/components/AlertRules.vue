@@ -947,6 +947,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import * as echarts from 'echarts'
@@ -981,6 +982,7 @@ import {
   deleteMonitorRuleGroup,
   evaluateMonitorAlertRule,
   exportMonitorAlertRules,
+  getMonitorAlertRule,
   getMonitorAlertEventStats,
   getMonitorAlertEvents,
   getMonitorAlertRules,
@@ -1253,6 +1255,8 @@ const createLabelToken = (key: string): DetailTemplateToken => ({
   label: `${key} 标签`,
   description: commonLabelTokenDescriptions[key] || `当前命中样本的 ${key} 标签；只有查询结果或数据预览里存在该标签时才会渲染。`
 })
+const route = useRoute()
+const router = useRouter()
 const loading = ref(false)
 const eventsLoading = ref(false)
 const submitting = ref(false)
@@ -1608,6 +1612,20 @@ const loadMeta = async () => {
 
 const loadAll = async () => {
   await Promise.all([loadMeta(), loadRules(), loadEvents(), loadStats()])
+  await openRuleFromRoute()
+}
+
+const openRuleFromRoute = async () => {
+  const rawRuleId = Array.isArray(route.query.ruleId) ? route.query.ruleId[0] : route.query.ruleId
+  const ruleId = Number(rawRuleId)
+  if (!ruleId || drawerVisible.value) return
+  let rule = ruleData.value.find(item => Number(item.id) === ruleId)
+  if (!rule) {
+    rule = await getMonitorAlertRule(ruleId)
+  }
+  if (!rule) return
+  handleEdit(rule)
+  router.replace({ path: route.path, query: { ...route.query, ruleId: undefined } })
 }
 
 const handleReset = () => {
@@ -1937,15 +1955,18 @@ const handlePreviewQuery = async () => {
     const matchedLogPayload = buildLokiMatchedLogPreviewPayload(source, payload)
     const matchedLogPromise = matchedLogPayload
       ? queryMonitorDataSource(source.id, matchedLogPayload, { silentError: true })
+        .then(assertPreviewQueryOk)
         .then(result => buildLokiMatchedLogPreview(matchedLogPayload.query, result?.result))
         .catch(() => ({ query: matchedLogPayload.query, logs: [], count: 0 }))
       : Promise.resolve(undefined)
     if (graphPayload) {
       const [instantSettled, graphSettled, matchedLogs] = await Promise.all([
         queryMonitorDataSource(source.id, payload, { silentError: true })
+          .then(assertPreviewQueryOk)
           .then(value => ({ ok: true as const, value }))
           .catch(error => ({ ok: false as const, error })),
         queryMonitorDataSource(source.id, graphPayload, { silentError: true })
+          .then(assertPreviewQueryOk)
           .then(value => ({ ok: true as const, value }))
           .catch(error => ({ ok: false as const, error })),
         matchedLogPromise
@@ -1966,7 +1987,7 @@ const handlePreviewQuery = async () => {
       applyLokiMatchedLogPreview(matchedLogs, requestSignature)
     } else {
       const [result, matchedLogs] = await Promise.all([
-        queryMonitorDataSource(source.id, payload, { silentError: true }),
+        queryMonitorDataSource(source.id, payload, { silentError: true }).then(assertPreviewQueryOk),
         matchedLogPromise
       ])
       if (requestSignature !== buildDetailPreviewSignature()) return
@@ -1984,6 +2005,16 @@ const handlePreviewQuery = async () => {
   } finally {
     previewLoading.value = false
   }
+}
+
+const assertPreviewQueryOk = (value: any) => {
+  if (value?.ok === false) {
+    throw {
+      message: value.message || value.error || '查询失败',
+      response: { data: value }
+    }
+  }
+  return value
 }
 
 const getPreviewErrorMessage = (error: any) => {
@@ -2417,6 +2448,9 @@ const handleEvaluate = async (row: RuleRow) => {
     evalResult.value = normalizeEvaluationResult(result)
     evalResultSignature.value = buildRulePreviewSignature(row)
     evalDialogVisible.value = true
+    if (evalResult.value.state === 'error') {
+      ElMessage.warning(evalResult.value.message || '评估失败，已生成错误事件')
+    }
     await Promise.all([loadRules(), loadEvents(), loadStats(), loadMeta()])
   } catch (error: any) {
     ElMessage.warning(getPreviewErrorMessage(error))
@@ -3397,6 +3431,10 @@ const getQueryPlaceholder = (type?: DataSourceType) => {
   if (type === 'elasticsearch') return buildElasticsearchKeywordCountDsl()
   return 'up == 0'
 }
+
+watch(() => route.query.ruleId, () => {
+  openRuleFromRoute()
+})
 
 onMounted(loadAll)
 onBeforeUnmount(() => {

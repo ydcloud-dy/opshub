@@ -178,7 +178,7 @@
                   <span class="event-flame">{{ getSeverityMark(row.severity) }}</span>
                   <div class="event-copy">
 	                    <button class="event-title" type="button" @click="openEventDetail(row)">{{ row.ruleName }}</button>
-                    <p>{{ row.message }}</p>
+                    <p>{{ formatFriendlyEventMessage(row.message) }}</p>
                   </div>
                 </div>
               </template>
@@ -303,7 +303,7 @@
                   <span class="event-flame">{{ getSeverityMark(row.severity) }}</span>
                   <div class="event-copy">
 	                    <button class="event-title" type="button" @click="openEventDetail(row)">{{ row.ruleName }}</button>
-                    <p>{{ row.message }}</p>
+                    <p>{{ formatFriendlyEventMessage(row.message) }}</p>
                   </div>
                 </div>
               </template>
@@ -809,60 +809,98 @@
 
 	    <el-drawer
 	      v-model="eventDetailVisible"
-	      title="告警事件详情"
-	      size="720px"
+	      title="事件详情"
+	      size="58%"
 	      class="watch-drawer event-detail-drawer"
 	    >
 	      <div v-if="selectedEvent" class="event-detail-body">
-	        <section class="event-detail-hero" :class="selectedEvent.state">
-	          <div>
-	            <span>{{ getStateName(selectedEvent.state) }}</span>
-	            <h3>{{ selectedEvent.ruleName }}</h3>
-	            <p>{{ selectedEvent.message }}</p>
+	        <div class="event-detail-metrics">
+	          <div class="event-detail-metric">
+	            <span>当前状态</span>
+	            <el-tag :type="getStateTag(selectedEvent.state)" effect="plain">{{ getStateName(selectedEvent.state) }}</el-tag>
 	          </div>
-	          <el-tag class="state-tag" :type="getStateTag(selectedEvent.state)" effect="plain">
-	            {{ getSeverityName(selectedEvent.severity) }}
-	          </el-tag>
-	        </section>
-
-	        <section class="event-detail-grid">
-	          <div>
-	            <span>数据源</span>
-	            <strong>{{ selectedEvent.dataSourceName || '-' }}</strong>
+	          <div class="event-detail-metric">
+	            <span>告警等级</span>
+	            <el-tag :type="getSeverityTag(selectedEvent.severity)" effect="plain">{{ getSeverityName(selectedEvent.severity) }}</el-tag>
 	          </div>
-	          <div>
+	          <div class="event-detail-metric">
 	            <span>当前值</span>
-	            <strong>{{ selectedEvent.value }}</strong>
+	            <strong>{{ formatEventValue(selectedEvent.value) }}</strong>
 	          </div>
-	          <div>
-	            <span>触发时间</span>
-	            <strong>{{ formatDateTime(selectedEvent.startedAt) }}</strong>
+	          <div class="event-detail-metric">
+	            <span>持续时间</span>
+	            <strong>{{ formatDuration(getEventDurationSeconds(selectedEvent)) }}</strong>
 	          </div>
-	          <div>
-	            <span>恢复时间</span>
-	            <strong>{{ formatDateTime(selectedEvent.endedAt) }}</strong>
-	          </div>
-	        </section>
+	        </div>
 
-	        <section class="event-detail-section">
-	          <div class="detail-section-title">标签</div>
-	          <div class="detail-tags">
-	            <el-tag v-for="item in parseEventMap(selectedEvent.labels)" :key="`label-${item.key}`" effect="plain">
-	              {{ item.key }}={{ item.value }}
-	            </el-tag>
-	            <span v-if="!parseEventMap(selectedEvent.labels).length" class="empty-detail-text">暂无标签</span>
-	          </div>
-	        </section>
-
-	        <section class="event-detail-section">
-	          <div class="detail-section-title">注释</div>
-	          <div class="annotation-list">
-	            <div v-for="item in parseEventMap(selectedEvent.annotations)" :key="`anno-${item.key}`">
-	              <span>{{ item.key }}</span>
-	              <strong>{{ item.value }}</strong>
+	        <section class="event-detail-table-card">
+	          <div class="event-detail-table">
+	            <div class="event-detail-row">
+	              <div class="event-detail-label">规则名称</div>
+	              <div class="event-detail-value">
+	                <button class="event-rule-link" type="button" @click="goToEventRule(selectedEvent)">
+	                  {{ selectedEvent.ruleName || '-' }}
+	                </button>
+	              </div>
 	            </div>
-	            <pre v-if="!parseEventMap(selectedEvent.annotations).length && selectedEvent.annotations">{{ selectedEvent.annotations }}</pre>
-	            <span v-if="!selectedEvent.annotations" class="empty-detail-text">暂无注释</span>
+	            <div class="event-detail-row">
+	              <div class="event-detail-label">告警指纹</div>
+	              <div class="event-detail-value mono">{{ selectedEvent.fingerprint || '-' }}</div>
+	            </div>
+	            <div class="event-detail-row">
+	              <div class="event-detail-label">数据源</div>
+	              <div class="event-detail-value">{{ selectedEvent.dataSourceName || '-' }}</div>
+	            </div>
+	            <div class="event-detail-row">
+	              <div class="event-detail-label">事件状态</div>
+	              <div class="event-detail-value">
+	                <el-tag :type="getStateTag(selectedEvent.state)" effect="plain">{{ getStateName(selectedEvent.state) }}</el-tag>
+	              </div>
+	            </div>
+	            <div class="event-detail-row">
+	              <div class="event-detail-label">事件标签</div>
+	              <div class="event-detail-value">
+	                <div class="event-detail-tags">
+	                  <el-tag v-for="item in parseEventMap(selectedEvent.labels)" :key="`label-${item.key}`" effect="plain">
+	                    {{ item.key }}: {{ item.value }}
+	                  </el-tag>
+	                  <span v-if="!parseEventMap(selectedEvent.labels).length" class="empty-detail-text">暂无标签</span>
+	                </div>
+	              </div>
+	            </div>
+	            <div class="event-detail-row">
+	              <div class="event-detail-label">触发条件</div>
+	              <div class="event-detail-value condition-text">{{ buildEventConditionText(selectedEvent) }}</div>
+	            </div>
+	            <div class="event-detail-row">
+	              <div class="event-detail-label">触发时间</div>
+	              <div class="event-detail-value">{{ formatDateTime(selectedEvent.startedAt) }}</div>
+	            </div>
+	            <div class="event-detail-row">
+	              <div class="event-detail-label">触发时值</div>
+	              <div class="event-detail-value">{{ formatEventValue(selectedEvent.value) }}</div>
+	            </div>
+	            <div class="event-detail-row">
+	              <div class="event-detail-label">认领人</div>
+	              <div class="event-detail-value">
+	                <el-tag effect="plain">{{ selectedEvent.acknowledgedBy || '未认领' }}</el-tag>
+	              </div>
+	            </div>
+	            <div class="event-detail-row event-detail-row-large">
+	              <div class="event-detail-label">事件详情</div>
+	              <div class="event-detail-value">
+	                <pre class="event-detail-message">{{ getEventDetailText(selectedEvent) }}</pre>
+	              </div>
+	            </div>
+	            <div class="event-detail-row">
+	              <div class="event-detail-label">通知记录</div>
+	              <div class="event-detail-value">
+	                <el-tag :type="selectedEvent.notifyStatus === 'success' ? 'success' : selectedEvent.notifyStatus === 'failed' ? 'danger' : 'info'" effect="plain">
+	                  {{ selectedEvent.notifyStatus || 'none' }}
+	                </el-tag>
+	                <span v-if="selectedEvent.notifyError" class="event-notify-error">{{ selectedEvent.notifyError }}</span>
+	              </div>
+	            </div>
 	          </div>
 	        </section>
 
@@ -2020,6 +2058,14 @@ const getSeverityMark = (severity?: string) => {
   return getSeverityName(severity).slice(0, 2)
 }
 
+const getSeverityTag = (severity?: string) => {
+  const level = getSeverityName(severity)
+  if (level === 'P0') return 'danger'
+  if (level === 'P1') return 'warning'
+  if (level === 'P2') return 'info'
+  return 'info'
+}
+
 const getStateName = (state?: string) => {
   const map: Record<string, string> = {
     inactive: '正常',
@@ -2054,6 +2100,55 @@ const formatDateTime = (date?: string) => {
   if (Number.isNaN(d.getTime())) return '-'
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
+const formatEventValue = (value?: number) => {
+  const number = Number(value)
+  if (!Number.isFinite(number)) return '-'
+  return Number.isInteger(number) ? String(number) : String(Number(number.toFixed(6)))
+}
+
+const conditionText = (condition?: string) => {
+  const map: Record<string, string> = {
+    gt: '>',
+    gte: '>=',
+    lt: '<',
+    lte: '<=',
+    eq: '=',
+    neq: '!='
+  }
+  return condition ? map[condition] || condition : '-'
+}
+
+const buildEventConditionText = (event: MonitorAlertEvent) => {
+  return `${formatEventValue(event.value)} ${conditionText(event.condition)} ${formatEventValue(event.threshold)}`
+}
+
+const getEventDetailText = (event: MonitorAlertEvent) => {
+  const annotations = parseEventMap(event.annotations)
+  const detail = annotations.find(item => ['description', 'summary', 'detail', 'message'].includes(item.key.toLowerCase()))
+  return formatFriendlyEventMessage(detail?.value || event.message || '-')
+}
+
+const formatFriendlyEventMessage = (message?: string) => {
+  const text = String(message || '').trim()
+  if (!text) return '-'
+  const lower = text.toLowerCase()
+  if (lower.includes('duplicate time series') || lower.includes('many-to-many matching')) {
+    return '查询语句存在重复时间序列，数据源无法完成标签匹配，请检查 PromQL 的 on()/group_left()/聚合维度。'
+  }
+  if (lower.includes('cannot execute') || lower.includes('cannot evaluate')) {
+    return '数据源无法执行当前查询语句，请检查查询条件和指标标签是否匹配。'
+  }
+  if (lower.includes('parse error') || lower.includes('bad_data') || lower.includes('invalid parameter')) {
+    return '查询语句解析失败，请检查 PromQL / LogQL / DSL 语法。'
+  }
+  return text
+}
+
+const goToEventRule = (event: MonitorAlertEvent) => {
+  if (!event?.ruleId) return
+  router.push({ path: '/monitor/rules', query: { ruleId: String(event.ruleId) } })
 }
 
 const openExportDialog = (scope: EventScope) => {
@@ -3700,72 +3795,31 @@ onBeforeUnmount(() => {
   gap: 14px;
 }
 
-.event-detail-hero,
-.event-detail-grid,
+.event-detail-metrics,
+.event-detail-table-card,
 .event-detail-section {
   border: 1px solid #e5e9f2;
   border-radius: 8px;
   background: #fff;
 }
 
-.event-detail-hero {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 16px;
-  border-left: 4px solid #f04438;
-}
-
-.event-detail-hero.silenced {
-  border-left-color: #667085;
-}
-
-.event-detail-hero.recovered {
-  border-left-color: #12b76a;
-}
-
-.event-detail-hero span {
-  display: inline-flex;
-  margin-bottom: 6px;
-  color: #667085;
-  font-size: 12px;
-  font-weight: 650;
-}
-
-.event-detail-hero h3 {
-  margin: 0;
-  color: #101828;
-  font-size: 18px;
-  font-weight: 750;
-  line-height: 1.4;
-}
-
-.event-detail-hero p {
-  margin: 8px 0 0;
-  color: #475467;
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.event-detail-grid {
+.event-detail-metrics {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   overflow: hidden;
 }
 
-.event-detail-grid > div {
+.event-detail-metric {
   min-width: 0;
-  padding: 13px 16px;
+  padding: 12px 14px;
   border-right: 1px solid #edf1f7;
-  border-bottom: 1px solid #edf1f7;
 }
 
-.event-detail-grid > div:nth-child(2n) {
+.event-detail-metric:last-child {
   border-right: 0;
 }
 
-.event-detail-grid span,
+.event-detail-metric span,
 .detail-section-title {
   display: block;
   color: #667085;
@@ -3773,12 +3827,115 @@ onBeforeUnmount(() => {
   font-weight: 650;
 }
 
-.event-detail-grid strong {
+.event-detail-metric strong {
   display: block;
-  margin-top: 5px;
+  margin-top: 6px;
+  color: #101828;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.event-detail-metric :deep(.el-tag) {
+  margin-top: 6px;
+}
+
+.event-detail-table-card {
+  overflow: hidden;
+}
+
+.event-detail-table {
+  display: flex;
+  flex-direction: column;
+}
+
+.event-detail-row {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  min-height: 52px;
+  border-bottom: 1px solid #edf1f7;
+}
+
+.event-detail-row:last-child {
+  border-bottom: 0;
+}
+
+.event-detail-label {
+  display: flex;
+  align-items: center;
+  padding: 13px 16px;
+  border-right: 1px solid #edf1f7;
+  background: #fbfcfe;
+  color: #667085;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.event-detail-value {
+  min-width: 0;
+  padding: 13px 16px;
   color: #101828;
   font-size: 13px;
-  font-weight: 650;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.event-detail-value.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.event-detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.event-detail-tags :deep(.el-tag) {
+  height: 26px;
+  border-color: #93c5fd;
+  background: #eff6ff;
+  color: #2563eb;
+  font-weight: 600;
+}
+
+.event-rule-link {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #1677ff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.event-rule-link:hover {
+  color: #0958d9;
+  text-decoration: underline;
+}
+
+.event-notify-error {
+  display: block;
+  margin-top: 6px;
+  color: #b42318;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.condition-text {
+  white-space: pre-wrap;
+}
+
+.event-detail-message {
+  min-height: 280px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid #d8e2f0;
+  border-radius: 6px;
+  background: #fff;
+  color: #1f2937;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
@@ -3792,41 +3949,6 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 10px;
-}
-
-.detail-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.annotation-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.annotation-list > div {
-  display: grid;
-  grid-template-columns: 140px minmax(0, 1fr);
-  gap: 10px;
-  padding: 9px 10px;
-  border-radius: 6px;
-  background: #f8fafc;
-}
-
-.annotation-list span {
-  color: #667085;
-  font-size: 12px;
-}
-
-.annotation-list strong {
-  color: #101828;
-  font-size: 13px;
-  font-weight: 500;
-  overflow-wrap: anywhere;
 }
 
 .callback-list {
@@ -3936,18 +4058,9 @@ onBeforeUnmount(() => {
   padding: 0 10px 10px;
 }
 
-.callback-card pre,
-.annotation-list pre {
+.callback-card pre {
   max-height: 260px;
-  margin: 10px 0 0;
-  padding: 10px;
   overflow: auto;
-  border-radius: 6px;
-  background: #f3f4f6;
-  color: #344054;
-  font-size: 12px;
-  line-height: 1.55;
-  white-space: pre-wrap;
 }
 
 .empty-detail-text {
@@ -4014,6 +4127,18 @@ onBeforeUnmount(() => {
   .route-item {
     grid-template-columns: 1fr;
   }
+
+  .event-detail-drawer {
+    width: 88% !important;
+  }
+
+  .event-detail-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .event-detail-metric:nth-child(2n) {
+    border-right: 0;
+  }
 }
 
 @media (max-width: 640px) {
@@ -4031,6 +4156,32 @@ onBeforeUnmount(() => {
   .table-footer {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .event-detail-drawer {
+    width: 100% !important;
+  }
+
+  .event-detail-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .event-detail-metric {
+    border-right: 0;
+    border-bottom: 1px solid #edf1f7;
+  }
+
+  .event-detail-metric:last-child {
+    border-bottom: 0;
+  }
+
+  .event-detail-row {
+    grid-template-columns: 1fr;
+  }
+
+  .event-detail-label {
+    border-right: 0;
+    border-bottom: 1px solid #edf1f7;
   }
 }
 </style>

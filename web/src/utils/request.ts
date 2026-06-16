@@ -19,7 +19,10 @@ const getResponseErrorMessage = (data: any, fallback = '请求失败') => {
 
 const isSilentErrorRequest = (config: any) => {
   const headers = config?.headers || {}
-  return headers['X-Silent-Error'] === '1' || headers['x-silent-error'] === '1'
+  const value = typeof headers.get === 'function'
+    ? headers.get('X-Silent-Error') || headers.get('x-silent-error')
+    : headers['X-Silent-Error'] || headers['x-silent-error']
+  return value === '1' || value === 1 || value === true
 }
 
 // Token过期跳转标志，防止重复跳转

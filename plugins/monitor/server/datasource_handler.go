@@ -358,13 +358,15 @@ func (h *DataSourceHandler) QueryDataSource(c *gin.Context) {
 	start := time.Now()
 	result, statusCode, err := h.queryDataSource(c.Request.Context(), dataSource, req)
 	if err != nil {
-		c.JSON(400, gin.H{
-			"code":    400,
-			"message": err.Error(),
-			"error":   err.Error(),
+		c.JSON(200, gin.H{
+			"code":    0,
+			"message": "查询失败",
 			"data": gin.H{
 				"statusCode": statusCode,
 				"duration":   int(time.Since(start).Milliseconds()),
+				"ok":         false,
+				"message":    alertRuleErrorMessage(err),
+				"error":      err.Error(),
 			},
 		})
 		return
@@ -376,6 +378,7 @@ func (h *DataSourceHandler) QueryDataSource(c *gin.Context) {
 		"data": gin.H{
 			"statusCode": statusCode,
 			"duration":   int(time.Since(start).Milliseconds()),
+			"ok":         true,
 			"result":     result,
 		},
 	})
@@ -870,6 +873,25 @@ func friendlyDataSourceError(message string) string {
 		return fmt.Sprintf("当前索引没有字段 %q，但查询 DSL 正在按它排序。请删除 sort，或把 sort/range 中的字段改成索引真实的时间字段；如果只是查看日志样例，可以使用 match_all 查询。", matches[1])
 	}
 	return message
+}
+
+func alertRuleErrorMessage(err error) string {
+	if err == nil {
+		return ""
+	}
+	message := strings.TrimSpace(err.Error())
+	lower := strings.ToLower(message)
+	switch {
+	case strings.Contains(lower, "duplicate time series") || strings.Contains(lower, "many-to-many matching"):
+		return "查询语句存在重复时间序列，数据源无法完成标签匹配，请检查 PromQL 的 on()/group_left()/聚合维度"
+	case strings.Contains(lower, "cannot execute") || strings.Contains(lower, "cannot evaluate"):
+		return "数据源无法执行当前查询语句，请检查查询条件和指标标签是否匹配"
+	case strings.Contains(lower, "parse error") || strings.Contains(lower, "bad_data") || strings.Contains(lower, "invalid parameter"):
+		return "查询语句解析失败，请检查 PromQL / LogQL / DSL 语法"
+	case strings.Contains(lower, "timeout") || strings.Contains(lower, "deadline"):
+		return "数据源查询超时，请缩小查询范围或检查数据源状态"
+	}
+	return clipPlainText(message, 220)
 }
 
 func dataSourceErrorText(root map[string]interface{}) string {
@@ -2450,7 +2472,7 @@ func (h *DataSourceHandler) EvaluateAlertRule(c *gin.Context) {
 
 	result, err := h.evaluateAlertRule(c.Request.Context(), &rule, true)
 	if err != nil {
-		c.JSON(500, gin.H{"code": 500, "message": "评估失败", "error": err.Error(), "data": result})
+		c.JSON(200, gin.H{"code": 0, "message": "评估失败", "error": err.Error(), "data": result})
 		return
 	}
 
@@ -2897,7 +2919,7 @@ func (h *DataSourceHandler) evaluateAlertRule(ctx context.Context, rule *model.A
 	}
 
 	if err != nil {
-		message := fmt.Sprintf("规则「%s」评估失败：%s", rule.Name, err.Error())
+		message := fmt.Sprintf("规则「%s」评估失败：%s", rule.Name, alertRuleErrorMessage(err))
 		result.State = "error"
 		result.Message = message
 		rule.LastState = "error"
@@ -2919,7 +2941,7 @@ func (h *DataSourceHandler) evaluateAlertRule(ctx context.Context, rule *model.A
 
 	samples, err := extractRuleEvaluationSamples(ds.Type, rawResult)
 	if err != nil {
-		message := fmt.Sprintf("规则「%s」无法从查询结果中提取数值：%s", rule.Name, err.Error())
+		message := fmt.Sprintf("规则「%s」无法从查询结果中提取数值：%s", rule.Name, alertRuleErrorMessage(err))
 		result.State = "error"
 		result.Message = message
 		rule.LastState = "error"
