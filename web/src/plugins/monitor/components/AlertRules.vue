@@ -868,7 +868,15 @@
         </div>
       </div>
 
-      <el-alert v-if="previewError" class="preview-alert" type="error" :closable="false" :title="previewError" />
+      <el-alert v-if="previewError" class="preview-alert" type="warning" show-icon :closable="false" :title="previewError">
+        <div class="preview-alert-content">
+          <span>当前没有可展示的数据，告警规则不会因为预览失败而自动保存为错误配置。</span>
+          <details v-if="previewErrorDetail" class="preview-error-detail">
+            <summary>查看数据源返回详情</summary>
+            <pre>{{ previewErrorDetail }}</pre>
+          </details>
+        </div>
+      </el-alert>
 
       <el-tabs v-model="previewTab" class="preview-tabs" @tab-change="handlePreviewTabChange">
         <el-tab-pane name="card">
@@ -897,7 +905,7 @@
                 </div>
               </div>
             </div>
-            <el-empty v-else :image-size="86" description="暂无预览数据" />
+            <el-empty v-else :image-size="86" :description="previewError ? '查询失败，当前没有可展示的数据' : '暂无预览数据'" />
           </div>
         </el-tab-pane>
         <el-tab-pane name="graph">
@@ -906,7 +914,7 @@
           </template>
           <div v-loading="previewLoading" class="preview-tab-panel">
             <div v-if="hasPreviewChartData" ref="previewChartRef" class="preview-chart"></div>
-            <el-empty v-else :image-size="86" description="当前结果没有可绘制的数值数据" />
+            <el-empty v-else :image-size="86" :description="previewError ? '查询失败，当前没有可绘制的数据' : '当前结果没有可绘制的数值数据'" />
             <div v-if="previewGraphItems.length" class="preview-series-table">
               <div class="preview-series-head">
                 <span>标签</span>
@@ -1274,6 +1282,7 @@ const previewQueryText = ref('')
 const previewQueryMode = ref<'instant' | 'range' | 'dsl'>('instant')
 const previewFetchedAt = ref<Date>()
 const previewError = ref('')
+const previewErrorDetail = ref('')
 const previewSignature = ref('')
 const evalResultSignature = ref('')
 const previewChartRef = ref<HTMLElement>()
@@ -1544,6 +1553,7 @@ watch(
       previewQueryText.value = ''
       previewFetchedAt.value = undefined
       previewError.value = ''
+      previewErrorDetail.value = ''
       previewSignature.value = ''
       disposePreviewChart()
     }
@@ -1916,6 +1926,7 @@ const handlePreviewQuery = async () => {
   previewMatchedLogSignature.value = ''
   previewFetchedAt.value = undefined
   previewError.value = ''
+  previewErrorDetail.value = ''
   previewSignature.value = requestSignature
   previewDialogVisible.value = true
   previewLoading.value = true
@@ -1925,23 +1936,37 @@ const handlePreviewQuery = async () => {
     const graphPayload = buildPreviewGraphQueryPayload(source, payload)
     const matchedLogPayload = buildLokiMatchedLogPreviewPayload(source, payload)
     const matchedLogPromise = matchedLogPayload
-      ? queryMonitorDataSource(source.id, matchedLogPayload)
+      ? queryMonitorDataSource(source.id, matchedLogPayload, { silentError: true })
         .then(result => buildLokiMatchedLogPreview(matchedLogPayload.query, result?.result))
         .catch(() => ({ query: matchedLogPayload.query, logs: [], count: 0 }))
       : Promise.resolve(undefined)
     if (graphPayload) {
-      const [instantResult, graphResult, matchedLogs] = await Promise.all([
-        queryMonitorDataSource(source.id, payload),
-        queryMonitorDataSource(source.id, graphPayload),
+      const [instantSettled, graphSettled, matchedLogs] = await Promise.all([
+        queryMonitorDataSource(source.id, payload, { silentError: true })
+          .then(value => ({ ok: true as const, value }))
+          .catch(error => ({ ok: false as const, error })),
+        queryMonitorDataSource(source.id, graphPayload, { silentError: true })
+          .then(value => ({ ok: true as const, value }))
+          .catch(error => ({ ok: false as const, error })),
         matchedLogPromise
       ])
       if (requestSignature !== buildDetailPreviewSignature()) return
-      previewResult.value = instantResult || {}
-      previewGraphResult.value = graphResult || previewResult.value
+      if (instantSettled.ok) {
+        previewResult.value = instantSettled.value || {}
+      }
+      if (graphSettled.ok) {
+        previewGraphResult.value = graphSettled.value || previewResult.value
+      } else {
+        previewGraphResult.value = previewResult.value
+      }
+      const firstError = !instantSettled.ok ? instantSettled.error : (!graphSettled.ok ? graphSettled.error : undefined)
+      if (firstError) {
+        setPreviewError(firstError, instantSettled.ok ? '趋势图查询失败，Card 已展示即时查询结果' : '')
+      }
       applyLokiMatchedLogPreview(matchedLogs, requestSignature)
     } else {
       const [result, matchedLogs] = await Promise.all([
-        queryMonitorDataSource(source.id, payload),
+        queryMonitorDataSource(source.id, payload, { silentError: true }),
         matchedLogPromise
       ])
       if (requestSignature !== buildDetailPreviewSignature()) return
@@ -1955,17 +1980,48 @@ const handlePreviewQuery = async () => {
       renderPreviewChart()
     }
   } catch (error: any) {
-    previewError.value = getPreviewErrorMessage(error)
+    setPreviewError(error)
   } finally {
     previewLoading.value = false
   }
 }
 
 const getPreviewErrorMessage = (error: any) => {
-  return error?.response?.data?.message ||
+  const detail = getPreviewErrorDetail(error)
+  const lower = detail.toLowerCase()
+  if (lower.includes('duplicate time series') || lower.includes('many-to-many matching')) {
+    return '查询语句存在重复时间序列，当前没有可展示的数据'
+  }
+  if (lower.includes('cannot execute') || lower.includes('cannot evaluate')) {
+    return '数据源无法执行当前查询语句，当前没有可展示的数据'
+  }
+  if (lower.includes('parse error') || lower.includes('invalid parameter') || lower.includes('bad_data')) {
+    return '查询语句解析失败，请检查 PromQL / LogQL 语法'
+  }
+  if (lower.includes('timeout') || lower.includes('deadline')) {
+    return '数据源查询超时，当前没有可展示的数据'
+  }
+  return '查询失败，当前没有可展示的数据'
+}
+
+const getPreviewErrorDetail = (error: any) => {
+  return String(
     error?.response?.data?.error ||
+    error?.response?.data?.detail ||
+    error?.response?.data?.message ||
     error?.message ||
     '查询失败，请检查数据源连接和查询语句'
+  )
+}
+
+const setPreviewError = (error: any, message?: string) => {
+  previewError.value = message || getPreviewErrorMessage(error)
+  previewErrorDetail.value = limitText(getPreviewErrorDetail(error), 1400)
+}
+
+const limitText = (value: string, max = 1400) => {
+  if (value.length <= max) return value
+  return `${value.slice(0, max)}...`
 }
 
 const buildPreviewQueryPayload = (source: MonitorDataSource): DataSourceQueryRequest => {
@@ -2357,11 +2413,13 @@ const handleEvaluate = async (row: RuleRow) => {
   if (!row.id) return
   row.evaluating = true
   try {
-    const result = await evaluateMonitorAlertRule(row.id)
+    const result = await evaluateMonitorAlertRule(row.id, { silentError: true })
     evalResult.value = normalizeEvaluationResult(result)
     evalResultSignature.value = buildRulePreviewSignature(row)
     evalDialogVisible.value = true
     await Promise.all([loadRules(), loadEvents(), loadStats(), loadMeta()])
+  } catch (error: any) {
+    ElMessage.warning(getPreviewErrorMessage(error))
   } finally {
     row.evaluating = false
   }
@@ -2566,6 +2624,7 @@ const clearRuntimePreviewContext = () => {
   previewQueryText.value = ''
   previewFetchedAt.value = undefined
   previewError.value = ''
+  previewErrorDetail.value = ''
   previewSignature.value = ''
   disposePreviewChart()
 }
@@ -4948,6 +5007,33 @@ onBeforeUnmount(() => {
 
 .preview-alert {
   margin-bottom: 12px;
+}
+
+.preview-alert-content {
+  display: grid;
+  gap: 8px;
+  color: #7c2d12;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.preview-error-detail summary {
+  cursor: pointer;
+  color: #9a3412;
+  font-weight: 650;
+}
+
+.preview-error-detail pre {
+  max-height: 160px;
+  margin: 8px 0 0;
+  overflow: auto;
+  border: 1px solid #fed7aa;
+  border-radius: 6px;
+  background: #fff7ed;
+  color: #7c2d12;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
 }
 
 .preview-tabs :deep(.el-tabs__header) {

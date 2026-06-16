@@ -153,6 +153,48 @@ func TestAlertRuleLabelsAnnotationsAndCallbackVariables(t *testing.T) {
 	}
 }
 
+func TestShouldSendRecoveryNotificationOnlyForNotifiedFiringEvents(t *testing.T) {
+	cases := []struct {
+		name  string
+		event *model.AlertEvent
+		want  bool
+	}{
+		{name: "nil event", event: nil, want: false},
+		{name: "pending with successful notification status", event: &model.AlertEvent{State: "pending", NotifyStatus: "success"}, want: false},
+		{name: "silenced with successful notification status", event: &model.AlertEvent{State: "silenced", NotifyStatus: "success"}, want: false},
+		{name: "processing with successful notification status", event: &model.AlertEvent{State: "processing", NotifyStatus: "success"}, want: true},
+		{name: "firing without notification", event: &model.AlertEvent{State: "firing", NotifyStatus: "none"}, want: false},
+		{name: "firing with failed notification", event: &model.AlertEvent{State: "firing", NotifyStatus: "failed"}, want: false},
+		{name: "firing with successful notification", event: &model.AlertEvent{State: "firing", NotifyStatus: "success"}, want: true},
+		{name: "firing with partial notification", event: &model.AlertEvent{State: "firing", NotifyStatus: "partial"}, want: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := shouldSendRecoveryNotification(tc.event); got != tc.want {
+				t.Fatalf("shouldSendRecoveryNotification() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestRecoveryWaitRemainingStartsWhenEventFirstRecovers(t *testing.T) {
+	now := time.Date(2026, 6, 16, 10, 0, 0, 0, time.Local)
+	wait := 30 * time.Second
+
+	if remaining := recoveryWaitRemainingForDuration(&model.AlertEvent{State: "firing", LastEvalAt: now.Add(-5 * time.Minute)}, now, wait); remaining != wait {
+		t.Fatalf("expected first recovery to wait the full window, got %s", remaining)
+	}
+	if remaining := recoveryWaitRemainingForDuration(&model.AlertEvent{State: "recovering", LastEvalAt: now.Add(-10 * time.Second)}, now, wait); remaining != 20*time.Second {
+		t.Fatalf("expected recovering event to keep the remaining window, got %s", remaining)
+	}
+	if remaining := recoveryWaitRemainingForDuration(&model.AlertEvent{State: "recovering", LastEvalAt: now.Add(-35 * time.Second)}, now, wait); remaining != 0 {
+		t.Fatalf("expected recovering event past the wait window to be ready, got %s", remaining)
+	}
+	if remaining := recoveryWaitRemainingForDuration(&model.AlertEvent{State: "firing", LastEvalAt: now}, now, 0); remaining != 0 {
+		t.Fatalf("expected zero wait to recover immediately, got %s", remaining)
+	}
+}
+
 func TestLokiMatchedLogsAnnotationsAndNoticeVariables(t *testing.T) {
 	raw := map[string]interface{}{
 		"data": map[string]interface{}{

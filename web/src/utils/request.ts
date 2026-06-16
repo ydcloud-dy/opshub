@@ -17,6 +17,11 @@ const getResponseErrorMessage = (data: any, fallback = '请求失败') => {
   return message
 }
 
+const isSilentErrorRequest = (config: any) => {
+  const headers = config?.headers || {}
+  return headers['X-Silent-Error'] === '1' || headers['x-silent-error'] === '1'
+}
+
 // Token过期跳转标志，防止重复跳转
 let isRedirecting = false
 
@@ -81,7 +86,7 @@ request.interceptors.response.use(
 
       // 只在非登录接口的情况下自动显示错误消息
       // 登录接口和验证码接口的错误由调用方处理,避免重复提示
-      if (!url.includes('/login') && !url.includes('/captcha') && !url.includes('/auth/mfa')) {
+      if (!isSilentErrorRequest(response.config) && !url.includes('/login') && !url.includes('/captcha') && !url.includes('/auth/mfa')) {
         ElMessage.error(getResponseErrorMessage(res))
       }
       // 返回完整的响应对象，让调用方可以访问code和message
@@ -119,16 +124,18 @@ request.interceptors.response.use(
     // 403 - 权限不足，只显示错误消息，不跳转
     if (status === 403) {
       const errorMsg = getResponseErrorMessage(error.response?.data, '权限不足')
-      ElMessage.error({
-        message: errorMsg,
-        duration: 5000,
-        showClose: true
-      })
+      if (!isSilentErrorRequest(error.config)) {
+        ElMessage.error({
+          message: errorMsg,
+          duration: 5000,
+          showClose: true
+        })
+      }
       return Promise.reject(error)
     }
 
     // 其他错误 - 只对非登录接口显示错误消息
-    if (!url.includes('/login')) {
+    if (!isSilentErrorRequest(error.config) && !url.includes('/login')) {
       const errorMsg = getResponseErrorMessage(error.response?.data, error.message || '网络错误')
       ElMessage.error(errorMsg)
     }

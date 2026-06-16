@@ -344,8 +344,16 @@ export const testMonitorDataSourceRemoteWriteConfig = (data: MonitorDataSource) 
   return request.post('/api/v1/plugins/monitor/datasource-remote-write-test', data)
 }
 
-export const queryMonitorDataSource = (id: number, data: DataSourceQueryRequest) => {
-  return request.post(`/api/v1/plugins/monitor/datasources/${id}/query`, data)
+export const queryMonitorDataSource = (
+  id: number,
+  data: DataSourceQueryRequest,
+  options?: { silentError?: boolean }
+) => {
+  return request.post(
+    `/api/v1/plugins/monitor/datasources/${id}/query`,
+    data,
+    options?.silentError ? { headers: { 'X-Silent-Error': '1' } } : undefined
+  )
 }
 
 export const getMonitorDataSourceIndices = (
@@ -577,8 +585,12 @@ export const importMonitorAlertRules = (data: {
   return request.post('/api/v1/plugins/monitor/rules/import', data)
 }
 
-export const evaluateMonitorAlertRule = (id: number) => {
-  return request.post(`/api/v1/plugins/monitor/rules/${id}/evaluate`)
+export const evaluateMonitorAlertRule = (id: number, options?: { silentError?: boolean }) => {
+  return request.post(
+    `/api/v1/plugins/monitor/rules/${id}/evaluate`,
+    undefined,
+    options?.silentError ? { headers: { 'X-Silent-Error': '1' } } : undefined
+  )
 }
 
 export const getMonitorAlertEvents = (params?: {

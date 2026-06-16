@@ -2339,7 +2339,7 @@ func (r *alertRuleEvaluationResult) toSampleResult() alertRuleEvaluationSampleRe
 	}
 }
 
-func applyEvaluationSummary(result, representative *alertRuleEvaluationResult, firingCount, pendingCount, recoveredCount, total int) {
+func applyEvaluationSummary(result, representative *alertRuleEvaluationResult, firingCount, pendingCount, recoveringCount, recoveredCount, total int) {
 	result.Value = representative.Value
 	result.Labels = cloneStringMap(representative.Labels)
 	result.Fingerprint = representative.Fingerprint
@@ -2363,6 +2363,10 @@ func applyEvaluationSummary(result, representative *alertRuleEvaluationResult, f
 	case pendingCount > 0:
 		result.State = "pending"
 		result.Message = fmt.Sprintf("规则「%s」待触发：%d/%d 条结果处于预告警", result.RuleName, pendingCount, total)
+	case recoveringCount > 0:
+		result.State = "recovering"
+		result.Matched = true
+		result.Message = fmt.Sprintf("规则「%s」待恢复：%d 条活跃告警进入恢复等待", result.RuleName, recoveringCount)
 	default:
 		result.State = "inactive"
 		result.Matched = false
@@ -2467,8 +2471,28 @@ func (h *DataSourceHandler) EvaluateDueAlertRules(ctx context.Context) {
 		if rule.LastEvalAt != nil && rule.LastEvalAt.Add(time.Duration(rule.EvaluateInterval)*time.Second).After(now) {
 			continue
 		}
+		if !h.claimDueAlertRule(rule, now) {
+			continue
+		}
 		_, _ = h.evaluateAlertRule(ctx, rule, false)
 	}
+}
+
+func (h *DataSourceHandler) claimDueAlertRule(rule *model.AlertRule, now time.Time) bool {
+	if h == nil || h.db == nil || rule == nil || rule.ID == 0 {
+		return false
+	}
+	interval := positiveInt(rule.EvaluateInterval, 60)
+	dueBefore := now.Add(-time.Duration(interval) * time.Second)
+	query := h.db.Model(&model.AlertRule{}).
+		Where("id = ? AND enabled = ?", rule.ID, true).
+		Where("(last_eval_at IS NULL OR last_eval_at <= ?)", dueBefore).
+		Update("last_eval_at", now)
+	if query.Error != nil || query.RowsAffected == 0 {
+		return false
+	}
+	rule.LastEvalAt = &now
+	return true
 }
 
 func (h *DataSourceHandler) ListAlertEvents(c *gin.Context) {
@@ -2580,6 +2604,67 @@ func parseAlertEventDate(value string, endOfDay bool) (time.Time, error) {
 
 func activeAlertEventStates() []string {
 	return []string{"pending", "firing", "processing", "silenced", "recovering", "error"}
+}
+
+func shouldSendRecoveryNotification(event *model.AlertEvent) bool {
+	if event == nil {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(event.State)) {
+	case "firing", "processing", "recovering":
+	default:
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(event.NotifyStatus)) {
+	case "success", "partial":
+		return true
+	default:
+		return false
+	}
+}
+
+func recoveryWaitRemainingForDuration(event *model.AlertEvent, now time.Time, wait time.Duration) time.Duration {
+	if event == nil || wait <= 0 {
+		return 0
+	}
+	if !strings.EqualFold(strings.TrimSpace(event.State), "recovering") {
+		return wait
+	}
+	recoveryStartedAt := event.LastEvalAt
+	if recoveryStartedAt.IsZero() {
+		return wait
+	}
+	elapsed := now.Sub(recoveryStartedAt)
+	if elapsed >= wait {
+		return 0
+	}
+	return wait - elapsed
+}
+
+func (h *DataSourceHandler) effectiveRecoveryWait(rule *model.AlertRule) time.Duration {
+	if h == nil || h.db == nil || rule == nil || rule.FaultCenterID == 0 {
+		return 0
+	}
+	var center model.FaultCenter
+	if err := h.db.Select("id, recover_wait_seconds").First(&center, rule.FaultCenterID).Error; err != nil {
+		return 0
+	}
+	wait := center.RecoverWaitSeconds
+	if wait <= 0 {
+		wait = 30
+	}
+	return time.Duration(wait) * time.Second
+}
+
+func (h *DataSourceHandler) faultCenterAllowsRecoveryNotification(rule *model.AlertRule) bool {
+	if h == nil || h.db == nil || rule == nil || rule.FaultCenterID == 0 {
+		return true
+	}
+	var center model.FaultCenter
+	if err := h.db.Select("id, recover_notify").First(&center, rule.FaultCenterID).Error; err != nil {
+		return true
+	}
+	return center.RecoverNotify
 }
 
 func isActiveAlertRuleState(state string) bool {
@@ -2861,6 +2946,7 @@ func (h *DataSourceHandler) evaluateAlertRule(ctx context.Context, rule *model.A
 	seenFingerprints := map[string]struct{}{}
 	firingCount := 0
 	pendingCount := 0
+	recoveringCount := 0
 	recoveredCount := 0
 	var representative *alertRuleEvaluationResult
 	var earliestPending *time.Time
@@ -2868,6 +2954,11 @@ func (h *DataSourceHandler) evaluateAlertRule(ctx context.Context, rule *model.A
 	var firingNotifyEvents []*model.AlertEvent
 	var recoveryNotifyEvents []*model.AlertEvent
 	var escalationCandidates []*model.AlertEvent
+	allowRecoveryNotification := rule.NotifyRecovery && h.faultCenterAllowsRecoveryNotification(rule)
+	recoveryWait := time.Duration(0)
+	if allowRecoveryNotification {
+		recoveryWait = h.effectiveRecoveryWait(rule)
+	}
 
 	for _, sample := range samples {
 		condition := selectSeverityCondition(rule, sample.Value)
@@ -2939,24 +3030,30 @@ func (h *DataSourceHandler) evaluateAlertRule(ctx context.Context, rule *model.A
 		}
 		if activeEvent != nil {
 			recoverMessage := fmt.Sprintf("规则「%s」已恢复：当前值 %s 不再满足告警条件", rule.Name, formatRuleValue(sample.Value))
-			recovered, err := h.recoverActiveAlertEventWithResult(rule, activeEvent, sampleResult, now, recoverMessage)
+			recovery, err := h.handleRecoveredAlertEvent(rule, activeEvent, sampleResult, now, recoverMessage, recoveryWait)
 			if err != nil {
 				return result, err
 			}
-			recoveredCount++
-			if rule.NotifyRecovery {
-				recoveryNotifyEvents = append(recoveryNotifyEvents, recovered)
+			if len(recovery.recovered) > 0 {
+				recoveredCount++
+			}
+			if len(recovery.recovering) > 0 {
+				recoveringCount++
+			}
+			if allowRecoveryNotification && len(recovery.notify) > 0 {
+				recoveryNotifyEvents = append(recoveryNotifyEvents, recovery.notify...)
 			}
 		}
 	}
 
-	staleRecovered, err := h.recoverMissingActiveAlertEvents(rule, seenFingerprints, now)
+	staleRecovery, err := h.recoverMissingActiveAlertEvents(rule, seenFingerprints, now, recoveryWait)
 	if err != nil {
 		return result, err
 	}
-	recoveredCount += len(staleRecovered)
-	if rule.NotifyRecovery {
-		recoveryNotifyEvents = append(recoveryNotifyEvents, staleRecovered...)
+	recoveredCount += len(staleRecovery.recovered)
+	recoveringCount += len(staleRecovery.recovering)
+	if allowRecoveryNotification {
+		recoveryNotifyEvents = append(recoveryNotifyEvents, staleRecovery.notify...)
 	}
 
 	if h.sendAndRecordRuleNotifications(ctx, rule, firingNotifyEvents) {
@@ -2971,7 +3068,7 @@ func (h *DataSourceHandler) evaluateAlertRule(ctx context.Context, rule *model.A
 		recoveryResult := result.copyForSample(ruleEvaluationSample{}, severityCondition{Severity: normalizeSeverity(rule.Severity), Condition: normalizeCondition(rule.Condition), Threshold: rule.Threshold, ForSeconds: positiveInt(rule.ForSeconds, 60)})
 		representative = recoveryResult
 	}
-	applyEvaluationSummary(result, representative, firingCount, pendingCount, recoveredCount, len(samples))
+	applyEvaluationSummary(result, representative, firingCount, pendingCount, recoveringCount, recoveredCount, len(samples))
 
 	rule.LastState = result.State
 	rule.LastValue = result.Value
@@ -3562,6 +3659,41 @@ func (h *DataSourceHandler) recoverActiveAlertEvents(rule *model.AlertRule, ende
 	return h.recoverActiveAlertEventsWithResult(rule, nil, endedAt, message)
 }
 
+type alertRecoveryResult struct {
+	recovered  []*model.AlertEvent
+	recovering []*model.AlertEvent
+	notify     []*model.AlertEvent
+}
+
+func (h *DataSourceHandler) handleRecoveredAlertEvent(rule *model.AlertRule, event *model.AlertEvent, result *alertRuleEvaluationResult, now time.Time, message string, recoveryWait time.Duration) (alertRecoveryResult, error) {
+	out := alertRecoveryResult{}
+	if event == nil {
+		return out, nil
+	}
+	shouldNotifyRecovery := shouldSendRecoveryNotification(event)
+	if shouldNotifyRecovery && recoveryWaitRemainingForDuration(event, now, recoveryWait) > 0 {
+		recovering, err := h.markAlertEventRecoveringWithResult(rule, event, result, now, message)
+		if err != nil {
+			return out, err
+		}
+		if recovering != nil {
+			out.recovering = append(out.recovering, recovering)
+		}
+		return out, nil
+	}
+	recovered, err := h.recoverActiveAlertEventWithResult(rule, event, result, now, message)
+	if err != nil {
+		return out, err
+	}
+	if recovered != nil {
+		out.recovered = append(out.recovered, recovered)
+		if shouldNotifyRecovery {
+			out.notify = append(out.notify, recovered)
+		}
+	}
+	return out, nil
+}
+
 func (h *DataSourceHandler) recoverActiveAlertEventsWithResult(rule *model.AlertRule, result *alertRuleEvaluationResult, endedAt time.Time, message string) ([]*model.AlertEvent, error) {
 	var events []model.AlertEvent
 	if err := h.db.Where("rule_id = ? AND state IN ? AND ended_at IS NULL", rule.ID, activeAlertEventStates()).
@@ -3633,15 +3765,51 @@ func (h *DataSourceHandler) recoverActiveAlertEventWithResult(rule *model.AlertR
 	return event, nil
 }
 
-func (h *DataSourceHandler) recoverMissingActiveAlertEvents(rule *model.AlertRule, seenFingerprints map[string]struct{}, endedAt time.Time) ([]*model.AlertEvent, error) {
+func (h *DataSourceHandler) markAlertEventRecoveringWithResult(rule *model.AlertRule, event *model.AlertEvent, result *alertRuleEvaluationResult, now time.Time, message string) (*model.AlertEvent, error) {
+	if event == nil {
+		return nil, nil
+	}
+	previousAnnotations := event.Annotations
+	alreadyRecovering := strings.EqualFold(strings.TrimSpace(event.State), "recovering")
+	event.State = "recovering"
+	event.EndedAt = nil
+	if !alreadyRecovering {
+		event.LastEvalAt = now
+	}
+	if strings.TrimSpace(message) != "" {
+		event.Message = message
+	}
+	if result != nil {
+		labels := buildRuleLabelMap(rule, result)
+		fingerprint := firstNonEmpty(event.Fingerprint, result.Fingerprint)
+		event.Severity = result.Severity
+		event.Value = result.Value
+		event.Condition = result.Condition
+		event.Threshold = result.Threshold
+		event.DataSourceID = result.DataSourceID
+		event.DataSourceName = result.DataSourceName
+		event.DataSourceType = result.DataSourceType
+		event.Labels = marshalStringMap(labels)
+		event.Annotations = mergeRecoveredMatchedLogAnnotations(previousAnnotations, buildRuleAnnotations(rule, result, labels, fingerprint))
+		if fingerprint != "" {
+			event.Fingerprint = fingerprint
+		}
+	}
+	if err := h.db.Save(event).Error; err != nil {
+		return nil, err
+	}
+	return event, nil
+}
+
+func (h *DataSourceHandler) recoverMissingActiveAlertEvents(rule *model.AlertRule, seenFingerprints map[string]struct{}, endedAt time.Time, recoveryWait time.Duration) (alertRecoveryResult, error) {
+	out := alertRecoveryResult{}
 	var events []model.AlertEvent
 	if err := h.db.Where("rule_id = ? AND state IN ? AND ended_at IS NULL", rule.ID, activeAlertEventStates()).
 		Order("id ASC").
 		Find(&events).Error; err != nil {
-		return nil, err
+		return out, err
 	}
 
-	recoveredEvents := make([]*model.AlertEvent, 0)
 	for i := range events {
 		event := &events[i]
 		if _, ok := seenFingerprints[event.Fingerprint]; ok {
@@ -3667,15 +3835,15 @@ func (h *DataSourceHandler) recoverMissingActiveAlertEvents(rule *model.AlertRul
 			EvaluatedAt:    endedAt,
 		}
 		message := fmt.Sprintf("规则「%s」已恢复：查询结果中未再返回该序列", rule.Name)
-		recovered, err := h.recoverActiveAlertEventWithResult(rule, event, result, endedAt, message)
+		recovery, err := h.handleRecoveredAlertEvent(rule, event, result, endedAt, message, recoveryWait)
 		if err != nil {
-			return nil, err
+			return out, err
 		}
-		if recovered != nil {
-			recoveredEvents = append(recoveredEvents, recovered)
-		}
+		out.recovered = append(out.recovered, recovery.recovered...)
+		out.recovering = append(out.recovering, recovery.recovering...)
+		out.notify = append(out.notify, recovery.notify...)
 	}
-	return recoveredEvents, nil
+	return out, nil
 }
 
 func (h *DataSourceHandler) findLatestActiveAlertEvent(rule *model.AlertRule, states []string) (*model.AlertEvent, error) {
