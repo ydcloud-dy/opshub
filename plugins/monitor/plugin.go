@@ -127,7 +127,10 @@ func (p *Plugin) Enable(db *gorm.DB) error {
 	p.instanceID = buildMonitorSchedulerInstanceID()
 	leader, err := newMonitorLeaderElector(p.ctx, p.instanceID, p.startMonitorScheduler)
 	if err != nil {
-		return fmt.Errorf("初始化监控调度选主失败: %w", err)
+		fmt.Printf("monitor scheduler leader election disabled, fallback to local scheduler: %v\n", err)
+		server.SetMonitorSchedulerLeaderStatus(p.instanceID, "local-fallback", true, err)
+		go p.startMonitorScheduler(p.ctx)
+		return nil
 	}
 	p.leader = leader
 	go p.leader.Start()
@@ -163,6 +166,9 @@ func (p *Plugin) startMonitorScheduler(ctx context.Context) {
 
 	handler := server.NewHandler(p.db)
 	dataSourceHandler := server.NewDataSourceHandler(p.db)
+
+	p.runAlertRuleScheduler(ctx, dataSourceHandler)
+	p.runProbeTaskScheduler(ctx, dataSourceHandler)
 
 	for {
 		select {

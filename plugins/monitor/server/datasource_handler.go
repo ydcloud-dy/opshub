@@ -54,6 +54,7 @@ type monitorSchedulerRuntimeStatus struct {
 	IsLeader             atomic.Bool
 	LeaderUpdatedAt      atomic.Value
 	LeaderError          atomic.Value
+	SchedulerMode        atomic.Value
 	LastTickAt           atomic.Value
 	LastFinishedAt       atomic.Value
 	LastDurationMS       atomic.Int64
@@ -91,6 +92,8 @@ const (
 	maxMatchedLogsTextChars          = 2400
 	maxLokiMatchedLogLookbackSeconds = 7 * 24 * 60 * 60
 	alertRuleEvaluationConcurrency   = 8
+	alertRuleEvaluationBatchSize     = 64
+	alertRuleEvaluationTimeout       = 45 * time.Second
 )
 
 func NewDataSourceHandler(db *gorm.DB) *DataSourceHandler {
@@ -2545,15 +2548,22 @@ func (h *DataSourceHandler) EvaluateDueAlertRules(ctx context.Context) {
 	}()
 
 	now := time.Now()
+	var totalRules int64
+	if err := h.db.Model(&model.AlertRule{}).Where("enabled = ?", true).Count(&totalRules).Error; err != nil {
+		monitorSchedulerStatus.LastError.Store(err.Error())
+		return
+	}
 	var rules []model.AlertRule
 	if err := h.db.Where("enabled = ?", true).
-		Order("id ASC").
+		Where("(last_eval_at IS NULL OR TIMESTAMPDIFF(SECOND, last_eval_at, NOW()) >= evaluate_interval)").
+		Order("COALESCE(last_eval_at, '1970-01-01 00:00:00') ASC, id ASC").
+		Limit(alertRuleEvaluationBatchSize).
 		Find(&rules).Error; err != nil {
 		monitorSchedulerStatus.LastError.Store(err.Error())
 		return
 	}
-	monitorSchedulerStatus.LastRuleTotal.Store(int64(len(rules)))
-	monitorSchedulerStatus.LastRuleDue.Store(0)
+	monitorSchedulerStatus.LastRuleTotal.Store(totalRules)
+	monitorSchedulerStatus.LastRuleDue.Store(int64(len(rules)))
 	monitorSchedulerStatus.LastRuleClaimed.Store(0)
 	monitorSchedulerStatus.LastRuleEvaluated.Store(0)
 	monitorSchedulerStatus.LastRuleSkipped.Store(0)
@@ -2564,17 +2574,6 @@ func (h *DataSourceHandler) EvaluateDueAlertRules(ctx context.Context) {
 	var wg sync.WaitGroup
 	for i := range rules {
 		rule := &rules[i]
-		due, err := h.isAlertRuleDue(rule.ID)
-		if err != nil {
-			monitorSchedulerStatus.LastRuleFailed.Add(1)
-			monitorSchedulerStatus.LastError.Store(err.Error())
-			continue
-		}
-		if !due {
-			monitorSchedulerStatus.LastRuleSkipped.Add(1)
-			continue
-		}
-		monitorSchedulerStatus.LastRuleDue.Add(1)
 		if !h.claimDueAlertRule(rule, now) {
 			monitorSchedulerStatus.LastRuleSkipped.Add(1)
 			continue
@@ -2597,7 +2596,9 @@ func (h *DataSourceHandler) EvaluateDueAlertRules(ctx context.Context) {
 					h.markAlertRuleEvaluationPanic(rule.ID, fmt.Errorf("%v", recovered))
 				}
 			}()
-			if _, err := h.evaluateAlertRule(ctx, &rule, false); err != nil {
+			ruleCtx, cancel := context.WithTimeout(ctx, alertRuleEvaluationTimeout)
+			defer cancel()
+			if _, err := h.evaluateAlertRule(ruleCtx, &rule, false); err != nil {
 				monitorSchedulerStatus.LastRuleFailed.Add(1)
 				monitorSchedulerStatus.LastError.Store(err.Error())
 				return
@@ -2606,18 +2607,6 @@ func (h *DataSourceHandler) EvaluateDueAlertRules(ctx context.Context) {
 		}(*rule)
 	}
 	waitAlertRuleEvaluationWorkers(&wg)
-}
-
-func (h *DataSourceHandler) isAlertRuleDue(ruleID uint) (bool, error) {
-	if h == nil || h.db == nil || ruleID == 0 {
-		return false, nil
-	}
-	var count int64
-	err := h.db.Model(&model.AlertRule{}).
-		Where("id = ? AND enabled = ?", ruleID, true).
-		Where("(last_eval_at IS NULL OR TIMESTAMPDIFF(SECOND, last_eval_at, NOW()) >= evaluate_interval)").
-		Count(&count).Error
-	return count > 0, err
 }
 
 func waitAlertRuleEvaluationWorkers(wg *sync.WaitGroup) {
@@ -2660,6 +2649,11 @@ func SetMonitorSchedulerLeaderStatus(instanceID, leaderID string, isLeader bool,
 	monitorSchedulerStatus.LeaderID.Store(leaderID)
 	monitorSchedulerStatus.IsLeader.Store(isLeader)
 	monitorSchedulerStatus.LeaderUpdatedAt.Store(time.Now())
+	if leaderID == "local-fallback" {
+		monitorSchedulerStatus.SchedulerMode.Store("local-fallback")
+	} else {
+		monitorSchedulerStatus.SchedulerMode.Store("redis-leader")
+	}
 	if err != nil {
 		monitorSchedulerStatus.LeaderError.Store(err.Error())
 	} else {
@@ -2677,6 +2671,7 @@ func (h *DataSourceHandler) GetSchedulerStatus(c *gin.Context) {
 			"instanceId":           schedulerStringValue(monitorSchedulerStatus.InstanceID.Load()),
 			"currentLeader":        schedulerStringValue(monitorSchedulerStatus.LeaderID.Load()),
 			"isLeader":             monitorSchedulerStatus.IsLeader.Load(),
+			"schedulerMode":        schedulerStringValue(monitorSchedulerStatus.SchedulerMode.Load()),
 			"leaderUpdatedAt":      schedulerTimeValue(monitorSchedulerStatus.LeaderUpdatedAt.Load()),
 			"leaderError":          schedulerStringValue(monitorSchedulerStatus.LeaderError.Load()),
 			"startedAt":            schedulerTimeValue(monitorSchedulerStatus.StartedAt.Load()),
