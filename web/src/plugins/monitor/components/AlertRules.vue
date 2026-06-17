@@ -77,45 +77,47 @@
             <el-icon><Plus /></el-icon>
           </el-button>
         </div>
-        <div
-          v-for="group in groupFilters"
-          :key="group.id || 0"
-          role="button"
-          tabindex="0"
-          class="group-item"
-          :class="{ active: selectedGroupId === (group.id || 0) }"
-          @click="selectedGroupId = group.id || 0"
-          @keydown.enter="selectedGroupId = group.id || 0"
-        >
-          <span class="group-name">
-            <el-icon><Folder /></el-icon>
-            <span>{{ group.name }}</span>
-          </span>
-          <span class="group-tail">
-            <em>{{ getGroupCount(group.id || 0) }}</em>
-            <el-dropdown
-              v-if="Number(group.id) > 0"
-              trigger="click"
-              placement="bottom-end"
-              popper-class="rule-group-dropdown"
-              @click.stop
-              @command="command => handleRuleGroupCommand(String(command), group)"
-            >
-              <el-button class="group-more" text :icon="MoreFilled" aria-label="规则组操作" @click.stop />
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item command="edit">
-                    <el-icon><Edit /></el-icon>
-                    编辑规则组
-                  </el-dropdown-item>
-                  <el-dropdown-item command="delete" divided class="danger-item">
-                    <el-icon><Delete /></el-icon>
-                    删除规则组
-                  </el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
-          </span>
+        <div class="group-list">
+          <div
+            v-for="group in groupFilters"
+            :key="group.id || 0"
+            role="button"
+            tabindex="0"
+            class="group-item"
+            :class="{ active: selectedGroupId === (group.id || 0) }"
+            @click="selectedGroupId = group.id || 0"
+            @keydown.enter="selectedGroupId = group.id || 0"
+          >
+            <span class="group-name">
+              <el-icon><Folder /></el-icon>
+              <span>{{ group.name }}</span>
+            </span>
+            <span class="group-tail">
+              <em>{{ getGroupCount(group.id || 0) }}</em>
+              <el-dropdown
+                v-if="Number(group.id) > 0"
+                trigger="click"
+                placement="bottom-end"
+                popper-class="rule-group-dropdown"
+                @click.stop
+                @command="command => handleRuleGroupCommand(String(command), group)"
+              >
+                <el-button class="group-more" text :icon="MoreFilled" aria-label="规则组操作" @click.stop />
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="edit">
+                      <el-icon><Edit /></el-icon>
+                      编辑规则组
+                    </el-dropdown-item>
+                    <el-dropdown-item command="delete" divided class="danger-item">
+                      <el-icon><Delete /></el-icon>
+                      删除规则组
+                    </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </span>
+          </div>
         </div>
       </aside>
 
@@ -170,7 +172,7 @@
             v-loading="loading"
             class="modern-table"
             :header-cell-style="tableHeaderStyle"
-            height="540"
+            height="100%"
             empty-text="暂无告警规则"
             row-key="id"
             @selection-change="handleSelectionChange"
@@ -3653,10 +3655,15 @@ onBeforeUnmount(() => {
 .rule-workspace {
   display: grid;
   grid-template-columns: 196px minmax(0, 1fr);
+  height: clamp(620px, calc(100vh - 190px), 860px);
+  min-height: 0;
   overflow: hidden;
 }
 
 .group-sidebar {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   padding: 10px 8px;
   border-right: 1px solid #edf1f7;
   background: #fbfcfe;
@@ -3670,6 +3677,29 @@ onBeforeUnmount(() => {
   color: #111827;
   font-size: 13px;
   font-weight: 750;
+}
+
+.group-list {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.group-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.group-list::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #d7deea;
+}
+
+.group-list::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .group-item {
@@ -3776,6 +3806,9 @@ onBeforeUnmount(() => {
 }
 
 .rules-main {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
   min-width: 0;
   padding: 12px;
 }
@@ -3809,8 +3842,9 @@ onBeforeUnmount(() => {
 
 .rule-table-wrapper {
   display: flex;
+  flex: 1;
   flex-direction: column;
-  min-height: 604px;
+  min-height: 0;
 }
 
 .batch-toolbar {
@@ -3922,6 +3956,8 @@ onBeforeUnmount(() => {
 }
 
 .modern-table {
+  flex: 1;
+  min-height: 0;
   width: 100%;
 }
 
@@ -5511,6 +5547,7 @@ onBeforeUnmount(() => {
 
 .monitor-rules-page .rule-workspace {
   grid-template-columns: 210px minmax(0, 1fr);
+  height: clamp(620px, calc(100vh - 154px), 880px);
   border-color: #f0f0f0;
   border-radius: 8px;
 }
@@ -5519,6 +5556,11 @@ onBeforeUnmount(() => {
   padding: 12px;
   border-right-color: #f0f0f0;
   background: #fff;
+}
+
+.monitor-rules-page .group-list {
+  gap: 3px;
+  padding-right: 4px;
 }
 
 .monitor-rules-page .sidebar-head {
@@ -5578,14 +5620,22 @@ onBeforeUnmount(() => {
 @media (max-width: 1180px) {
   .rule-workspace {
     grid-template-columns: 1fr;
+    height: auto;
   }
 
   .group-sidebar {
     display: flex;
+    flex-direction: row;
     gap: 8px;
     overflow-x: auto;
     border-right: 0;
     border-bottom: 1px solid #edf1f7;
+  }
+
+  .group-list {
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
   }
 
   .sidebar-head {
@@ -5594,6 +5644,7 @@ onBeforeUnmount(() => {
   }
 
   .group-item {
+    flex: 0 0 auto;
     width: auto;
     min-width: 140px;
   }
