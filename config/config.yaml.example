@@ -1,5 +1,6 @@
 server:
   mode: release  # debug, release, test
+  timezone: Asia/Shanghai
   http_port: 9876
   rpc_port: 9090
   read_timeout: 60000  # 毫秒

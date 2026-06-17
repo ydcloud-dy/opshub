@@ -60,6 +60,7 @@ services:
       - "${BACKEND_PORT:-9876}:9876"
     environment:
       OPSHUB_SERVER_MODE: ${OPSHUB_SERVER_MODE:-release}
+      OPSHUB_SERVER_TIMEZONE: ${OPSHUB_SERVER_TIMEZONE:-Asia/Shanghai}
       OPSHUB_SERVER_HTTP_PORT: 9876
       OPSHUB_SERVER_JWT_SECRET: ${OPSHUB_SERVER_JWT_SECRET:-opshub-jwt-secret-change-in-production}
       OPSHUB_SERVER_JWT_EXPIRE: 24h

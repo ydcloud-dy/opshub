@@ -45,12 +45,13 @@ const (
 
 // Plugin 监控中心插件实现
 type Plugin struct {
-	db         *gorm.DB
-	name       string
-	ctx        context.Context
-	cancelCtx  context.CancelFunc
-	instanceID string
-	leader     *monitorLeaderElector
+	db               *gorm.DB
+	name             string
+	ctx              context.Context
+	cancelCtx        context.CancelFunc
+	instanceID       string
+	leader           *monitorLeaderElector
+	schedulerStarted atomic.Bool
 }
 
 var (
@@ -89,6 +90,7 @@ func (p *Plugin) Author() string {
 func (p *Plugin) Enable(db *gorm.DB) error {
 	p.db = db
 	fmt.Printf("monitor plugin enabling, preparing scheduler\n")
+	p.startBackgroundScheduler(db)
 
 	// 自动迁移所有插件相关的表
 	models := []interface{}{
@@ -116,14 +118,27 @@ func (p *Plugin) Enable(db *gorm.DB) error {
 	// GORM 的 AutoMigrate 会自动添加缺失的列，不会删除已有数据
 	for _, m := range models {
 		if err := db.AutoMigrate(m); err != nil {
-			return err
+			fmt.Printf("monitor automigrate failed for %T, scheduler keeps running: %v\n", m, err)
 		}
 	}
 	if err := p.ensureDefaultMonitorData(); err != nil {
 		fmt.Printf("monitor default data initialization failed, scheduler will still start: %v\n", err)
 	}
 
-	// 启动定时检查任务
+	return nil
+}
+
+func (p *Plugin) startBackgroundScheduler(db *gorm.DB) {
+	if db == nil {
+		fmt.Printf("monitor scheduler skipped: database is nil\n")
+		return
+	}
+	if !p.schedulerStarted.CompareAndSwap(false, true) {
+		fmt.Printf("monitor scheduler already started: %s\n", p.instanceID)
+		return
+	}
+
+	p.db = db
 	p.ctx, p.cancelCtx = context.WithCancel(context.Background())
 	p.instanceID = buildMonitorSchedulerInstanceID()
 	server.SetMonitorSchedulerLeaderStatus(p.instanceID, "initializing", false, nil)
@@ -133,12 +148,10 @@ func (p *Plugin) Enable(db *gorm.DB) error {
 		fmt.Printf("monitor scheduler leader election disabled, fallback to local scheduler: %v\n", err)
 		server.SetMonitorSchedulerLeaderStatus(p.instanceID, "local-fallback", true, err)
 		go p.startMonitorScheduler(p.ctx)
-		return nil
+		return
 	}
 	p.leader = leader
 	go p.leader.Start()
-
-	return nil
 }
 
 // Disable 禁用插件
@@ -150,6 +163,7 @@ func (p *Plugin) Disable(db *gorm.DB) error {
 	if p.leader != nil {
 		p.leader.Stop()
 	}
+	p.schedulerStarted.Store(false)
 	return nil
 }
 
@@ -160,6 +174,7 @@ func (p *Plugin) startMonitorScheduler(ctx context.Context) {
 			fmt.Printf("monitor scheduler crashed: %v\n", recovered)
 		}
 	}()
+	fmt.Printf("monitor scheduler loop started: %s\n", p.instanceID)
 
 	alertTicker := time.NewTicker(alertRuleSchedulerInterval)
 	defer alertTicker.Stop()

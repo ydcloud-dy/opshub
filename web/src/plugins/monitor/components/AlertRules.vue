@@ -3402,6 +3402,9 @@ const formatNumber = (value?: number) => {
 
 const formatDateTime = (date?: string) => {
   if (!date) return '-'
+  const text = String(date).trim()
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2}):(\d{2})/)
+  if (match) return `${match[1]}-${match[2]}-${match[3]} ${match[4]}:${match[5]}:${match[6]}`
   const d = new Date(date)
   if (Number.isNaN(d.getTime())) return '-'
   const pad = (n: number) => String(n).padStart(2, '0')

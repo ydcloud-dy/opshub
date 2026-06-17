@@ -22,9 +22,11 @@ package conf
 import (
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/spf13/viper"
 )
@@ -40,6 +42,7 @@ type Config struct {
 // ServerConfig 服务器配置
 type ServerConfig struct {
 	Mode         string `mapstructure:"mode"` // debug, release, test
+	Timezone     string `mapstructure:"timezone"`
 	HttpPort     int    `mapstructure:"http_port"`
 	RPCPort      int    `mapstructure:"rpc_port"`
 	ReadTimeout  int    `mapstructure:"read_timeout"`  // 毫秒
@@ -130,6 +133,9 @@ func Load(configPath string) (*Config, error) {
 	config := &Config{}
 	if err := v.Unmarshal(config); err != nil {
 		return nil, fmt.Errorf("解析配置文件失败: %w", err)
+	}
+	if err := configureLocalTimezone(config.Server.Timezone); err != nil {
+		return nil, err
 	}
 
 	globalConfig = config
@@ -246,15 +252,53 @@ func firstNonLoopbackIPv4() string {
 	return ""
 }
 
+func configureLocalTimezone(name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		name = strings.TrimSpace(os.Getenv("OPSHUB_SERVER_TIMEZONE"))
+	}
+	if name == "" {
+		name = strings.TrimSpace(os.Getenv("TZ"))
+	}
+	if name == "" {
+		name = "Asia/Shanghai"
+	}
+
+	location, err := time.LoadLocation(name)
+	if err != nil {
+		if strings.EqualFold(name, "Asia/Shanghai") || strings.EqualFold(name, "Asia/Chongqing") {
+			location = time.FixedZone("Asia/Shanghai", 8*60*60)
+		} else {
+			return fmt.Errorf("加载时区失败 %q: %w", name, err)
+		}
+	}
+	time.Local = location
+	_ = os.Setenv("TZ", name)
+	return nil
+}
+
 // GetDSN 获取数据库连接字符串
 func (c *DatabaseConfig) GetDSN() string {
-	return fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=true&loc=Local",
+	return fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=true&loc=Local&time_zone=%s",
 		c.Username,
 		c.Password,
 		c.Host,
 		c.Port,
 		c.Database,
+		mysqlSessionTimeZoneParam(),
 	)
+}
+
+func mysqlSessionTimeZoneParam() string {
+	_, offset := time.Now().In(time.Local).Zone()
+	sign := "+"
+	if offset < 0 {
+		sign = "-"
+		offset = -offset
+	}
+	hours := offset / 3600
+	minutes := (offset % 3600) / 60
+	return url.QueryEscape(fmt.Sprintf("'%s%02d:%02d'", sign, hours, minutes))
 }
 
 // GetRedisAddr 获取Redis地址

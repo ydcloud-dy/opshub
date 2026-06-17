@@ -2540,22 +2540,23 @@ func (h *DataSourceHandler) EvaluateAlertRule(c *gin.Context) {
 }
 
 func (h *DataSourceHandler) EvaluateDueAlertRules(ctx context.Context) {
-	startedAt := time.Now()
+	startedAt := time.Now().In(time.Local)
 	RecordMonitorSchedulerStarted(startedAt)
 	defer func() {
-		monitorSchedulerStatus.LastFinishedAt.Store(time.Now())
+		monitorSchedulerStatus.LastFinishedAt.Store(time.Now().In(time.Local))
 		monitorSchedulerStatus.LastDurationMS.Store(time.Since(startedAt).Milliseconds())
 	}()
 
-	now := time.Now()
+	now := time.Now().In(time.Local)
 	var totalRules int64
 	if err := h.db.Model(&model.AlertRule{}).Where("enabled = ?", true).Count(&totalRules).Error; err != nil {
 		monitorSchedulerStatus.LastError.Store(err.Error())
 		return
 	}
 	var rules []model.AlertRule
+	futureSkew := now.Add(1 * time.Minute)
 	if err := h.db.Where("enabled = ?", true).
-		Where("(last_eval_at IS NULL OR TIMESTAMPDIFF(SECOND, last_eval_at, NOW()) >= evaluate_interval)").
+		Where("(last_eval_at IS NULL OR last_eval_at > ? OR TIMESTAMPDIFF(SECOND, last_eval_at, ?) >= evaluate_interval)", futureSkew, now).
 		Order("COALESCE(last_eval_at, '1970-01-01 00:00:00') ASC, id ASC").
 		Limit(alertRuleEvaluationBatchSize).
 		Find(&rules).Error; err != nil {
@@ -2717,9 +2718,10 @@ func (h *DataSourceHandler) claimDueAlertRule(rule *model.AlertRule, now time.Ti
 		return false
 	}
 	interval := positiveInt(rule.EvaluateInterval, 60)
+	futureSkew := now.Add(1 * time.Minute)
 	query := h.db.Model(&model.AlertRule{}).
 		Where("id = ? AND enabled = ?", rule.ID, true).
-		Where("(last_eval_at IS NULL OR TIMESTAMPDIFF(SECOND, last_eval_at, NOW()) >= ?)", interval).
+		Where("(last_eval_at IS NULL OR last_eval_at > ? OR TIMESTAMPDIFF(SECOND, last_eval_at, ?) >= ?)", futureSkew, now, interval).
 		Update("last_eval_at", now)
 	if query.Error != nil || query.RowsAffected == 0 {
 		return false
@@ -2732,7 +2734,7 @@ func (h *DataSourceHandler) markAlertRuleEvaluationPanic(ruleID uint, err error)
 	if h == nil || h.db == nil || ruleID == 0 || err == nil {
 		return
 	}
-	now := time.Now()
+	now := time.Now().In(time.Local)
 	message := fmt.Sprintf("后台评估异常：%s", err.Error())
 	_ = h.updateAlertRuleRuntimeFields(ruleID, map[string]interface{}{
 		"last_state":   "error",

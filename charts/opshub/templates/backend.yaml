@@ -57,6 +57,8 @@ spec:
               value: {{ .Values.server.timezone | quote }}
             - name: OPSHUB_SERVER_MODE
               value: {{ .Values.server.mode | quote }}
+            - name: OPSHUB_SERVER_TIMEZONE
+              value: {{ .Values.server.timezone | quote }}
             - name: OPSHUB_SERVER_HTTP_PORT
               value: {{ .Values.server.httpPort | quote }}
             - name: OPSHUB_SERVER_JWT_SECRET
