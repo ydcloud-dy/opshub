@@ -53,6 +53,8 @@ spec:
               containerPort: {{ .Values.server.httpPort }}
               protocol: TCP
           env:
+            - name: TZ
+              value: {{ .Values.server.timezone | quote }}
             - name: OPSHUB_SERVER_MODE
               value: {{ .Values.server.mode | quote }}
             - name: OPSHUB_SERVER_HTTP_PORT
@@ -65,9 +67,9 @@ spec:
             - name: OPSHUB_SERVER_JWT_EXPIRE
               value: {{ .Values.server.jwtExpire | quote }}
             - name: OPSHUB_SERVER_EXTERNAL_URL
-              value: {{ .Values.server.externalURL | quote }}
+              value: {{ include "opshub.server.externalURL" . | quote }}
             - name: OPSHUB_SERVER_FRONTEND_URL
-              value: {{ .Values.server.frontendURL | quote }}
+              value: {{ include "opshub.frontend.url" . | quote }}
             - name: OPSHUB_DATABASE_HOST
               value: {{ include "opshub.mysql.host" . | quote }}
             - name: OPSHUB_DATABASE_PORT

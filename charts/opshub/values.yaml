@@ -217,6 +217,8 @@ externalRedis:
 server:
   # 运行模式: debug / release
   mode: release
+  # 容器时区，需与数据库时间保持一致
+  timezone: Asia/Shanghai
   # HTTP 端口
   httpPort: 9876
   # JWT 密钥（生产环境请修改为随机字符串）

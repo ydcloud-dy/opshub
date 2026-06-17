@@ -34,6 +34,8 @@ func RegisterRoutes(router *gin.RouterGroup, db *gorm.DB) {
 	// 监控插件路由组 - 使用 /monitor 前缀
 	monitorGroup := router.Group("/monitor")
 	{
+		monitorGroup.GET("/scheduler/status", dataSourceHandler.GetSchedulerStatus)
+
 		// 域名监控路由组
 		domains := monitorGroup.Group("/domains")
 		{

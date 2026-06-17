@@ -260,15 +260,21 @@ func (h *DataSourceHandler) InstantProbe(c *gin.Context) {
 }
 
 func (h *DataSourceHandler) RunDueProbeTasks(ctx context.Context) {
+	startedAt := time.Now()
+	RecordMonitorProbeSchedulerStarted(startedAt)
 	now := time.Now()
 	var tasks []model.ProbeTask
 	if err := h.db.Where("enabled = ? AND (next_probe_at IS NULL OR next_probe_at <= ?)", true, now).Find(&tasks).Error; err != nil {
+		RecordMonitorProbeSchedulerFinished(startedAt, 0, 0, err)
 		return
 	}
+	started := 0
 	for i := range tasks {
 		task := tasks[i]
+		started++
 		go h.executeProbeTask(ctx, &task)
 	}
+	RecordMonitorProbeSchedulerFinished(startedAt, len(tasks), started, nil)
 }
 
 func (h *DataSourceHandler) executeProbeTask(ctx context.Context, task *model.ProbeTask) probeRunSummary {

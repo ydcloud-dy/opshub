@@ -22,7 +22,9 @@ package monitor
 import (
 	"context"
 	"fmt"
+	"os"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -43,10 +45,12 @@ const (
 
 // Plugin 监控中心插件实现
 type Plugin struct {
-	db        *gorm.DB
-	name      string
-	ctx       context.Context
-	cancelCtx context.CancelFunc
+	db         *gorm.DB
+	name       string
+	ctx        context.Context
+	cancelCtx  context.CancelFunc
+	instanceID string
+	leader     *monitorLeaderElector
 }
 
 var (
@@ -120,7 +124,13 @@ func (p *Plugin) Enable(db *gorm.DB) error {
 
 	// 启动定时检查任务
 	p.ctx, p.cancelCtx = context.WithCancel(context.Background())
-	go p.startMonitorScheduler()
+	p.instanceID = buildMonitorSchedulerInstanceID()
+	leader, err := newMonitorLeaderElector(p.ctx, p.instanceID, p.startMonitorScheduler)
+	if err != nil {
+		return fmt.Errorf("初始化监控调度选主失败: %w", err)
+	}
+	p.leader = leader
+	go p.leader.Start()
 
 	return nil
 }
@@ -131,11 +141,14 @@ func (p *Plugin) Disable(db *gorm.DB) error {
 	if p.cancelCtx != nil {
 		p.cancelCtx()
 	}
+	if p.leader != nil {
+		p.leader.Stop()
+	}
 	return nil
 }
 
 // startMonitorScheduler 启动监控调度器
-func (p *Plugin) startMonitorScheduler() {
+func (p *Plugin) startMonitorScheduler(ctx context.Context) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			fmt.Printf("monitor scheduler crashed: %v\n", recovered)
@@ -153,11 +166,11 @@ func (p *Plugin) startMonitorScheduler() {
 
 	for {
 		select {
-		case <-p.ctx.Done():
+		case <-ctx.Done():
 			return
 		case <-alertTicker.C:
-			p.runAlertRuleScheduler(dataSourceHandler)
-			p.runProbeTaskScheduler(dataSourceHandler)
+			p.runAlertRuleScheduler(ctx, dataSourceHandler)
+			p.runProbeTaskScheduler(ctx, dataSourceHandler)
 		case <-maintenanceTicker.C:
 			safeMonitorSchedulerCall("domain-maintenance", func() {
 				p.checkDueDomains(handler)
@@ -166,28 +179,28 @@ func (p *Plugin) startMonitorScheduler() {
 	}
 }
 
-func (p *Plugin) runAlertRuleScheduler(dataSourceHandler *server.DataSourceHandler) {
+func (p *Plugin) runAlertRuleScheduler(parentCtx context.Context, dataSourceHandler *server.DataSourceHandler) {
 	if !alertRuleSchedulerRunning.CompareAndSwap(false, true) {
 		return
 	}
 	go func() {
 		defer alertRuleSchedulerRunning.Store(false)
 		safeMonitorSchedulerCall("alert-rule-evaluation", func() {
-			ctx, cancel := context.WithTimeout(p.ctx, alertRuleSchedulerTimeout)
+			ctx, cancel := context.WithTimeout(parentCtx, alertRuleSchedulerTimeout)
 			defer cancel()
 			dataSourceHandler.EvaluateDueAlertRules(ctx)
 		})
 	}()
 }
 
-func (p *Plugin) runProbeTaskScheduler(dataSourceHandler *server.DataSourceHandler) {
+func (p *Plugin) runProbeTaskScheduler(parentCtx context.Context, dataSourceHandler *server.DataSourceHandler) {
 	if !probeTaskSchedulerRunning.CompareAndSwap(false, true) {
 		return
 	}
 	go func() {
 		defer probeTaskSchedulerRunning.Store(false)
 		safeMonitorSchedulerCall("probe-task-evaluation", func() {
-			ctx, cancel := context.WithTimeout(p.ctx, probeTaskSchedulerTimeout)
+			ctx, cancel := context.WithTimeout(parentCtx, probeTaskSchedulerTimeout)
 			defer cancel()
 			dataSourceHandler.RunDueProbeTasks(ctx)
 		})
@@ -201,6 +214,14 @@ func safeMonitorSchedulerCall(name string, fn func()) {
 		}
 	}()
 	fn()
+}
+
+func buildMonitorSchedulerInstanceID() string {
+	hostname, _ := os.Hostname()
+	if strings.TrimSpace(hostname) == "" {
+		hostname = "unknown-host"
+	}
+	return fmt.Sprintf("%s-%d-%d", hostname, os.Getpid(), time.Now().UnixNano())
 }
 
 // checkDueDomains 检查到期需要检查的域名

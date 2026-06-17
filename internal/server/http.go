@@ -75,6 +75,7 @@ func NewHTTPServer(conf *conf.Config, svc *service.Service, db *gorm.DB) *HTTPSe
 	router.Use(middleware.Logger())
 	router.Use(middleware.Recovery())
 	router.Use(middleware.CORS())
+	router.Use(captureExternalURL())
 	router.Use(middleware.AuditLogOperation(db))
 
 	// 创建插件管理器

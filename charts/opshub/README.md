@@ -126,17 +126,18 @@ kubectl delete namespace opshub
 | 参数 | 描述 | 默认值 |
 |------|------|--------|
 | `server.mode` | 运行模式 | `release` |
+| `server.timezone` | 后端容器时区，建议与数据库保持一致 | `Asia/Shanghai` |
 | `server.httpPort` | HTTP 端口 | `9876` |
 | `server.jwtSecret` | JWT 密钥 | `opshub-jwt-secret-...` |
 | `server.jwtExpire` | JWT 过期时间 | `24h` |
 | `server.externalURL` | 后端外部访问 URL，用于 OAuth2 / 外部回调 | `""` |
-| `server.frontendURL` | 前端外部访问 URL，用于告警通知里的事件链接 | `""` |
+| `server.frontendURL` | 前端外部访问 URL，用于告警通知里的事件链接；留空时会优先从 Ingress 自动推导 | `""` |
 
 ### Ingress 配置
 
 | 参数 | 描述 | 默认值 |
 |------|------|--------|
-| `ingress.enabled` | 是否启用 Ingress | `true` |
+| `ingress.enabled` | 是否启用 Ingress | `false` |
 | `ingress.className` | Ingress 类名 | `nginx` |
 | `ingress.hosts[0].host` | 主机域名 | `opshub.example.com` |
 | `ingress.tls` | TLS 配置 | `[]` |
@@ -173,15 +174,22 @@ ingress:
         - opshub.example.com
 ```
 
-### 配置外部访问地址
+### 告警事件链接
 
-如果告警通知中的事件链接仍然是 `localhost`，需要配置前端外部访问地址：
+当 `ingress.enabled=true` 且配置了 `ingress.hosts[0].host` 时，Chart 会自动把 `OPSHUB_SERVER_FRONTEND_URL` 注入为 `http(s)://<Ingress Host>`，告警通知里的事件链接不需要手动配置。
+
+如果没有使用 Ingress，或者实际访问入口不是第一个 Ingress Host，可以显式覆盖：
 
 ```yaml
 server:
+  timezone: "Asia/Shanghai"
   externalURL: "http://10.122.28.13"
   frontendURL: "http://10.122.28.13"
 ```
+
+### 多副本监控调度
+
+后端可以多副本部署。监控中心的规则评估和拨测调度会通过 Redis 进行 Leader 选举，只有当前 Leader 执行调度，Leader 不可用时其他副本会自动接管。可以通过 `/api/v1/plugins/monitor/scheduler/status` 查看当前实例、Leader、最后调度时间和错误信息。
 
 ### 生产环境配置
 

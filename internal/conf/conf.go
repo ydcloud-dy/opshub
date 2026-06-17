@@ -21,7 +21,10 @@ package conf
 
 import (
 	"fmt"
+	"net"
+	"os"
 	"strings"
+	"sync/atomic"
 
 	"github.com/spf13/viper"
 )
@@ -36,7 +39,7 @@ type Config struct {
 
 // ServerConfig 服务器配置
 type ServerConfig struct {
-	Mode         string `mapstructure:"mode"`          // debug, release, test
+	Mode         string `mapstructure:"mode"` // debug, release, test
 	HttpPort     int    `mapstructure:"http_port"`
 	RPCPort      int    `mapstructure:"rpc_port"`
 	ReadTimeout  int    `mapstructure:"read_timeout"`  // 毫秒
@@ -95,14 +98,15 @@ type RedisConfig struct {
 type LogConfig struct {
 	Level      string `mapstructure:"level"`
 	Filename   string `mapstructure:"filename"`
-	MaxSize    int    `mapstructure:"max_size"`     // MB
+	MaxSize    int    `mapstructure:"max_size"` // MB
 	MaxBackups int    `mapstructure:"max_backups"`
-	MaxAge     int    `mapstructure:"max_age"`      // days
+	MaxAge     int    `mapstructure:"max_age"` // days
 	Compress   bool   `mapstructure:"compress"`
 	Console    bool   `mapstructure:"console"`
 }
 
 var globalConfig *Config
+var observedFrontendURL atomic.Value
 
 // Load 加载配置
 func Load(configPath string) (*Config, error) {
@@ -135,6 +139,111 @@ func Load(configPath string) (*Config, error) {
 // Get 获取全局配置
 func Get() *Config {
 	return globalConfig
+}
+
+func RecordObservedFrontendURL(rawURL string) {
+	rawURL = normalizeBaseURL(rawURL)
+	if rawURL == "" {
+		return
+	}
+	observedFrontendURL.Store(rawURL)
+}
+
+func GetObservedFrontendURL() string {
+	if value, ok := observedFrontendURL.Load().(string); ok {
+		return value
+	}
+	return ""
+}
+
+func GetNotificationFrontendURL() string {
+	if globalConfig != nil {
+		if frontendURL := normalizeBaseURL(globalConfig.Server.FrontendURL); frontendURL != "" {
+			return frontendURL
+		}
+		if externalURL := normalizeBaseURL(globalConfig.Server.ExternalURL); externalURL != "" {
+			return externalURL
+		}
+	}
+	if observedURL := GetObservedFrontendURL(); observedURL != "" {
+		return observedURL
+	}
+	return autoDetectedFrontendURL()
+}
+
+func normalizeBaseURL(rawURL string) string {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return ""
+	}
+	rawURL = strings.TrimRight(rawURL, "/")
+	if strings.HasPrefix(rawURL, "http://") || strings.HasPrefix(rawURL, "https://") {
+		return rawURL
+	}
+	return "http://" + rawURL
+}
+
+func autoDetectedFrontendURL() string {
+	if host := strings.TrimSpace(os.Getenv("OPSHUB_PUBLIC_HOST")); host != "" {
+		scheme := strings.TrimSpace(os.Getenv("OPSHUB_PUBLIC_SCHEME"))
+		if scheme == "" {
+			scheme = "http"
+		}
+		if strings.HasPrefix(host, "http://") || strings.HasPrefix(host, "https://") {
+			return normalizeBaseURL(host)
+		}
+		port := strings.TrimSpace(os.Getenv("OPSHUB_PUBLIC_PORT"))
+		if port != "" && !strings.Contains(host, ":") {
+			host += ":" + port
+		}
+		return normalizeBaseURL(scheme + "://" + host)
+	}
+	ip := firstNonLoopbackIPv4()
+	if ip == "" {
+		return ""
+	}
+	port := strings.TrimSpace(os.Getenv("FRONTEND_PORT"))
+	if port == "" {
+		port = strings.TrimSpace(os.Getenv("OPSHUB_FRONTEND_PORT"))
+	}
+	if port == "" || port == "80" {
+		return "http://" + ip
+	}
+	return "http://" + ip + ":" + port
+}
+
+func firstNonLoopbackIPv4() string {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return ""
+	}
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			var ip net.IP
+			switch v := addr.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			}
+			if ip == nil || ip.IsLoopback() {
+				continue
+			}
+			ip = ip.To4()
+			if ip == nil {
+				continue
+			}
+			return ip.String()
+		}
+	}
+	return ""
 }
 
 // GetDSN 获取数据库连接字符串

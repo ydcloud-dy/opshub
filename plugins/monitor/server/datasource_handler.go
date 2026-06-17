@@ -29,6 +29,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -45,6 +46,33 @@ import (
 type DataSourceHandler struct {
 	db *gorm.DB
 }
+
+type monitorSchedulerRuntimeStatus struct {
+	StartedAt            atomic.Value
+	InstanceID           atomic.Value
+	LeaderID             atomic.Value
+	IsLeader             atomic.Bool
+	LeaderUpdatedAt      atomic.Value
+	LeaderError          atomic.Value
+	LastTickAt           atomic.Value
+	LastFinishedAt       atomic.Value
+	LastDurationMS       atomic.Int64
+	LastRuleTotal        atomic.Int64
+	LastRuleDue          atomic.Int64
+	LastRuleClaimed      atomic.Int64
+	LastRuleEvaluated    atomic.Int64
+	LastRuleSkipped      atomic.Int64
+	LastRuleFailed       atomic.Int64
+	LastError            atomic.Value
+	LastProbeTickAt      atomic.Value
+	LastProbeFinishedAt  atomic.Value
+	LastProbeDurationMS  atomic.Int64
+	LastProbeTaskTotal   atomic.Int64
+	LastProbeTaskStarted atomic.Int64
+	LastProbeError       atomic.Value
+}
+
+var monitorSchedulerStatus monitorSchedulerRuntimeStatus
 
 var (
 	noticeLabelTemplatePattern      = regexp.MustCompile(`\$\{labels\.([A-Za-z0-9_.:-]+)\}|{{\s*\$?labels\.([A-Za-z0-9_.:-]+)\s*}}`)
@@ -2509,26 +2537,52 @@ func (h *DataSourceHandler) EvaluateAlertRule(c *gin.Context) {
 }
 
 func (h *DataSourceHandler) EvaluateDueAlertRules(ctx context.Context) {
+	startedAt := time.Now()
+	RecordMonitorSchedulerStarted(startedAt)
+	defer func() {
+		monitorSchedulerStatus.LastFinishedAt.Store(time.Now())
+		monitorSchedulerStatus.LastDurationMS.Store(time.Since(startedAt).Milliseconds())
+	}()
+
 	now := time.Now()
 	var rules []model.AlertRule
-	if err := h.db.Where("enabled = ? AND (last_eval_at IS NULL OR last_eval_at <= ?)", true, now).
+	if err := h.db.Where("enabled = ?", true).
 		Order("id ASC").
 		Find(&rules).Error; err != nil {
+		monitorSchedulerStatus.LastError.Store(err.Error())
 		return
 	}
+	monitorSchedulerStatus.LastRuleTotal.Store(int64(len(rules)))
+	monitorSchedulerStatus.LastRuleDue.Store(0)
+	monitorSchedulerStatus.LastRuleClaimed.Store(0)
+	monitorSchedulerStatus.LastRuleEvaluated.Store(0)
+	monitorSchedulerStatus.LastRuleSkipped.Store(0)
+	monitorSchedulerStatus.LastRuleFailed.Store(0)
+	monitorSchedulerStatus.LastError.Store("")
 
 	sem := make(chan struct{}, alertRuleEvaluationConcurrency)
 	var wg sync.WaitGroup
 	for i := range rules {
 		rule := &rules[i]
-		if rule.LastEvalAt != nil && rule.LastEvalAt.Add(time.Duration(rule.EvaluateInterval)*time.Second).After(now) {
+		due, err := h.isAlertRuleDue(rule.ID)
+		if err != nil {
+			monitorSchedulerStatus.LastRuleFailed.Add(1)
+			monitorSchedulerStatus.LastError.Store(err.Error())
 			continue
 		}
+		if !due {
+			monitorSchedulerStatus.LastRuleSkipped.Add(1)
+			continue
+		}
+		monitorSchedulerStatus.LastRuleDue.Add(1)
 		if !h.claimDueAlertRule(rule, now) {
+			monitorSchedulerStatus.LastRuleSkipped.Add(1)
 			continue
 		}
+		monitorSchedulerStatus.LastRuleClaimed.Add(1)
 		select {
 		case <-ctx.Done():
+			monitorSchedulerStatus.LastError.Store(ctx.Err().Error())
 			waitAlertRuleEvaluationWorkers(&wg)
 			return
 		case sem <- struct{}{}:
@@ -2539,13 +2593,31 @@ func (h *DataSourceHandler) EvaluateDueAlertRules(ctx context.Context) {
 			defer func() {
 				<-sem
 				if recovered := recover(); recovered != nil {
+					monitorSchedulerStatus.LastRuleFailed.Add(1)
 					h.markAlertRuleEvaluationPanic(rule.ID, fmt.Errorf("%v", recovered))
 				}
 			}()
-			_, _ = h.evaluateAlertRule(ctx, &rule, false)
+			if _, err := h.evaluateAlertRule(ctx, &rule, false); err != nil {
+				monitorSchedulerStatus.LastRuleFailed.Add(1)
+				monitorSchedulerStatus.LastError.Store(err.Error())
+				return
+			}
+			monitorSchedulerStatus.LastRuleEvaluated.Add(1)
 		}(*rule)
 	}
 	waitAlertRuleEvaluationWorkers(&wg)
+}
+
+func (h *DataSourceHandler) isAlertRuleDue(ruleID uint) (bool, error) {
+	if h == nil || h.db == nil || ruleID == 0 {
+		return false, nil
+	}
+	var count int64
+	err := h.db.Model(&model.AlertRule{}).
+		Where("id = ? AND enabled = ?", ruleID, true).
+		Where("(last_eval_at IS NULL OR TIMESTAMPDIFF(SECOND, last_eval_at, NOW()) >= evaluate_interval)").
+		Count(&count).Error
+	return count > 0, err
 }
 
 func waitAlertRuleEvaluationWorkers(wg *sync.WaitGroup) {
@@ -2560,15 +2632,99 @@ func waitAlertRuleEvaluationWorkers(wg *sync.WaitGroup) {
 	}
 }
 
+func RecordMonitorSchedulerStarted(t time.Time) {
+	if _, ok := monitorSchedulerStatus.StartedAt.Load().(time.Time); !ok {
+		monitorSchedulerStatus.StartedAt.Store(t)
+	}
+	monitorSchedulerStatus.LastTickAt.Store(t)
+}
+
+func RecordMonitorProbeSchedulerStarted(t time.Time) {
+	monitorSchedulerStatus.LastProbeTickAt.Store(t)
+}
+
+func RecordMonitorProbeSchedulerFinished(startedAt time.Time, total, started int, err error) {
+	monitorSchedulerStatus.LastProbeFinishedAt.Store(time.Now())
+	monitorSchedulerStatus.LastProbeDurationMS.Store(time.Since(startedAt).Milliseconds())
+	monitorSchedulerStatus.LastProbeTaskTotal.Store(int64(total))
+	monitorSchedulerStatus.LastProbeTaskStarted.Store(int64(started))
+	if err != nil {
+		monitorSchedulerStatus.LastProbeError.Store(err.Error())
+	} else {
+		monitorSchedulerStatus.LastProbeError.Store("")
+	}
+}
+
+func SetMonitorSchedulerLeaderStatus(instanceID, leaderID string, isLeader bool, err error) {
+	monitorSchedulerStatus.InstanceID.Store(instanceID)
+	monitorSchedulerStatus.LeaderID.Store(leaderID)
+	monitorSchedulerStatus.IsLeader.Store(isLeader)
+	monitorSchedulerStatus.LeaderUpdatedAt.Store(time.Now())
+	if err != nil {
+		monitorSchedulerStatus.LeaderError.Store(err.Error())
+	} else {
+		monitorSchedulerStatus.LeaderError.Store("")
+	}
+}
+
+func (h *DataSourceHandler) GetSchedulerStatus(c *gin.Context) {
+	var dbNow string
+	_ = h.db.Raw("SELECT DATE_FORMAT(NOW(), '%Y-%m-%d %H:%i:%s')").Scan(&dbNow).Error
+	c.JSON(200, gin.H{
+		"code":    0,
+		"message": "success",
+		"data": gin.H{
+			"instanceId":           schedulerStringValue(monitorSchedulerStatus.InstanceID.Load()),
+			"currentLeader":        schedulerStringValue(monitorSchedulerStatus.LeaderID.Load()),
+			"isLeader":             monitorSchedulerStatus.IsLeader.Load(),
+			"leaderUpdatedAt":      schedulerTimeValue(monitorSchedulerStatus.LeaderUpdatedAt.Load()),
+			"leaderError":          schedulerStringValue(monitorSchedulerStatus.LeaderError.Load()),
+			"startedAt":            schedulerTimeValue(monitorSchedulerStatus.StartedAt.Load()),
+			"lastTickAt":           schedulerTimeValue(monitorSchedulerStatus.LastTickAt.Load()),
+			"lastFinishedAt":       schedulerTimeValue(monitorSchedulerStatus.LastFinishedAt.Load()),
+			"lastDurationMs":       monitorSchedulerStatus.LastDurationMS.Load(),
+			"lastRuleTotal":        monitorSchedulerStatus.LastRuleTotal.Load(),
+			"lastRuleDue":          monitorSchedulerStatus.LastRuleDue.Load(),
+			"lastRuleClaimed":      monitorSchedulerStatus.LastRuleClaimed.Load(),
+			"lastRuleEvaluated":    monitorSchedulerStatus.LastRuleEvaluated.Load(),
+			"lastRuleSkipped":      monitorSchedulerStatus.LastRuleSkipped.Load(),
+			"lastRuleFailed":       monitorSchedulerStatus.LastRuleFailed.Load(),
+			"lastError":            schedulerStringValue(monitorSchedulerStatus.LastError.Load()),
+			"lastProbeTickAt":      schedulerTimeValue(monitorSchedulerStatus.LastProbeTickAt.Load()),
+			"lastProbeFinishedAt":  schedulerTimeValue(monitorSchedulerStatus.LastProbeFinishedAt.Load()),
+			"lastProbeDurationMs":  monitorSchedulerStatus.LastProbeDurationMS.Load(),
+			"lastProbeTaskTotal":   monitorSchedulerStatus.LastProbeTaskTotal.Load(),
+			"lastProbeTaskStarted": monitorSchedulerStatus.LastProbeTaskStarted.Load(),
+			"lastProbeError":       schedulerStringValue(monitorSchedulerStatus.LastProbeError.Load()),
+			"serverNow":            time.Now().Format("2006-01-02 15:04:05"),
+			"serverLocation":       time.Local.String(),
+			"databaseNow":          dbNow,
+		},
+	})
+}
+
+func schedulerTimeValue(raw interface{}) string {
+	if value, ok := raw.(time.Time); ok && !value.IsZero() {
+		return value.Format("2006-01-02 15:04:05")
+	}
+	return ""
+}
+
+func schedulerStringValue(raw interface{}) string {
+	if value, ok := raw.(string); ok {
+		return value
+	}
+	return ""
+}
+
 func (h *DataSourceHandler) claimDueAlertRule(rule *model.AlertRule, now time.Time) bool {
 	if h == nil || h.db == nil || rule == nil || rule.ID == 0 {
 		return false
 	}
 	interval := positiveInt(rule.EvaluateInterval, 60)
-	dueBefore := now.Add(-time.Duration(interval) * time.Second)
 	query := h.db.Model(&model.AlertRule{}).
 		Where("id = ? AND enabled = ?", rule.ID, true).
-		Where("(last_eval_at IS NULL OR last_eval_at <= ?)", dueBefore).
+		Where("(last_eval_at IS NULL OR TIMESTAMPDIFF(SECOND, last_eval_at, NOW()) >= ?)", interval).
 		Update("last_eval_at", now)
 	if query.Error != nil || query.RowsAffected == 0 {
 		return false
@@ -6717,15 +6873,7 @@ func buildNoticeEventURL(payload ruleNotificationPayload) string {
 }
 
 func noticeFrontendBaseURL() string {
-	if cfg := conf.Get(); cfg != nil {
-		if frontendURL := strings.TrimSpace(cfg.Server.GetFrontendURL()); frontendURL != "" {
-			return frontendURL
-		}
-		if externalURL := strings.TrimSpace(cfg.Server.ExternalURL); externalURL != "" {
-			return externalURL
-		}
-	}
-	return ""
+	return strings.TrimSpace(conf.GetNotificationFrontendURL())
 }
 
 func matchedNoticeRouteObjectIDs(raw string, payload ruleNotificationPayload) []uint {

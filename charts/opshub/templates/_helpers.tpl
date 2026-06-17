@@ -156,6 +156,37 @@ Redis port
 {{- end }}
 
 {{/*
+Frontend public URL for notification links.
+Explicit server.frontendURL wins; otherwise derive it from the first Ingress host.
+*/}}
+{{- define "opshub.frontend.url" -}}
+{{- if .Values.server.frontendURL }}
+{{- .Values.server.frontendURL }}
+{{- else if and .Values.ingress.enabled .Values.ingress.hosts }}
+{{- $host := (index .Values.ingress.hosts 0).host -}}
+{{- if $host }}
+{{- $scheme := "http" -}}
+{{- if .Values.ingress.tls }}
+{{- $scheme = "https" -}}
+{{- end }}
+{{- printf "%s://%s" $scheme $host }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
+Server external URL for backend-facing links. It follows server.externalURL first,
+then reuses the frontend URL derived above.
+*/}}
+{{- define "opshub.server.externalURL" -}}
+{{- if .Values.server.externalURL }}
+{{- .Values.server.externalURL }}
+{{- else }}
+{{- include "opshub.frontend.url" . }}
+{{- end }}
+{{- end }}
+
+{{/*
 Create the name of the service account to use
 */}}
 {{- define "opshub.serviceAccountName" -}}
