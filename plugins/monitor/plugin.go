@@ -88,6 +88,7 @@ func (p *Plugin) Author() string {
 // Enable 启用插件
 func (p *Plugin) Enable(db *gorm.DB) error {
 	p.db = db
+	fmt.Printf("monitor plugin enabling, preparing scheduler\n")
 
 	// 自动迁移所有插件相关的表
 	models := []interface{}{
@@ -119,12 +120,14 @@ func (p *Plugin) Enable(db *gorm.DB) error {
 		}
 	}
 	if err := p.ensureDefaultMonitorData(); err != nil {
-		return err
+		fmt.Printf("monitor default data initialization failed, scheduler will still start: %v\n", err)
 	}
 
 	// 启动定时检查任务
 	p.ctx, p.cancelCtx = context.WithCancel(context.Background())
 	p.instanceID = buildMonitorSchedulerInstanceID()
+	server.SetMonitorSchedulerLeaderStatus(p.instanceID, "initializing", false, nil)
+	fmt.Printf("monitor scheduler starting leader election: %s\n", p.instanceID)
 	leader, err := newMonitorLeaderElector(p.ctx, p.instanceID, p.startMonitorScheduler)
 	if err != nil {
 		fmt.Printf("monitor scheduler leader election disabled, fallback to local scheduler: %v\n", err)

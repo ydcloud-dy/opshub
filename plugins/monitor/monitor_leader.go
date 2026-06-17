@@ -109,6 +109,10 @@ func (e *monitorLeaderElector) tryAcquire() {
 		e.promote()
 		return
 	}
+	if e.clearStaleLeaderWithoutTTL(leaderID) {
+		e.tryAcquire()
+		return
+	}
 	e.refreshLeaderStatus(nil)
 }
 
@@ -192,6 +196,20 @@ end
 	}
 	e.refreshLeaderStatus(nil)
 	return nil
+}
+
+func (e *monitorLeaderElector) clearStaleLeaderWithoutTTL(leaderID string) bool {
+	ttl, err := e.client.TTL(e.ctx, monitorLeaderKey).Result()
+	if err != nil || ttl != -1 {
+		return false
+	}
+	fmt.Printf("monitor scheduler found stale leader lock without ttl, clearing: %s\n", leaderID)
+	deleted, err := e.client.Del(e.ctx, monitorLeaderKey).Result()
+	if err != nil {
+		e.refreshLeaderStatus(err)
+		return false
+	}
+	return deleted > 0
 }
 
 func (e *monitorLeaderElector) resign() {
