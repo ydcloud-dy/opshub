@@ -129,6 +129,8 @@ kubectl delete namespace opshub
 | `server.httpPort` | HTTP 端口 | `9876` |
 | `server.jwtSecret` | JWT 密钥 | `opshub-jwt-secret-...` |
 | `server.jwtExpire` | JWT 过期时间 | `24h` |
+| `server.externalURL` | 后端外部访问 URL，用于 OAuth2 / 外部回调 | `""` |
+| `server.frontendURL` | 前端外部访问 URL，用于告警通知里的事件链接 | `""` |
 
 ### Ingress 配置
 
@@ -169,6 +171,16 @@ ingress:
     - secretName: opshub-tls
       hosts:
         - opshub.example.com
+```
+
+### 配置外部访问地址
+
+如果告警通知中的事件链接仍然是 `localhost`，需要配置前端外部访问地址：
+
+```yaml
+server:
+  externalURL: "http://10.122.28.13"
+  frontendURL: "http://10.122.28.13"
 ```
 
 ### 生产环境配置

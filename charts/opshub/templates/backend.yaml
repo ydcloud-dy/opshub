@@ -66,6 +66,8 @@ spec:
               value: {{ .Values.server.jwtExpire | quote }}
             - name: OPSHUB_SERVER_EXTERNAL_URL
               value: {{ .Values.server.externalURL | quote }}
+            - name: OPSHUB_SERVER_FRONTEND_URL
+              value: {{ .Values.server.frontendURL | quote }}
             - name: OPSHUB_DATABASE_HOST
               value: {{ include "opshub.mysql.host" . | quote }}
             - name: OPSHUB_DATABASE_PORT

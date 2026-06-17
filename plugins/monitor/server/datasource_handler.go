@@ -28,6 +28,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -61,6 +62,7 @@ const (
 	maxMatchedLogLineChars           = 700
 	maxMatchedLogsTextChars          = 2400
 	maxLokiMatchedLogLookbackSeconds = 7 * 24 * 60 * 60
+	alertRuleEvaluationConcurrency   = 8
 )
 
 func NewDataSourceHandler(db *gorm.DB) *DataSourceHandler {
@@ -1084,6 +1086,13 @@ func (h *DataSourceHandler) UpdateAlertRule(c *gin.Context) {
 	rule.CallbackQueries = req.CallbackQueries
 	rule.EffectiveTime = req.EffectiveTime
 
+	if alertRuleEvaluationConfigChanged(originalRule, req) {
+		rule.LastEvalAt = nil
+		rule.LastError = ""
+		rule.PendingSince = nil
+		rule.FiringSince = nil
+	}
+
 	if !req.Enabled && wasActive {
 		now := time.Now()
 		message := fmt.Sprintf("规则「%s」已停用，活跃告警自动恢复", originalRule.Name)
@@ -1103,6 +1112,26 @@ func (h *DataSourceHandler) UpdateAlertRule(c *gin.Context) {
 	}
 
 	c.JSON(200, gin.H{"code": 0, "message": "更新成功", "data": rule})
+}
+
+func alertRuleEvaluationConfigChanged(before, after model.AlertRule) bool {
+	if before.DataSourceID != after.DataSourceID ||
+		strings.TrimSpace(before.DataSourceIDs) != strings.TrimSpace(after.DataSourceIDs) ||
+		strings.TrimSpace(before.DataSourceType) != strings.TrimSpace(after.DataSourceType) ||
+		strings.TrimSpace(before.Query) != strings.TrimSpace(after.Query) ||
+		strings.TrimSpace(before.QueryMode) != strings.TrimSpace(after.QueryMode) ||
+		strings.TrimSpace(before.Index) != strings.TrimSpace(after.Index) ||
+		normalizeCondition(before.Condition) != normalizeCondition(after.Condition) ||
+		before.Threshold != after.Threshold ||
+		strings.TrimSpace(before.SeverityRules) != strings.TrimSpace(after.SeverityRules) ||
+		before.ForSeconds != after.ForSeconds ||
+		before.EvaluateInterval != after.EvaluateInterval ||
+		normalizeSeverity(before.Severity) != normalizeSeverity(after.Severity) ||
+		strings.TrimSpace(before.Labels) != strings.TrimSpace(after.Labels) ||
+		strings.TrimSpace(before.EffectiveTime) != strings.TrimSpace(after.EffectiveTime) {
+		return true
+	}
+	return false
 }
 
 func (h *DataSourceHandler) DeleteAlertRule(c *gin.Context) {
@@ -2488,6 +2517,8 @@ func (h *DataSourceHandler) EvaluateDueAlertRules(ctx context.Context) {
 		return
 	}
 
+	sem := make(chan struct{}, alertRuleEvaluationConcurrency)
+	var wg sync.WaitGroup
 	for i := range rules {
 		rule := &rules[i]
 		if rule.LastEvalAt != nil && rule.LastEvalAt.Add(time.Duration(rule.EvaluateInterval)*time.Second).After(now) {
@@ -2496,7 +2527,36 @@ func (h *DataSourceHandler) EvaluateDueAlertRules(ctx context.Context) {
 		if !h.claimDueAlertRule(rule, now) {
 			continue
 		}
-		_, _ = h.evaluateAlertRule(ctx, rule, false)
+		select {
+		case <-ctx.Done():
+			waitAlertRuleEvaluationWorkers(&wg)
+			return
+		case sem <- struct{}{}:
+		}
+		wg.Add(1)
+		go func(rule model.AlertRule) {
+			defer wg.Done()
+			defer func() {
+				<-sem
+				if recovered := recover(); recovered != nil {
+					h.markAlertRuleEvaluationPanic(rule.ID, fmt.Errorf("%v", recovered))
+				}
+			}()
+			_, _ = h.evaluateAlertRule(ctx, &rule, false)
+		}(*rule)
+	}
+	waitAlertRuleEvaluationWorkers(&wg)
+}
+
+func waitAlertRuleEvaluationWorkers(wg *sync.WaitGroup) {
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
 	}
 }
 
@@ -2515,6 +2575,19 @@ func (h *DataSourceHandler) claimDueAlertRule(rule *model.AlertRule, now time.Ti
 	}
 	rule.LastEvalAt = &now
 	return true
+}
+
+func (h *DataSourceHandler) markAlertRuleEvaluationPanic(ruleID uint, err error) {
+	if h == nil || h.db == nil || ruleID == 0 || err == nil {
+		return
+	}
+	now := time.Now()
+	message := fmt.Sprintf("后台评估异常：%s", err.Error())
+	_ = h.updateAlertRuleRuntimeFields(ruleID, map[string]interface{}{
+		"last_state":   "error",
+		"last_eval_at": &now,
+		"last_error":   message,
+	})
 }
 
 func (h *DataSourceHandler) ListAlertEvents(c *gin.Context) {

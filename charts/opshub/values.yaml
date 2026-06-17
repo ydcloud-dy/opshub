@@ -225,6 +225,8 @@ server:
   jwtExpire: "24h"
   # 外部访问URL（用于OAuth2 SSO，如 http://opshub.example.com:9876）
   externalURL: ""
+  # 前端访问URL（用于告警通知、OAuth2 登录回跳等前端页面链接，如 http://opshub.example.com）
+  frontendURL: ""
 
 # ==================== Ingress 配置 ====================
 ingress:

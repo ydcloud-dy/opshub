@@ -460,6 +460,24 @@ func TestExtractRuleEvaluationSamplesEvaluatesEveryPrometheusSeries(t *testing.T
 	}
 }
 
+func TestSelectSeverityConditionMatchesEqualThreshold(t *testing.T) {
+	rule := &model.AlertRule{
+		Name:       "Nginx 服务异常",
+		Condition:  "eq",
+		Threshold:  1,
+		Severity:   "p1",
+		ForSeconds: 60,
+	}
+
+	condition := selectSeverityCondition(rule, 1)
+	if !condition.Matched {
+		t.Fatalf("expected value equal to threshold to match, got %#v", condition)
+	}
+	if condition.Condition != "eq" || condition.Threshold != 1 {
+		t.Fatalf("expected eq condition to be preserved, got %#v", condition)
+	}
+}
+
 func TestExtractRuleEvaluationSamplesAllowsEmptyPrometheusVector(t *testing.T) {
 	raw := map[string]interface{}{
 		"data": map[string]interface{}{

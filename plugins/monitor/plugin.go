@@ -21,7 +21,9 @@ package monitor
 
 import (
 	"context"
+	"fmt"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -35,6 +37,8 @@ import (
 const (
 	alertRuleSchedulerInterval          = 5 * time.Second
 	monitorMaintenanceSchedulerInterval = 1 * time.Minute
+	alertRuleSchedulerTimeout           = 4 * time.Minute
+	probeTaskSchedulerTimeout           = 2 * time.Minute
 )
 
 // Plugin 监控中心插件实现
@@ -44,6 +48,11 @@ type Plugin struct {
 	ctx       context.Context
 	cancelCtx context.CancelFunc
 }
+
+var (
+	alertRuleSchedulerRunning atomic.Bool
+	probeTaskSchedulerRunning atomic.Bool
+)
 
 // New 创建插件实例
 func New() *Plugin {
@@ -127,6 +136,12 @@ func (p *Plugin) Disable(db *gorm.DB) error {
 
 // startMonitorScheduler 启动监控调度器
 func (p *Plugin) startMonitorScheduler() {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			fmt.Printf("monitor scheduler crashed: %v\n", recovered)
+		}
+	}()
+
 	alertTicker := time.NewTicker(alertRuleSchedulerInterval)
 	defer alertTicker.Stop()
 
@@ -141,12 +156,51 @@ func (p *Plugin) startMonitorScheduler() {
 		case <-p.ctx.Done():
 			return
 		case <-alertTicker.C:
-			dataSourceHandler.EvaluateDueAlertRules(p.ctx)
-			dataSourceHandler.RunDueProbeTasks(p.ctx)
+			p.runAlertRuleScheduler(dataSourceHandler)
+			p.runProbeTaskScheduler(dataSourceHandler)
 		case <-maintenanceTicker.C:
-			p.checkDueDomains(handler)
+			safeMonitorSchedulerCall("domain-maintenance", func() {
+				p.checkDueDomains(handler)
+			})
 		}
 	}
+}
+
+func (p *Plugin) runAlertRuleScheduler(dataSourceHandler *server.DataSourceHandler) {
+	if !alertRuleSchedulerRunning.CompareAndSwap(false, true) {
+		return
+	}
+	go func() {
+		defer alertRuleSchedulerRunning.Store(false)
+		safeMonitorSchedulerCall("alert-rule-evaluation", func() {
+			ctx, cancel := context.WithTimeout(p.ctx, alertRuleSchedulerTimeout)
+			defer cancel()
+			dataSourceHandler.EvaluateDueAlertRules(ctx)
+		})
+	}()
+}
+
+func (p *Plugin) runProbeTaskScheduler(dataSourceHandler *server.DataSourceHandler) {
+	if !probeTaskSchedulerRunning.CompareAndSwap(false, true) {
+		return
+	}
+	go func() {
+		defer probeTaskSchedulerRunning.Store(false)
+		safeMonitorSchedulerCall("probe-task-evaluation", func() {
+			ctx, cancel := context.WithTimeout(p.ctx, probeTaskSchedulerTimeout)
+			defer cancel()
+			dataSourceHandler.RunDueProbeTasks(ctx)
+		})
+	}()
+}
+
+func safeMonitorSchedulerCall(name string, fn func()) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			fmt.Printf("monitor scheduler task %s crashed: %v\n", name, recovered)
+		}
+	}()
+	fn()
 }
 
 // checkDueDomains 检查到期需要检查的域名
