@@ -4292,13 +4292,25 @@ onUnmounted(() => {
 }
 
 .add-label-btn {
-  border-color: #bfdbfe;
-  color: #2563eb;
+  background: #f8fbff !important;
+  border: 2px dashed #bfdbfe !important;
+  color: #2563eb !important;
+  box-shadow: none !important;
 }
 
 .add-label-btn:hover {
-  border-color: #2563eb;
-  background: #eff6ff;
+  background: #eff6ff !important;
+  border-color: #93c5fd !important;
+  color: #1d4ed8 !important;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.1) !important;
+  transform: translateY(-1px);
+}
+
+.add-label-btn:focus,
+.add-label-btn:active {
+  background: #eff6ff !important;
+  border-color: #93c5fd !important;
+  color: #1d4ed8 !important;
 }
 
 .dialog-footer .edit-btn,
@@ -5115,5 +5127,88 @@ onUnmounted(() => {
   background: #dbeafe !important;
   border-color: #93c5fd !important;
   box-shadow: 0 6px 16px rgba(37, 99, 235, 0.14) !important;
+}
+
+.taint-dialog :deep(.el-dialog__header) {
+  background: #ffffff;
+  color: #111827;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.taint-dialog :deep(.el-dialog__title) {
+  color: #111827;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.taint-dialog :deep(.el-dialog__body) {
+  background: #fbfcfe;
+}
+
+.taint-edit-header {
+  background: #eff6ff;
+  border-color: #dbeafe;
+}
+
+.taint-edit-info,
+.taint-edit-count {
+  color: #2563eb;
+}
+
+.taint-row-number {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.taint-edit-row:hover {
+  border-color: #bfdbfe;
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.12);
+}
+
+.taint-key-wrapper {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding: 5px 12px !important;
+  background: #eff6ff !important;
+  color: #2563eb !important;
+  border: 1px solid #bfdbfe !important;
+  border-radius: 999px !important;
+  font-family: 'Monaco', 'Menlo', monospace !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  cursor: pointer !important;
+  transition: all 0.3s !important;
+  user-select: none;
+}
+
+.taint-key-wrapper:hover {
+  background: #dbeafe !important;
+  border-color: #93c5fd !important;
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.14) !important;
+  transform: translateY(-1px);
+}
+
+.taint-key-text {
+  flex: 1;
+  word-break: break-all;
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+.dialog-footer .edit-btn,
+.dialog-footer .save-btn {
+  background: #111827 !important;
+  border-color: #111827 !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 18px rgba(17, 24, 39, 0.16);
+}
+
+.dialog-footer .edit-btn:hover,
+.dialog-footer .save-btn:hover {
+  background: #1f2937 !important;
+  border-color: #1f2937 !important;
+  color: #ffffff !important;
+  box-shadow: 0 10px 22px rgba(17, 24, 39, 0.2);
 }
 </style>

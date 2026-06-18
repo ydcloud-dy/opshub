@@ -1849,4 +1849,145 @@ onMounted(() => {
 .namespaces-container :deep(.el-overlay) {
   overflow: hidden;
 }
+
+/* 命名空间标签最终覆盖：和节点标签保持一致，去掉黑金 chip */
+.label-icon,
+.action-btn,
+.action-dropdown-menu :deep(.el-dropdown-menu__item .el-icon),
+.action-dropdown-menu :deep(.el-dropdown-menu__item:hover),
+.action-dropdown-menu :deep(.el-dropdown-menu__item:hover .el-icon) {
+  color: #2563eb;
+}
+
+.label-count {
+  background: #eff6ff;
+  color: #2563eb;
+  border-color: #bfdbfe;
+}
+
+.label-cell:hover .label-icon {
+  color: #1d4ed8;
+}
+
+.label-cell:hover .label-count {
+  background: #dbeafe;
+  border-color: #93c5fd;
+}
+
+.label-dialog :deep(.el-dialog) {
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.label-dialog :deep(.el-dialog__header) {
+  background: #ffffff;
+  color: #111827;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.label-dialog :deep(.el-dialog__title) {
+  color: #111827;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.label-dialog :deep(.el-dialog__body) {
+  background: #fbfcfe;
+}
+
+.label-edit-header {
+  background: #eff6ff;
+  border-color: #dbeafe;
+}
+
+.label-edit-info,
+.label-edit-count {
+  color: #2563eb;
+}
+
+.label-edit-count {
+  background: rgba(37, 99, 235, 0.1);
+}
+
+.label-row-number {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.label-edit-row:hover {
+  border-color: #bfdbfe;
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.12);
+}
+
+.label-edit-input :deep(.el-input__wrapper:hover),
+.label-edit-input :deep(.el-input__wrapper.is-focus) {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.empty-labels .empty-icon {
+  color: #2563eb;
+}
+
+.add-label-btn {
+  background: #f8fbff !important;
+  border: 2px dashed #bfdbfe !important;
+  color: #2563eb !important;
+  box-shadow: none !important;
+}
+
+.add-label-btn:hover {
+  background: #eff6ff !important;
+  border-color: #93c5fd !important;
+  color: #1d4ed8 !important;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.1) !important;
+  transform: translateY(-1px);
+}
+
+.add-label-btn:focus,
+.add-label-btn:active {
+  background: #eff6ff !important;
+  border-color: #93c5fd !important;
+  color: #1d4ed8 !important;
+}
+
+.label-key-wrapper {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding: 5px 12px !important;
+  background: #eff6ff !important;
+  color: #2563eb !important;
+  border: 1px solid #bfdbfe !important;
+  border-radius: 999px !important;
+  font-family: 'Monaco', 'Menlo', monospace !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  cursor: pointer !important;
+  transition: all 0.3s !important;
+  user-select: none;
+}
+
+.label-key-wrapper:hover {
+  background: #dbeafe !important;
+  border-color: #93c5fd !important;
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.14) !important;
+  transform: translateY(-1px);
+}
+
+.dialog-footer .edit-btn,
+.dialog-footer .save-btn {
+  background: #111827 !important;
+  border-color: #111827 !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 18px rgba(17, 24, 39, 0.16);
+}
+
+.dialog-footer .edit-btn:hover,
+.dialog-footer .save-btn:hover {
+  background: #1f2937 !important;
+  border-color: #1f2937 !important;
+  color: #ffffff !important;
+  box-shadow: 0 10px 22px rgba(17, 24, 39, 0.2);
+}
 </style>
