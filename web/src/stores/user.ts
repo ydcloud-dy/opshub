@@ -11,7 +11,16 @@ interface UserState {
 export const useUserStore = defineStore('user', {
   state: (): UserState => ({
     token: localStorage.getItem('token') || '',
-    userInfo: null,
+    userInfo: (() => {
+      const raw = localStorage.getItem('userInfo')
+      if (!raw) return null
+      try {
+        return JSON.parse(raw)
+      } catch {
+        localStorage.removeItem('userInfo')
+        return null
+      }
+    })(),
     avatarTimestamp: Date.now()
   }),
 
@@ -28,6 +37,7 @@ export const useUserStore = defineStore('user', {
         this.token = res.token
         this.userInfo = res.user
         localStorage.setItem('token', res.token)
+        localStorage.setItem('userInfo', JSON.stringify(res.user))
       }
       return res
     },
@@ -42,6 +52,7 @@ export const useUserStore = defineStore('user', {
     async getProfile() {
       const res = await getProfile()
       this.userInfo = res
+      localStorage.setItem('userInfo', JSON.stringify(res))
       // 更新时间戳，确保头像等资源能刷新
       this.avatarTimestamp = Date.now()
       return res
@@ -52,6 +63,7 @@ export const useUserStore = defineStore('user', {
       this.token = ''
       this.userInfo = null
       localStorage.removeItem('token')
+      localStorage.removeItem('userInfo')
       localStorage.removeItem('mfa_setup_required')
     },
 
@@ -63,6 +75,7 @@ export const useUserStore = defineStore('user', {
           ...this.userInfo,
           avatar: avatarUrl
         }
+        localStorage.setItem('userInfo', JSON.stringify(this.userInfo))
         this.avatarTimestamp = Date.now()
       }
     },
@@ -76,6 +89,7 @@ export const useUserStore = defineStore('user', {
     // 设置用户信息
     setUserInfo(userInfo: any) {
       this.userInfo = userInfo
+      localStorage.setItem('userInfo', JSON.stringify(userInfo))
       this.avatarTimestamp = Date.now()
     }
   }

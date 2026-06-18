@@ -56,7 +56,7 @@ func GetUsername(c *gin.Context) string {
 
 // AuthMiddleware JWT认证中间件
 type AuthMiddleware struct {
-	authService        *AuthService
+	authService         *AuthService
 	assetPermissionRepo rbac.AssetPermissionRepo
 }
 
@@ -116,6 +116,93 @@ func (m *AuthMiddleware) AuthRequired() gin.HandlerFunc {
 		c.Set("userID", claims.UserID) // 兼容 OAuth2 使用的 key
 		c.Next()
 	}
+}
+
+// ReadonlyUserRequired 阻止 test 演示账号执行写操作或访问敏感查询接口。
+func (m *AuthMiddleware) ReadonlyUserRequired() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !IsReadonlyUser(c) {
+			c.Next()
+			return
+		}
+
+		c.Set("readonly_user", true)
+
+		if isReadonlySafeRequest(c.Request.Method, c.Request.URL.Path) {
+			c.Next()
+			return
+		}
+
+		response.ErrorCode(c, http.StatusForbidden, "test账号仅允许查看，不能执行修改、测试、下载、终端或敏感配置操作")
+		c.Abort()
+	}
+}
+
+func IsReadonlyUser(c *gin.Context) bool {
+	return strings.EqualFold(strings.TrimSpace(GetUsername(c)), "test")
+}
+
+func isReadonlySafeRequest(method, path string) bool {
+	if method == http.MethodOptions || method == http.MethodHead {
+		return true
+	}
+	if method != http.MethodGet {
+		return false
+	}
+
+	allowedExactPaths := map[string]struct{}{
+		"/api/v1/menus/user":             {},
+		"/api/v1/profile":                {},
+		"/api/v1/mfa/status":             {},
+		"/api/v1/system/config/basic":    {},
+		"/api/v1/system/config/security": {},
+	}
+	if _, ok := allowedExactPaths[path]; ok {
+		return true
+	}
+
+	blockedExactPaths := map[string]struct{}{
+		"/api/v1/system/config/ldap": {},
+		"/api/v1/credentials/all":    {},
+		"/api/v1/cloud-accounts/all": {},
+	}
+	if _, ok := blockedExactPaths[path]; ok {
+		return false
+	}
+
+	blockedContains := []string{
+		"/api/v1/identity",
+		"/asset/terminal",
+		"/dns-providers",
+		"/deploy-configs",
+		"/files/download",
+		"/template/download",
+		"/terminal-sessions/",
+		"/terminal/sessions/",
+		"/shell/",
+		"/arthas/ws",
+		"/pods/files/download",
+		"/certificates/",
+		"/config",
+		"/kubeconfig",
+		"/secrets",
+		"/yaml",
+		"/cloudtty",
+		"/pods/files",
+		"/credentials",
+		"/cloud-accounts",
+		"/private-key",
+		"/secret",
+		"/token",
+		"/password",
+	}
+	for _, fragment := range blockedContains {
+		if strings.Contains(path, fragment) {
+			return false
+		}
+	}
+
+	return true
 }
 
 // OptionalAuth 可选认证中间件（不强制要求登录，用于OAuth2授权端点）

@@ -138,7 +138,7 @@ func (p *Plugin) RegisterRoutes(router *gin.RouterGroup, db *gorm.DB) {
 	certSvc := service.NewCertificateService(db, deployerDeps, p.acmeEmail, p.acmeStaging)
 	dnsSvc := service.NewDNSProviderService(db)
 	deploySvc := service.NewDeployService(db, deployerDeps)
-	taskSvc := service.NewTaskService(db)
+	taskSvc := service.NewTaskService(db, certSvc)
 
 	// 注册路由
 	sslCertGroup := router.Group("/ssl-cert")

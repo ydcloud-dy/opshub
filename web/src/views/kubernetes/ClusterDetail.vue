@@ -58,7 +58,7 @@
         <el-card shadow="hover" class="modern-card">
           <template #header>
             <div class="card-title-section">
-              <el-icon class="card-icon" :size="20" color="#D4AF37"><DataAnalysis /></el-icon>
+              <el-icon class="card-icon" :size="20" color="#2563eb"><DataAnalysis /></el-icon>
               <span class="card-title">资源使用率</span>
             </div>
           </template>
@@ -66,7 +66,7 @@
             <div class="usage-item">
               <div class="usage-header">
                 <div class="usage-label">
-                  <el-icon color="#D4AF37" :size="18"><Cpu /></el-icon>
+                  <el-icon color="#2563eb" :size="18"><Cpu /></el-icon>
                   <span>CPU 使用率</span>
                 </div>
                 <span class="usage-value">{{ Math.round(clusterStats.cpuUsage) }}%</span>
@@ -88,7 +88,7 @@
             <div class="usage-item">
               <div class="usage-header">
                 <div class="usage-label">
-                  <el-icon color="#D4AF37" :size="18"><Coin /></el-icon>
+                  <el-icon color="#2563eb" :size="18"><Coin /></el-icon>
                   <span>内存使用率</span>
                 </div>
                 <span class="usage-value">{{ Math.round(clusterStats.memoryUsage) }}%</span>
@@ -113,7 +113,7 @@
         <el-card shadow="hover" class="modern-card">
           <template #header>
             <div class="card-title-section">
-              <el-icon class="card-icon" :size="20" color="#D4AF37"><Connection /></el-icon>
+              <el-icon class="card-icon" :size="20" color="#2563eb"><Connection /></el-icon>
               <span class="card-title">网络配置</span>
             </div>
           </template>
@@ -151,7 +151,7 @@
         <el-card shadow="hover" class="modern-card">
           <template #header>
             <div class="card-title-section">
-              <el-icon class="card-icon" :size="20" color="#D4AF37"><InfoFilled /></el-icon>
+              <el-icon class="card-icon" :size="20" color="#2563eb"><InfoFilled /></el-icon>
               <span class="card-title">集群信息</span>
             </div>
           </template>
@@ -194,7 +194,7 @@
         <el-card shadow="hover" class="modern-card">
           <template #header>
             <div class="card-title-section">
-              <el-icon class="card-icon" :size="20" color="#D4AF37"><Files /></el-icon>
+              <el-icon class="card-icon" :size="20" color="#2563eb"><Files /></el-icon>
               <span class="card-title">组件信息</span>
             </div>
           </template>
@@ -230,7 +230,7 @@
                 class="component-item"
               >
                 <div class="component-main">
-                  <el-icon class="component-icon" :size="20" color="#D4AF37"><CircleCheck /></el-icon>
+                  <el-icon class="component-icon" :size="20" color="#2563eb"><CircleCheck /></el-icon>
                   <div class="component-info">
                     <div class="component-name">{{ component.name }}</div>
                     <el-tag size="small" type="info">{{ component.version }}</el-tag>
@@ -259,7 +259,7 @@
                 class="storage-item"
               >
                 <div class="storage-main">
-                  <el-icon class="storage-icon" :size="18" color="#D4AF37"><Folder /></el-icon>
+                  <el-icon class="storage-icon" :size="18" color="#2563eb"><Folder /></el-icon>
                   <div class="storage-info">
                     <div class="storage-name">{{ storage.name }}</div>
                     <div class="storage-provisioner">{{ storage.provisioner }}</div>
@@ -282,7 +282,7 @@
     <el-card shadow="hover" class="modern-card full-width-card">
       <template #header>
         <div class="card-title-section">
-          <el-icon class="card-icon" :size="20" color="#D4AF37"><Monitor /></el-icon>
+          <el-icon class="card-icon" :size="20" color="#2563eb"><Monitor /></el-icon>
           <span class="card-title">节点信息</span>
           <span class="node-count">{{ filteredNodeList.length }}个节点</span>
         </div>
@@ -359,7 +359,7 @@
     <el-card shadow="hover" class="modern-card full-width-card">
       <template #header>
         <div class="card-title-section">
-          <el-icon class="card-icon" :size="20" color="#D4AF37"><Document /></el-icon>
+          <el-icon class="card-icon" :size="20" color="#2563eb"><Document /></el-icon>
           <span class="card-title">最近事件</span>
           <span class="event-count">最近50条</span>
         </div>
@@ -518,32 +518,32 @@ const quickStats = computed(() => [
     label: '节点数量',
     value: clusterStats.value.nodeCount,
     icon: Monitor,
-    color: 'linear-gradient(135deg, #2c3e50 0%, #000000 100%)',
-    iconColor: '#D4AF37',
+    color: '#eff6ff',
+    iconColor: '#2563eb',
     trend: true
   },
   {
     label: '工作负载',
     value: clusterStats.value.workloadCount,
     icon: Box,
-    color: 'linear-gradient(135deg, #2c3e50 0%, #000000 100%)',
-    iconColor: '#D4AF37',
+    color: '#fff7ed',
+    iconColor: '#f97316',
     trend: true
   },
   {
     label: 'Pod 总数',
     value: clusterStats.value.podCount,
     icon: Files,
-    color: 'linear-gradient(135deg, #2c3e50 0%, #000000 100%)',
-    iconColor: '#D4AF37',
+    color: '#ecfdf3',
+    iconColor: '#16a34a',
     trend: true
   },
   {
     label: 'CPU 使用率',
     value: Math.round(clusterStats.value.cpuUsage) + '%',
     icon: Cpu,
-    color: 'linear-gradient(135deg, #2c3e50 0%, #000000 100%)',
-    iconColor: '#D4AF37',
+    color: '#fef2f2',
+    iconColor: '#dc2626',
     trend: false
   }
 ])
@@ -732,30 +732,31 @@ onMounted(() => {
     margin-bottom: 20px;
 
     .back-btn {
-      background: linear-gradient(135deg, #2c3e50 0%, #000000 100%);
-      color: #D4AF37;
-      border: 1px solid rgba(212, 175, 55, 0.3);
-      font-weight: 500;
-      padding: 12px 24px;
+      background: #ffffff;
+      color: #344054;
+      border: 1px solid #d7deea;
+      font-weight: 700;
+      padding: 10px 18px;
       font-size: 14px;
-      border-radius: 8px;
+      border-radius: 10px;
       transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      letter-spacing: 0.5px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      letter-spacing: 0.2px;
+      box-shadow: 0 6px 14px rgba(15, 23, 42, 0.06);
 
       &:hover {
         transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(212, 175, 55, 0.4);
-        border-color: rgba(212, 175, 55, 0.5);
-        background: linear-gradient(135deg, #34495e 0%, #1a1a1a 100%);
+        color: #2563eb;
+        border-color: #bfdbfe;
+        background: #eff6ff;
+        box-shadow: 0 10px 24px rgba(37, 99, 235, 0.12);
       }
 
       &:active {
         transform: translateY(0);
-        box-shadow: 0 2px 8px rgba(212, 175, 55, 0.3);
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.1);
       }
 
       :deep(.el-icon) {
@@ -785,7 +786,7 @@ onMounted(() => {
       color: #303133;
 
       .title-icon {
-        color: #D4AF37;
+        color: #2563eb;
       }
     }
 
@@ -809,7 +810,7 @@ onMounted(() => {
       font-size: 14px;
 
       .el-icon {
-        color: #D4AF37;
+        color: #2563eb;
       }
     }
   }
@@ -842,12 +843,12 @@ onMounted(() => {
       left: 0;
       right: 0;
       height: 4px;
-      background: #D4AF37;
+      background: linear-gradient(90deg, #2563eb, #60a5fa);
     }
 
     &:hover {
       transform: translateY(-4px);
-      box-shadow: 0 8px 24px rgba(212, 175, 55, 0.3);
+      box-shadow: 0 12px 28px rgba(15, 23, 42, 0.1);
     }
 
     .stat-icon-wrapper {
@@ -858,6 +859,8 @@ onMounted(() => {
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
     }
 
     .stat-info {
@@ -878,7 +881,7 @@ onMounted(() => {
     }
 
     .stat-trend {
-      color: #D4AF37;
+      color: #94a3b8;
       font-size: 20px;
     }
   }
@@ -957,23 +960,26 @@ onMounted(() => {
   }
 
   .search-button {
-    background-color: #000;
-    color: #d4af37;
-    border: 1px solid #d4af37;
+    background-color: #2563eb;
+    color: #ffffff;
+    border: 1px solid #2563eb;
     border-radius: 8px;
     padding: 10px 20px;
-    font-weight: 500;
+    font-weight: 700;
+    box-shadow: 0 8px 18px rgba(37, 99, 235, 0.16);
 
     &:hover {
-      background-color: #d4af37;
-      color: #000;
+      background-color: #1d4ed8;
+      border-color: #1d4ed8;
+      color: #ffffff;
+      transform: translateY(-1px);
     }
   }
 }
 
 /* 节点名称链接样式 */
 .node-name-link {
-  color: #d4af37;
+  color: #2563eb;
   font-weight: 500;
   cursor: pointer;
 }
@@ -1014,7 +1020,7 @@ onMounted(() => {
       .usage-value {
         font-size: 24px;
         font-weight: 600;
-        color: #D4AF37;
+        color: #2563eb;
       }
     }
 
@@ -1058,7 +1064,7 @@ onMounted(() => {
         word-break: break-all;
 
         &.primary {
-          color: #D4AF37;
+          color: #2563eb;
         }
       }
 
@@ -1128,28 +1134,30 @@ onMounted(() => {
     gap: 12px;
 
     .runtime-card {
-      background: linear-gradient(135deg, #2c3e50 0%, #000000 100%);
-      color: #D4AF37;
+      background: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%);
+      color: #111827;
       padding: 16px;
-      border-radius: 8px;
+      border-radius: 12px;
       transition: all 0.3s;
-      border: 1px solid rgba(212, 175, 55, 0.2);
+      border: 1px solid #e5e9f2;
+      box-shadow: 0 6px 16px rgba(15, 23, 42, 0.04);
 
       &:hover {
         transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(212, 175, 55, 0.3);
-        border-color: rgba(212, 175, 55, 0.4);
+        border-color: #bfdbfe;
+        box-shadow: 0 10px 24px rgba(37, 99, 235, 0.1);
       }
 
       .runtime-label {
         font-size: 12px;
-        opacity: 0.9;
+        color: #667085;
         margin-bottom: 6px;
       }
 
       .runtime-value {
         font-size: 15px;
         font-weight: 600;
+        color: #111827;
       }
     }
   }
@@ -1166,12 +1174,12 @@ onMounted(() => {
       padding: 16px;
       background: #fafafa;
       border-radius: 8px;
-      border-left: 3px solid #D4AF37;
+      border-left: 3px solid #2563eb;
       transition: all 0.3s;
 
       &:hover {
-        background: #fefcf5;
-        box-shadow: 0 2px 8px rgba(212, 175, 55, 0.15);
+        background: #f8fbff;
+        box-shadow: 0 2px 8px rgba(37, 99, 235, 0.12);
       }
 
       .component-main {
@@ -1211,12 +1219,12 @@ onMounted(() => {
       padding: 16px;
       background: #fafafa;
       border-radius: 8px;
-      border-left: 3px solid #D4AF37;
+      border-left: 3px solid #2563eb;
       transition: all 0.3s;
 
       &:hover {
-        background: #fefcf5;
-        box-shadow: 0 2px 8px rgba(212, 175, 55, 0.15);
+        background: #f8fbff;
+        box-shadow: 0 2px 8px rgba(37, 99, 235, 0.12);
       }
 
       .storage-main {

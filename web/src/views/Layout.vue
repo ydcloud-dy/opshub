@@ -112,6 +112,7 @@ import { useUserStore } from '@/stores/user'
 import { useSystemStore } from '@/stores/system'
 import { ElMessage } from 'element-plus'
 import NoPermission from '@/views/NoPermission.vue'
+import { getMenuCacheUsername, readUserMenuCache, writeUserMenuCache } from '@/utils/menu-cache'
 import {
   HomeFilled,
   User,
@@ -545,32 +546,48 @@ const buildMenuTree = (menus: any[]) => {
   return tree
 }
 
+const flattenMenus = (menus: any[], result: any[] = []) => {
+  menus.forEach(menu => {
+    const { children, ...menuWithoutChildren } = menu
+    result.push(menuWithoutChildren)
+    if (children && children.length > 0) {
+      flattenMenus(children, result)
+    }
+  })
+  return result
+}
+
+const prepareMenuList = (menus: any[]) => {
+  const flatMenus = normalizeMonitorMenuEntries(flattenMenus(menus))
+  return buildMenuTree(flatMenus)
+}
+
+const getMenuCacheKey = () => {
+  return getMenuCacheUsername(userStore.userInfo)
+}
+
+const restoreCachedMenu = () => {
+  const cachedMenus = readUserMenuCache(getMenuCacheKey())
+  if (Array.isArray(cachedMenus) && cachedMenus.length > 0) {
+    menuList.value = prepareMenuList(cachedMenus)
+    hasNoPermission.value = false
+  }
+}
+
+const saveMenuCache = (menus: any[]) => {
+  writeUserMenuCache(getMenuCacheKey(), menus)
+}
+
 // 加载菜单
 const loadMenu = async () => {
   try {
-    // 清空现有菜单,避免重复
-    menuList.value = []
-
     // 从后端获取用户菜单（后端已根据用户权限过滤，包括插件菜单）
     const systemMenus = await getUserMenu() || []
 
-    // 展平菜单树
-    const flattenMenus = (menus: any[], result: any[] = []) => {
-      menus.forEach(menu => {
-        // 移除children属性，避免旧的children数据干扰
-        const { children, ...menuWithoutChildren } = menu
-        result.push(menuWithoutChildren)
-        if (children && children.length > 0) {
-          flattenMenus(children, result)
-        }
-      })
-      return result
-    }
-
-    const flatSystemMenus = normalizeMonitorMenuEntries(flattenMenus(systemMenus))
-
     // 构建菜单树
-    menuList.value = buildMenuTree(flatSystemMenus)
+    const nextMenuList = prepareMenuList(systemMenus)
+    menuList.value = nextMenuList
+    saveMenuCache(systemMenus)
 
     // 检查用户是否有权限
     // 如果不是超级管理员且没有任何菜单，则显示无权限页面
@@ -602,22 +619,24 @@ const handleLogout = () => {
 }
 
 onMounted(async () => {
-  // 加载系统配置
+  restoreCachedMenu()
+
+  // 加载系统配置，不阻塞菜单显示
   if (!systemStore.loaded) {
-    await systemStore.loadFullConfig()
+    systemStore.loadFullConfig().catch(() => {})
   }
 
-  // 如果用户信息为空，先获取用户信息
-  if (!userStore.userInfo) {
-    try {
-      await userStore.getProfile()
-    } catch (error) {
-    }
-  }
+  const profilePromise = !userStore.userInfo
+    ? userStore.getProfile().catch(() => null)
+    : Promise.resolve(userStore.userInfo)
 
-  // 等待一小段时间确保插件完全加载
-  await new Promise(resolve => setTimeout(resolve, 100))
+  // 菜单优先加载，避免登录后左侧长时间空白
   loadMenu()
+
+  // 如果用户信息为空，后台补齐用户信息并重新按用户名刷新菜单缓存
+  if (!userStore.userInfo) {
+    profilePromise.then(() => loadMenu())
+  }
 
   // 监听插件变化，自动刷新菜单
   const handlePluginChange = () => {

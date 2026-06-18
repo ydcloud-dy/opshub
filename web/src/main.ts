@@ -8,6 +8,7 @@ import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 import App from './App.vue'
 import router, { registerPluginRoutes } from './router'
 import { pluginManager } from './plugins/manager'
+import { installReadonlyGuards } from './utils/readonly'
 
 // 导入插件（插件会自动注册到 pluginManager）
 import '@/plugins/kubernetes'
@@ -45,6 +46,8 @@ installPlugins().then(() => {
   app.use(ElementPlus, {
     locale: zhCn,
   })
+
+  installReadonlyGuards()
 
   app.mount('#app')
 })

@@ -154,10 +154,17 @@ func (r *RenewTaskRepository) UpdateStatus(ctx context.Context, id uint, status 
 func (r *RenewTaskRepository) UpdatePendingToSuccess(ctx context.Context, certID uint) error {
 	return r.db.WithContext(ctx).Model(&model.RenewTask{}).
 		Where("certificate_id = ?", certID).
-		Where("status IN ?", []string{model.TaskStatusPending, model.TaskStatusRunning}).
+		Where(
+			"status IN ? OR (task_type = ? AND status = ? AND error_message = ?)",
+			[]string{model.TaskStatusPending, model.TaskStatusRunning},
+			model.TaskTypeIssue,
+			model.TaskStatusFailed,
+			"任务因服务重启而中断，请重新执行",
+		).
 		Updates(map[string]interface{}{
-			"status":      model.TaskStatusSuccess,
-			"finished_at": gorm.Expr("NOW()"),
-			"result":      `{"success":true,"message":"certificate synced from cloud"}`,
+			"status":        model.TaskStatusSuccess,
+			"finished_at":   gorm.Expr("NOW()"),
+			"result":        `{"success":true,"message":"certificate synced from cloud"}`,
+			"error_message": "",
 		}).Error
 }

@@ -348,6 +348,16 @@ func (s *Scheduler) renewCertificate(ctx context.Context, cert *model.SSLCertifi
 	// 更新任务状态为运行中
 	s.taskRepo.UpdateStatus(ctx, task.ID, model.TaskStatusRunning, "", "")
 
+	// 确定ACME邮箱: 优先使用证书配置的邮箱,否则使用全局配置
+	acmeEmail := cert.ACMEEmail
+	if acmeEmail == "" {
+		acmeEmail = s.acmeEmail
+	}
+	if acmeEmail == "" {
+		s.finishTask(ctx, cert, task, false, "ACME email not configured. Please set the email in certificate settings or set environment variable OPSHUB_ACME_EMAIL")
+		return
+	}
+
 	// 获取DNS Provider
 	dnsProvider, err := s.dnsProviderRepo.GetByID(ctx, *cert.DNSProviderID)
 	if err != nil {
@@ -368,7 +378,7 @@ func (s *Scheduler) renewCertificate(ctx context.Context, cert *model.SSLCertifi
 	domains = append(domains, sanDomains...)
 
 	// 创建ACME客户端并申请证书
-	acmeClient := acme.NewClient(s.acmeEmail, s.acmeStaging, dnsP)
+	acmeClient := acme.NewClientWithOptions(acmeEmail, s.acmeStaging, cert.CAProvider, cert.KeyAlgorithm, dnsP)
 	bundle, err := acmeClient.ObtainCertificate(ctx, domains)
 	if err != nil {
 		s.finishTask(ctx, cert, task, false, "obtain certificate failed: "+err.Error())
@@ -388,6 +398,9 @@ func (s *Scheduler) renewCertificate(ctx context.Context, cert *model.SSLCertifi
 		s.finishTask(ctx, cert, task, false, "update certificate content failed: "+err.Error())
 		return
 	}
+
+	// 更新证书issuer
+	s.db.Model(cert).Update("issuer", bundle.Issuer)
 
 	s.finishTask(ctx, cert, task, true, "")
 
@@ -414,45 +427,18 @@ func (s *Scheduler) finishTask(ctx context.Context, cert *model.SSLCertificate, 
 
 // executeAutoDeploy 执行自动部署
 func (s *Scheduler) executeAutoDeploy(ctx context.Context, certID uint) {
-	configs, err := s.deployRepo.ListAutoDeploy(ctx, certID)
-	if err != nil {
-		logger.Error("获取自动部署配置失败", zap.Uint("cert_id", certID), zap.Error(err))
-		return
-	}
+	deployCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Minute)
+	defer cancel()
 
-	if len(configs) == 0 {
-		return
-	}
-
-	cert, err := s.certRepo.GetByID(ctx, certID)
-	if err != nil {
-		logger.Error("获取证书失败", zap.Uint("cert_id", certID), zap.Error(err))
-		return
-	}
-
-	bundle := &model.CertBundle{
-		Certificate: cert.Certificate,
-		PrivateKey:  cert.PrivateKey,
-		CertChain:   cert.CertChain,
-	}
-
-	for _, config := range configs {
-		d, err := s.deployerFactory.Create(config.DeployType, s.deployerDeps)
-		if err != nil {
-			logger.Error("创建部署器失败", zap.Uint("config_id", config.ID), zap.Error(err))
-			continue
-		}
-
-		err = d.Deploy(ctx, bundle, &config)
-		now := time.Now()
-		if err != nil {
-			s.deployRepo.UpdateDeployResult(ctx, config.ID, false, &now, err.Error())
-			logger.Error("部署失败", zap.Uint("config_id", config.ID), zap.String("name", config.Name), zap.Error(err))
-		} else {
-			s.deployRepo.UpdateDeployResult(ctx, config.ID, true, &now, "")
-			logger.Info("部署成功", zap.Uint("config_id", config.ID), zap.String("name", config.Name))
-		}
-	}
+	runAutoDeploy(
+		deployCtx,
+		s.certRepo,
+		s.deployRepo,
+		s.taskRepo,
+		s.deployerFactory,
+		s.deployerDeps,
+		certID,
+	)
 }
 
 // RunOnce 执行一次检查(用于手动触发)

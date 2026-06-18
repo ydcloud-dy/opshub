@@ -930,6 +930,125 @@
       </template>
     </el-dialog>
 
+    <!-- 节点监控弹窗 -->
+    <el-dialog
+      v-model="monitorDialogVisible"
+      :title="`节点监控 - ${selectedNode?.name || ''}`"
+      width="1080px"
+      class="node-monitor-dialog"
+      @opened="handleMonitorDialogOpened"
+      @closed="disposeMonitorDialogCharts"
+    >
+      <div v-loading="monitorLoading" class="node-monitor-dialog-content">
+        <div class="monitor-dialog-hero">
+          <div class="monitor-dialog-title">
+            <div class="monitor-dialog-icon">
+              <el-icon><DataAnalysis /></el-icon>
+            </div>
+            <div>
+              <h3>{{ selectedNode?.name }}</h3>
+              <p>{{ monitorMetrics?.metricsAvailable ? `最后采集：${monitorMetrics.collectedAt}` : (monitorMetrics?.metricsMessage || '节点监控数据加载中') }}</p>
+            </div>
+          </div>
+          <div class="monitor-dialog-score">
+            <span>健康分</span>
+            <strong>{{ monitorMetrics?.healthScore ?? '--' }}</strong>
+          </div>
+        </div>
+
+        <el-alert
+          v-if="monitorMetrics && !monitorMetrics.metricsAvailable"
+          type="warning"
+          show-icon
+          :closable="false"
+          title="Metrics Server 未返回实时资源指标"
+          :description="monitorMetrics.metricsMessage || '当前只能展示节点状态、Pod 分布和事件信息。'"
+          class="monitor-dialog-alert"
+        />
+
+        <div class="monitor-dialog-stats">
+          <div class="monitor-stat-card">
+            <span>CPU</span>
+            <strong>{{ percentText(monitorMetrics?.cpuUsage) }}</strong>
+            <small>{{ formatMilliCPU(monitorMetrics?.cpuUsed || 0) }} / {{ formatMilliCPU(monitorMetrics?.cpuAllocatable || 0) }}</small>
+          </div>
+          <div class="monitor-stat-card">
+            <span>内存</span>
+            <strong>{{ percentText(monitorMetrics?.memoryUsage) }}</strong>
+            <small>{{ formatBytes(monitorMetrics?.memoryUsed || 0) }} / {{ formatBytes(monitorMetrics?.memoryAllocatable || 0) }}</small>
+          </div>
+          <div class="monitor-stat-card">
+            <span>Pod</span>
+            <strong>{{ monitorMetrics?.podCount ?? 0 }}/{{ monitorMetrics?.podCapacity ?? 0 }}</strong>
+            <small>Running {{ monitorMetrics?.podRunning ?? 0 }} / Failed {{ monitorMetrics?.podFailed ?? 0 }}</small>
+          </div>
+          <div class="monitor-stat-card">
+            <span>重启</span>
+            <strong>{{ monitorMetrics?.totalRestarts ?? 0 }}</strong>
+            <small>{{ monitorMetrics?.conditionSummary?.ready ? '节点 Ready' : '节点异常' }}</small>
+          </div>
+        </div>
+
+        <div class="monitor-dialog-chart-grid">
+          <div class="monitor-panel">
+            <div class="monitor-panel-header">
+              <span>资源使用趋势</span>
+              <small>当前弹窗刷新采样</small>
+            </div>
+            <div ref="monitorResourceChartRef" class="monitor-dialog-chart"></div>
+          </div>
+          <div class="monitor-panel">
+            <div class="monitor-panel-header">
+              <span>Pod 状态分布</span>
+              <small>当前节点</small>
+            </div>
+            <div ref="monitorPodChartRef" class="monitor-dialog-chart"></div>
+          </div>
+        </div>
+
+        <div class="monitor-dialog-bottom-grid">
+          <div class="monitor-panel">
+            <div class="monitor-panel-header">
+              <span>Top Pods</span>
+              <small>按 CPU 使用排序</small>
+            </div>
+            <el-table :data="monitorMetrics?.topPods || []" class="monitor-mini-table" max-height="260">
+              <el-table-column prop="name" label="Pod" min-width="180" show-overflow-tooltip />
+              <el-table-column prop="namespace" label="命名空间" width="120" />
+              <el-table-column prop="cpuUsedText" label="CPU" width="90" />
+              <el-table-column prop="memoryText" label="内存" width="100" />
+            </el-table>
+          </div>
+          <div class="monitor-panel">
+            <div class="monitor-panel-header">
+              <span>节点事件</span>
+              <small>最近事件</small>
+            </div>
+            <div class="monitor-dialog-events">
+              <div v-for="(event, index) in monitorMetrics?.events || []" :key="index" class="monitor-dialog-event">
+                <el-tag :type="event.type === 'Warning' ? 'warning' : 'success'" size="small">{{ event.type }}</el-tag>
+                <div>
+                  <strong>{{ event.reason || '-' }}</strong>
+                  <p>{{ event.message }}</p>
+                </div>
+              </div>
+              <div v-if="!monitorMetrics?.events?.length" class="monitor-dialog-empty">暂无节点事件</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="monitorDialogVisible = false">关闭</el-button>
+          <el-button type="primary" :loading="monitorLoading" @click="loadSelectedNodeMetrics">
+            <el-icon><Refresh /></el-icon>
+            刷新监控
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
+
     <!-- Shell 终端弹窗 -->
     <el-dialog
       v-model="shellDialogVisible"
@@ -954,6 +1073,7 @@ import { ref, onMounted, computed, onUnmounted, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import axios from 'axios'
+import * as echarts from 'echarts'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
@@ -984,7 +1104,7 @@ import {
   Plus,
   Check
 } from '@element-plus/icons-vue'
-import { getClusterList, type Cluster, getNodes, type NodeInfo } from '@/api/kubernetes'
+import { getClusterList, getNodeMetrics, type Cluster, type NodeMetricsInfo, getNodes, type NodeInfo } from '@/api/kubernetes'
 
 const loading = ref(false)
 const router = useRouter()
@@ -1046,6 +1166,14 @@ const yamlContent = ref('')
 const yamlSaving = ref(false)
 const selectedNode = ref<NodeInfo | null>(null)
 const yamlTextarea = ref<HTMLTextAreaElement | null>(null)
+
+// 节点监控弹窗
+const monitorDialogVisible = ref(false)
+const monitorLoading = ref(false)
+const monitorMetrics = ref<NodeMetricsInfo | null>(null)
+const monitorHistory = ref<{ time: string; cpu: number; memory: number; pods: number }[]>([])
+const monitorResourceChartRef = ref<HTMLElement>()
+const monitorPodChartRef = ref<HTMLElement>()
 
 // Shell 终端弹窗
 const shellDialogVisible = ref(false)
@@ -1297,6 +1425,115 @@ const formatMemoryWithUsage = (node: NodeInfo) => {
   return `${used}/${total}`
 }
 
+const ratioToPercent = (value?: number) => {
+  if (!Number.isFinite(value || 0)) return 0
+  return Math.max(0, Math.min(100, Number(((value || 0) * 100).toFixed(1))))
+}
+
+const percentText = (value?: number) => `${ratioToPercent(value)}%`
+
+const formatMilliCPU = (value: number) => {
+  if (!value) return '0m'
+  if (value >= 1000) return `${(value / 1000).toFixed(value % 1000 === 0 ? 0 : 1)} 核`
+  return `${value}m`
+}
+
+const formatBytes = (bytes: number) => {
+  if (!bytes) return '0 B'
+  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB']
+  let value = bytes
+  let index = 0
+  while (value >= 1024 && index < units.length - 1) {
+    value /= 1024
+    index++
+  }
+  return `${value.toFixed(index <= 1 ? 0 : 1)} ${units[index]}`
+}
+
+const appendMonitorHistory = (metrics: NodeMetricsInfo) => {
+  const time = metrics.collectedAt ? metrics.collectedAt.slice(11, 19) : new Date().toLocaleTimeString()
+  monitorHistory.value.push({
+    time,
+    cpu: ratioToPercent(metrics.cpuUsage),
+    memory: ratioToPercent(metrics.memoryUsage),
+    pods: ratioToPercent(metrics.podUsage)
+  })
+  if (monitorHistory.value.length > 20) {
+    monitorHistory.value = monitorHistory.value.slice(-20)
+  }
+}
+
+const getMonitorChart = (target?: HTMLElement) => {
+  if (!target) return null
+  return echarts.getInstanceByDom(target) || echarts.init(target)
+}
+
+const renderMonitorDialogCharts = () => {
+  const resourceChart = getMonitorChart(monitorResourceChartRef.value)
+  if (resourceChart) {
+    resourceChart.setOption({
+      color: ['#2563eb', '#16a34a', '#f97316'],
+      tooltip: { trigger: 'axis', valueFormatter: (value: number) => `${value}%` },
+      legend: { top: 0, right: 8, textStyle: { color: '#667085' } },
+      grid: { left: 36, right: 18, top: 42, bottom: 28 },
+      xAxis: {
+        type: 'category',
+        boundaryGap: false,
+        data: monitorHistory.value.map(item => item.time),
+        axisLine: { lineStyle: { color: '#e5e9f2' } },
+        axisLabel: { color: '#98a2b3' }
+      },
+      yAxis: {
+        type: 'value',
+        min: 0,
+        max: 100,
+        axisLabel: { color: '#98a2b3', formatter: '{value}%' },
+        splitLine: { lineStyle: { color: '#eef2f7' } }
+      },
+      series: [
+        { name: 'CPU', type: 'line', smooth: true, areaStyle: { opacity: 0.08 }, data: monitorHistory.value.map(item => item.cpu) },
+        { name: '内存', type: 'line', smooth: true, areaStyle: { opacity: 0.08 }, data: monitorHistory.value.map(item => item.memory) },
+        { name: 'Pod', type: 'line', smooth: true, areaStyle: { opacity: 0.06 }, data: monitorHistory.value.map(item => item.pods) }
+      ]
+    })
+  }
+
+  const podChart = getMonitorChart(monitorPodChartRef.value)
+  const metrics = monitorMetrics.value
+  if (podChart) {
+    podChart.setOption({
+      color: ['#16a34a', '#f59e0b', '#ef4444', '#94a3b8'],
+      tooltip: { trigger: 'item' },
+      legend: { bottom: 0, textStyle: { color: '#667085' } },
+      series: [
+        {
+          name: 'Pod 状态',
+          type: 'pie',
+          radius: ['48%', '70%'],
+          center: ['50%', '44%'],
+          label: { formatter: '{b}\n{c}', color: '#344054' },
+          data: [
+            { name: 'Running', value: metrics?.podRunning || 0 },
+            { name: 'Pending', value: metrics?.podPending || 0 },
+            { name: 'Failed', value: metrics?.podFailed || 0 },
+            { name: 'Succeeded', value: metrics?.podSucceeded || 0 }
+          ].filter(item => item.value > 0)
+        }
+      ]
+    })
+  }
+}
+
+const disposeMonitorDialogCharts = () => {
+  if (monitorResourceChartRef.value) echarts.getInstanceByDom(monitorResourceChartRef.value)?.dispose()
+  if (monitorPodChartRef.value) echarts.getInstanceByDom(monitorPodChartRef.value)?.dispose()
+}
+
+const resizeMonitorDialogCharts = () => {
+  if (monitorResourceChartRef.value) echarts.getInstanceByDom(monitorResourceChartRef.value)?.resize()
+  if (monitorPodChartRef.value) echarts.getInstanceByDom(monitorPodChartRef.value)?.resize()
+}
+
 // 获取角色文本
 const getRoleText = (role: string | undefined) => {
   if (!role) return 'Worker'
@@ -1330,6 +1567,73 @@ const showLabels = (row: NodeInfo) => {
   labelEditMode.value = false
   selectedNode.value = row
   labelDialogVisible.value = true
+}
+
+const showNodeMonitor = async (row: NodeInfo) => {
+  selectedNode.value = row
+  monitorMetrics.value = null
+  monitorHistory.value = []
+  monitorDialogVisible.value = true
+  await loadSelectedNodeMetrics()
+}
+
+const loadSelectedNodeMetrics = async () => {
+  if (!selectedNode.value || !selectedClusterId.value) return
+  monitorLoading.value = true
+  try {
+    const metrics = await getNodeMetrics(selectedClusterId.value, selectedNode.value.name)
+    monitorMetrics.value = metrics
+    appendMonitorHistory(metrics)
+    await nextTick()
+    renderMonitorDialogCharts()
+  } catch (error: any) {
+    monitorMetrics.value = {
+      collectedAt: '',
+      metricsAvailable: false,
+      metricsMessage: error?.message || '节点监控数据暂不可用',
+      healthScore: 0,
+      cpuUsage: 0,
+      memoryUsage: 0,
+      podUsage: 0,
+      cpuUsed: 0,
+      memoryUsed: 0,
+      cpuCapacity: 0,
+      cpuAllocatable: 0,
+      memoryCapacity: 0,
+      memoryAllocatable: 0,
+      podCount: selectedNode.value.podCount || 0,
+      podCapacity: selectedNode.value.podCapacity || 0,
+      podRunning: 0,
+      podPending: 0,
+      podFailed: 0,
+      podSucceeded: 0,
+      totalRestarts: 0,
+      conditions: selectedNode.value.conditions || [],
+      conditionSummary: {
+        ready: selectedNode.value.status === 'Ready',
+        memoryPressure: false,
+        diskPressure: false,
+        pidPressure: false,
+        networkUnavailable: false
+      },
+      topPods: [],
+      events: [],
+      addresses: {},
+      podCIDR: selectedNode.value.podCIDR || '',
+      podCIDRs: [],
+      providerID: selectedNode.value.providerID || '',
+      unschedulable: !selectedNode.value.schedulable
+    }
+    await nextTick()
+    renderMonitorDialogCharts()
+  } finally {
+    monitorLoading.value = false
+  }
+}
+
+const handleMonitorDialogOpened = async () => {
+  await nextTick()
+  renderMonitorDialogCharts()
 }
 
 // 开始编辑标签
@@ -1846,7 +2150,7 @@ const handleActionCommand = (command: string, row: NodeInfo) => {
       handleShell()
       break
     case 'monitor':
-      ElMessage.info('监控功能开发中...')
+      showNodeMonitor(row)
       break
     case 'yaml':
       handleShowYAML()
@@ -2653,6 +2957,12 @@ const getBatchResultSummary = () => {
 onMounted(() => {
   loadClusters()
   checkCloudTTY()
+  window.addEventListener('resize', resizeMonitorDialogCharts)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', resizeMonitorDialogCharts)
+  disposeMonitorDialogCharts()
 })
 </script>
 
@@ -3661,22 +3971,22 @@ onMounted(() => {
   align-items: center !important;
   gap: 6px !important;
   padding: 5px 12px !important;
-  background: linear-gradient(135deg, #000000 0%, #1a1a1a 100%) !important;
-  color: #d4af37 !important;
-  border: 1px solid #d4af37 !important;
-  border-radius: 6px !important;
+  background: #eff6ff !important;
+  color: #2563eb !important;
+  border: 1px solid #bfdbfe !important;
+  border-radius: 999px !important;
   font-family: 'Monaco', 'Menlo', monospace !important;
   font-size: 12px !important;
-  font-weight: 500 !important;
+  font-weight: 700 !important;
   cursor: pointer !important;
   transition: all 0.3s !important;
   user-select: none;
 }
 
 .label-key-wrapper:hover {
-  background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%) !important;
-  border-color: #bfa13f !important;
-  box-shadow: 0 2px 8px rgba(212, 175, 55, 0.3) !important;
+  background: #dbeafe !important;
+  border-color: #93c5fd !important;
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.14) !important;
   transform: translateY(-1px);
 }
 
@@ -3714,6 +4024,295 @@ onMounted(() => {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
+}
+
+.node-monitor-dialog :deep(.el-dialog) {
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.node-monitor-dialog :deep(.el-dialog__header),
+.label-dialog :deep(.el-dialog__header) {
+  padding: 22px 28px 16px;
+  margin-right: 0;
+  background: #ffffff;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.node-monitor-dialog :deep(.el-dialog__title),
+.label-dialog :deep(.el-dialog__title) {
+  color: #111827;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.node-monitor-dialog :deep(.el-dialog__body),
+.label-dialog :deep(.el-dialog__body) {
+  padding: 20px 28px;
+  background: #fbfcfe;
+}
+
+.node-monitor-dialog :deep(.el-dialog__footer),
+.label-dialog :deep(.el-dialog__footer) {
+  padding: 16px 28px 20px;
+  background: #ffffff;
+  border-top: 1px solid #eef2f7;
+}
+
+.node-monitor-dialog-content {
+  min-height: 420px;
+}
+
+.monitor-dialog-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+  padding: 18px 20px;
+  margin-bottom: 14px;
+  border: 1px solid #e5e9f2;
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(37, 99, 235, 0.08), rgba(255, 255, 255, 0.95)),
+    #ffffff;
+}
+
+.monitor-dialog-title {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.monitor-dialog-icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  color: #2563eb;
+  background: #eff6ff;
+  border: 1px solid #dbeafe;
+  font-size: 24px;
+}
+
+.monitor-dialog-title h3 {
+  margin: 0;
+  color: #111827;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.monitor-dialog-title p {
+  margin: 4px 0 0;
+  color: #667085;
+  font-size: 13px;
+}
+
+.monitor-dialog-score {
+  min-width: 112px;
+  padding: 10px 16px;
+  border: 1px solid #e5e9f2;
+  border-radius: 14px;
+  background: #ffffff;
+  text-align: center;
+}
+
+.monitor-dialog-score span {
+  display: block;
+  color: #667085;
+  font-size: 12px;
+}
+
+.monitor-dialog-score strong {
+  display: block;
+  margin-top: 2px;
+  color: #2563eb;
+  font-size: 28px;
+  line-height: 1.1;
+}
+
+.monitor-dialog-alert {
+  margin-bottom: 14px;
+  border-radius: 12px;
+}
+
+.monitor-dialog-stats,
+.monitor-dialog-chart-grid,
+.monitor-dialog-bottom-grid {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.monitor-dialog-stats {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.monitor-dialog-chart-grid,
+.monitor-dialog-bottom-grid {
+  grid-template-columns: 1fr 1fr;
+}
+
+.monitor-stat-card,
+.monitor-panel {
+  border: 1px solid #e5e9f2;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
+}
+
+.monitor-stat-card {
+  padding: 16px;
+}
+
+.monitor-stat-card span {
+  display: block;
+  color: #667085;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.monitor-stat-card strong {
+  display: block;
+  margin-top: 8px;
+  color: #111827;
+  font-size: 26px;
+  line-height: 1;
+}
+
+.monitor-stat-card small {
+  display: block;
+  margin-top: 8px;
+  color: #98a2b3;
+  font-size: 12px;
+}
+
+.monitor-panel {
+  overflow: hidden;
+}
+
+.monitor-panel-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 15px 18px;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.monitor-panel-header span {
+  color: #111827;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.monitor-panel-header small {
+  color: #98a2b3;
+  font-size: 12px;
+}
+
+.monitor-dialog-chart {
+  height: 280px;
+}
+
+.monitor-mini-table {
+  width: 100%;
+}
+
+.monitor-dialog-events {
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.monitor-dialog-event {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #f2f4f7;
+}
+
+.monitor-dialog-event strong {
+  color: #111827;
+  font-size: 13px;
+}
+
+.monitor-dialog-event p {
+  margin: 4px 0 0;
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+.monitor-dialog-empty {
+  padding: 42px 20px;
+  color: #98a2b3;
+  text-align: center;
+  font-size: 13px;
+}
+
+.label-dialog :deep(.el-dialog) {
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.label-edit-header {
+  background: #eff6ff;
+  border: 1px solid #dbeafe;
+}
+
+.label-edit-info,
+.label-edit-count {
+  color: #2563eb;
+}
+
+.label-edit-count {
+  background: rgba(37, 99, 235, 0.1);
+}
+
+.label-edit-row:hover {
+  border-color: #bfdbfe;
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.12);
+}
+
+.label-row-number {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.label-edit-input :deep(.el-input__wrapper:hover),
+.label-edit-input :deep(.el-input__wrapper.is-focus) {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.empty-labels .empty-icon {
+  color: #2563eb;
+}
+
+.add-label-btn {
+  border-color: #bfdbfe;
+  color: #2563eb;
+}
+
+.add-label-btn:hover {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+.dialog-footer .edit-btn,
+.dialog-footer .save-btn {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #ffffff;
+}
+
+.dialog-footer .edit-btn:hover,
+.dialog-footer .save-btn:hover {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.18);
 }
 
 /* 污点弹窗 */
@@ -4442,5 +5041,79 @@ onMounted(() => {
 
 .result-table {
   margin-top: 20px;
+}
+
+/* 节点标签与监控最终覆盖：去除旧黑金风格 */
+.label-icon,
+.taint-icon,
+.action-btn,
+.action-dropdown-menu :deep(.el-dropdown-menu__item .el-icon),
+.action-dropdown-menu :deep(.el-dropdown-menu__item:hover),
+.action-dropdown-menu :deep(.el-dropdown-menu__item:hover .el-icon) {
+  color: #2563eb;
+}
+
+.label-count,
+.taint-count {
+  background: #eff6ff;
+  color: #2563eb;
+  border-color: #bfdbfe;
+}
+
+.label-cell:hover .label-icon,
+.taint-cell:hover .taint-icon {
+  color: #1d4ed8;
+}
+
+.label-cell:hover .label-count,
+.taint-cell:hover .taint-count {
+  background: #dbeafe;
+  border-color: #93c5fd;
+}
+
+.label-dialog :deep(.el-dialog__header),
+.batch-label-dialog :deep(.el-dialog__header) {
+  background: #ffffff;
+  color: #111827;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.label-dialog :deep(.el-dialog__title),
+.batch-label-dialog :deep(.el-dialog__title) {
+  color: #111827;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.label-edit-header {
+  background: #eff6ff;
+  border-color: #dbeafe;
+}
+
+.label-edit-info,
+.label-edit-count {
+  color: #2563eb;
+}
+
+.label-row-number {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.label-edit-row:hover {
+  border-color: #bfdbfe;
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.12);
+}
+
+.label-key-wrapper {
+  background: #eff6ff !important;
+  color: #2563eb !important;
+  border-color: #bfdbfe !important;
+}
+
+.label-key-wrapper:hover {
+  background: #dbeafe !important;
+  border-color: #93c5fd !important;
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.14) !important;
 }
 </style>

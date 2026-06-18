@@ -170,6 +170,10 @@ func (h *DataSourceHandler) ListDataSources(c *gin.Context) {
 		return
 	}
 
+	if isReadonlyContext(c) {
+		maskDataSourceSecrets(dataSources)
+	}
+
 	c.JSON(200, gin.H{"code": 0, "message": "success", "data": dataSources})
 }
 
@@ -185,7 +189,42 @@ func (h *DataSourceHandler) GetDataSource(c *gin.Context) {
 		return
 	}
 
+	if isReadonlyContext(c) {
+		maskDataSourceSecret(&dataSource)
+	}
+
 	c.JSON(200, gin.H{"code": 0, "message": "success", "data": dataSource})
+}
+
+func isReadonlyContext(c *gin.Context) bool {
+	value, ok := c.Get("readonly_user")
+	if !ok {
+		return false
+	}
+	readonly, ok := value.(bool)
+	return ok && readonly
+}
+
+func maskDataSourceSecrets(dataSources []model.DataSource) {
+	for i := range dataSources {
+		maskDataSourceSecret(&dataSources[i])
+	}
+}
+
+func maskDataSourceSecret(dataSource *model.DataSource) {
+	dataSource.Password = maskSecret(dataSource.Password)
+	dataSource.Token = maskSecret(dataSource.Token)
+	dataSource.Headers = maskSecret(dataSource.Headers)
+	dataSource.RemoteWritePassword = maskSecret(dataSource.RemoteWritePassword)
+	dataSource.RemoteWriteToken = maskSecret(dataSource.RemoteWriteToken)
+	dataSource.RemoteWriteHeaders = maskSecret(dataSource.RemoteWriteHeaders)
+}
+
+func maskSecret(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return ""
+	}
+	return "******"
 }
 
 func (h *DataSourceHandler) CreateDataSource(c *gin.Context) {

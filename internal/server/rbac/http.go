@@ -84,6 +84,7 @@ func (s *HTTPServer) RegisterRoutes(r *gin.Engine) {
 	// 需要认证的路由
 	auth := r.Group("/api/v1")
 	auth.Use(s.authMiddleware.AuthRequired())
+	auth.Use(s.authMiddleware.ReadonlyUserRequired())
 	{
 		// 用户相关
 		auth.GET("/profile", s.userService.GetProfile)

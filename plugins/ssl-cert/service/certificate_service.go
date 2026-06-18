@@ -240,8 +240,8 @@ func (s *CertificateService) createCloudCertificate(ctx context.Context, req *Cr
 
 // executeCloudIssueTask 执行云厂商证书签发任务
 func (s *CertificateService) executeCloudIssueTask(ctx context.Context, cert *model.SSLCertificate, cloudProvider cloud.Provider, task *model.RenewTask) {
-	// 设置任务超时时间为5分钟（云厂商API调用通常较快）
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	// 云厂商证书申请通常很快，但 DNS 验证完成和证书签发之间可能有延迟。
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
 
 	// 更新任务状态为运行中
@@ -267,6 +267,7 @@ func (s *CertificateService) executeCloudIssueTask(ctx context.Context, cert *mo
 			result.DNSRecord.RecordName, result.DNSRecord.RecordType, result.DNSRecord.RecordValue)
 		s.taskRepo.UpdateStatus(ctx, task.ID, model.TaskStatusRunning, "", msg)
 		s.certRepo.UpdateStatus(ctx, cert.ID, model.CertStatusPending, msg)
+		s.waitCloudCertificateIssued(ctx, cert, cloudProvider, result.OrderID, task, msg)
 		return
 	}
 
@@ -282,18 +283,108 @@ func (s *CertificateService) executeCloudIssueTask(ctx context.Context, cert *mo
 
 	// 其他情况
 	s.taskRepo.UpdateStatus(ctx, task.ID, model.TaskStatusRunning, "", result.Message)
+	s.waitCloudCertificateIssued(ctx, cert, cloudProvider, result.OrderID, task, result.Message)
+}
+
+func (s *CertificateService) waitCloudCertificateIssued(ctx context.Context, cert *model.SSLCertificate, cloudProvider cloud.Provider, certID string, task *model.RenewTask, lastMessage string) {
+	if certID == "" {
+		return
+	}
+
+	ticker := time.NewTicker(20 * time.Second)
+	defer ticker.Stop()
+
+	deadline := time.NewTimer(8 * time.Minute)
+	defer deadline.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-deadline.C:
+			return
+		case <-ticker.C:
+			status, err := cloudProvider.CheckCertificateStatus(ctx, certID)
+			if err != nil {
+				s.taskRepo.UpdateStatus(ctx, task.ID, model.TaskStatusRunning, "", fmt.Sprintf("%s\n正在等待云厂商签发，最近一次检查失败: %v", lastMessage, err))
+				continue
+			}
+			if status.Status == "issued" {
+				if status.Certificate != "" {
+					s.saveCloudCertificateBundle(ctx, cert, task, status.Certificate, status.PrivateKey, status.CertChain)
+				} else {
+					s.downloadAndSaveCloudCert(ctx, cert, cloudProvider, certID, task)
+				}
+				return
+			}
+			if status.Status == "failed" {
+				message := status.Message
+				if message == "" {
+					message = "cloud certificate issuance failed"
+				}
+				s.finishTask(ctx, cert, task, false, message)
+				return
+			}
+		}
+	}
 }
 
 // downloadAndSaveCloudCert 下载并保存云证书
 func (s *CertificateService) downloadAndSaveCloudCert(ctx context.Context, cert *model.SSLCertificate, cloudProvider cloud.Provider, certID string, task *model.RenewTask) {
-	bundle, err := cloudProvider.DownloadCertificate(ctx, certID)
+	bundle, err := s.downloadCloudCertificateWithFallback(ctx, cert, cloudProvider, certID)
 	if err != nil {
 		s.finishTask(ctx, cert, task, false, fmt.Sprintf("download certificate failed: %v", err))
 		return
 	}
 
+	s.saveCloudCertificateBundle(ctx, cert, task, bundle.Certificate, bundle.PrivateKey, bundle.CertChain)
+}
+
+func (s *CertificateService) downloadCloudCertificateWithFallback(ctx context.Context, cert *model.SSLCertificate, cloudProvider cloud.Provider, certID string) (*cloud.CertificateBundle, error) {
+	if certID != "" {
+		if bundle, err := cloudProvider.DownloadCertificate(ctx, certID); err == nil && bundle.Certificate != "" {
+			return bundle, nil
+		}
+	}
+
+	certs, err := cloudProvider.ListCertificates(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, item := range certs {
+		if item == nil || item.CertID == "" {
+			continue
+		}
+		if item.Domain == cert.Domain || containsDomain(item.SANDomains, cert.Domain) {
+			bundle, err := cloudProvider.DownloadCertificate(ctx, item.CertID)
+			if err == nil && bundle.Certificate != "" {
+				s.db.Model(cert).Update("cloud_cert_id", item.CertID)
+				return bundle, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("cloud certificate content not found for domain %s", cert.Domain)
+}
+
+func containsDomain(domains []string, domain string) bool {
+	for _, item := range domains {
+		if item == domain {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *CertificateService) saveCloudCertificateBundle(ctx context.Context, cert *model.SSLCertificate, task *model.RenewTask, certificate, privateKey, certChain string) {
+	if certificate == "" {
+		s.finishTask(ctx, cert, task, false, "cloud certificate content is empty")
+		return
+	}
+
 	// 解析证书信息
-	certInfo, err := acme.ParseCertificatePEM(bundle.Certificate)
+	certInfo, err := acme.ParseCertificatePEM(certificate)
 	if err != nil {
 		s.finishTask(ctx, cert, task, false, fmt.Sprintf("parse certificate failed: %v", err))
 		return
@@ -301,9 +392,9 @@ func (s *CertificateService) downloadAndSaveCloudCert(ctx context.Context, cert 
 
 	// 更新证书内容
 	err = s.certRepo.UpdateCertContent(ctx, cert.ID,
-		bundle.Certificate,
-		bundle.PrivateKey,
-		bundle.CertChain,
+		certificate,
+		privateKey,
+		certChain,
 		&certInfo.NotBefore,
 		&certInfo.NotAfter,
 		certInfo.Fingerprint,
@@ -317,6 +408,7 @@ func (s *CertificateService) downloadAndSaveCloudCert(ctx context.Context, cert 
 	s.db.Model(cert).Update("issuer", certInfo.Issuer)
 
 	s.finishTask(ctx, cert, task, true, "")
+	s.executeAutoDeploy(ctx, cert.ID)
 }
 
 // SyncCloudCertificate 同步云证书状态（手动检查云厂商证书是否已签发）
@@ -372,43 +464,16 @@ func (s *CertificateService) SyncCloudCertificate(ctx context.Context, id uint) 
 
 		// 如果没有返回证书内容，尝试下载
 		if certificate == "" {
-			bundle, err := cloudProvider.DownloadCertificate(ctx, certID)
+			bundle, err := s.downloadCloudCertificateWithFallback(ctx, cert, cloudProvider, certID)
 			if err != nil {
 				return fmt.Errorf("download certificate failed: %w", err)
 			}
 			certificate = bundle.Certificate
 			privateKey = bundle.PrivateKey
+			status.CertChain = bundle.CertChain
 		}
 
-		// 解析证书信息
-		certInfo, err := acme.ParseCertificatePEM(certificate)
-		if err != nil {
-			return fmt.Errorf("parse certificate failed: %w", err)
-		}
-
-		// 更新证书内容
-		err = s.certRepo.UpdateCertContent(ctx, cert.ID,
-			certificate,
-			privateKey,
-			"",
-			&certInfo.NotBefore,
-			&certInfo.NotAfter,
-			certInfo.Fingerprint,
-		)
-		if err != nil {
-			return fmt.Errorf("update certificate content failed: %w", err)
-		}
-
-		// 更新证书状态和issuer
-		s.db.Model(cert).Updates(map[string]interface{}{
-			"issuer": certInfo.Issuer,
-			"status": model.CertStatusActive,
-		})
-
-		// 更新任务状态
-		s.taskRepo.UpdatePendingToSuccess(ctx, cert.ID)
-
-		return nil
+		return s.saveSyncedCloudCertificate(ctx, cert, certificate, privateKey, status.CertChain)
 	}
 
 	// 如果失败
@@ -419,6 +484,41 @@ func (s *CertificateService) SyncCloudCertificate(ctx context.Context, id uint) 
 
 	// 仍在等待
 	return fmt.Errorf("certificate is still pending: %s", status.Message)
+}
+
+func (s *CertificateService) saveSyncedCloudCertificate(ctx context.Context, cert *model.SSLCertificate, certificate, privateKey, certChain string) error {
+	if certificate == "" {
+		return fmt.Errorf("cloud certificate content is empty")
+	}
+
+	certInfo, err := acme.ParseCertificatePEM(certificate)
+	if err != nil {
+		return fmt.Errorf("parse certificate failed: %w", err)
+	}
+
+	err = s.certRepo.UpdateCertContent(ctx, cert.ID,
+		certificate,
+		privateKey,
+		certChain,
+		&certInfo.NotBefore,
+		&certInfo.NotAfter,
+		certInfo.Fingerprint,
+	)
+	if err != nil {
+		return fmt.Errorf("update certificate content failed: %w", err)
+	}
+
+	s.db.Model(cert).Updates(map[string]interface{}{
+		"issuer": certInfo.Issuer,
+		"status": model.CertStatusActive,
+	})
+
+	if err := s.taskRepo.UpdatePendingToSuccess(ctx, cert.ID); err != nil {
+		return fmt.Errorf("update task status failed: %w", err)
+	}
+
+	s.executeAutoDeploy(ctx, cert.ID)
+	return nil
 }
 
 // ImportCertificate 导入证书
@@ -784,34 +884,16 @@ func (s *CertificateService) finishTask(ctx context.Context, cert *model.SSLCert
 
 // executeAutoDeploy 执行自动部署
 func (s *CertificateService) executeAutoDeploy(ctx context.Context, certID uint) {
-	configs, err := s.deployRepo.ListAutoDeploy(ctx, certID)
-	if err != nil {
-		return
-	}
+	deployCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Minute)
+	defer cancel()
 
-	cert, err := s.certRepo.GetByID(ctx, certID)
-	if err != nil {
-		return
-	}
-
-	bundle := &model.CertBundle{
-		Certificate: cert.Certificate,
-		PrivateKey:  cert.PrivateKey,
-		CertChain:   cert.CertChain,
-	}
-
-	for _, config := range configs {
-		d, err := s.deployerFactory.Create(config.DeployType, s.deployerDeps)
-		if err != nil {
-			continue
-		}
-
-		err = d.Deploy(ctx, bundle, &config)
-		now := time.Now()
-		if err != nil {
-			s.deployRepo.UpdateDeployResult(ctx, config.ID, false, &now, err.Error())
-		} else {
-			s.deployRepo.UpdateDeployResult(ctx, config.ID, true, &now, "")
-		}
-	}
+	runAutoDeploy(
+		deployCtx,
+		s.certRepo,
+		s.deployRepo,
+		s.taskRepo,
+		s.deployerFactory,
+		s.deployerDeps,
+		certID,
+	)
 }

@@ -143,6 +143,57 @@ export interface NodeInfo {
   conditions?: NodeCondition[]
 }
 
+export interface NodePodMetricInfo {
+  name: string
+  namespace: string
+  status: string
+  age: string
+  restarts: number
+  cpuUsed: number
+  memoryUsed: number
+  cpuUsedText: string
+  memoryText: string
+  containerNum: number
+}
+
+export interface NodeMetricsInfo {
+  collectedAt: string
+  metricsAvailable: boolean
+  metricsMessage?: string
+  healthScore: number
+  cpuUsage: number
+  memoryUsage: number
+  podUsage: number
+  cpuUsed: number
+  memoryUsed: number
+  cpuCapacity: number
+  cpuAllocatable: number
+  memoryCapacity: number
+  memoryAllocatable: number
+  podCount: number
+  podCapacity: number
+  podRunning: number
+  podPending: number
+  podFailed: number
+  podSucceeded: number
+  totalRestarts: number
+  conditions: NodeCondition[]
+  conditionSummary: {
+    ready: boolean
+    memoryPressure: boolean
+    diskPressure: boolean
+    pidPressure: boolean
+    networkUnavailable: boolean
+  }
+  topPods: NodePodMetricInfo[]
+  events: EventInfo[]
+  addresses: Record<string, string>
+  podCIDR: string
+  podCIDRs: string[]
+  providerID: string
+  unschedulable: boolean
+}
+
 export interface NodeCondition {
   type: string
   status: string
@@ -261,6 +312,18 @@ export function getNodes(clusterId: number) {
     url: '/api/v1/plugins/kubernetes/resources/nodes',
     method: 'get',
     params: { clusterId }
+  })
+}
+
+/**
+ * 获取节点监控指标
+ */
+export function getNodeMetrics(clusterId: number, nodeName: string) {
+  return request<NodeMetricsInfo>({
+    url: `/api/v1/plugins/kubernetes/resources/nodes/${encodeURIComponent(nodeName)}/metrics`,
+    method: 'get',
+    params: { clusterId },
+    headers: { 'X-Silent-Error': '1' }
   })
 }
 

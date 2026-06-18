@@ -129,6 +129,8 @@ import { useUserStore } from '@/stores/user'
 import { useSystemStore } from '@/stores/system'
 import request from '@/utils/request'
 import { getPublicConfig } from '@/api/system'
+import { getUserMenu } from '@/api/menu'
+import { getMenuCacheUsername, writeUserMenuCache } from '@/utils/menu-cache'
 
 const router = useRouter()
 const route = useRoute()
@@ -194,6 +196,17 @@ const refreshCaptcha = async () => {
   }
 }
 
+const warmUserMenuCache = async () => {
+  try {
+    const menus = await getUserMenu()
+    if (Array.isArray(menus) && menus.length > 0) {
+      writeUserMenuCache(getMenuCacheUsername(userStore.userInfo), menus)
+    }
+  } catch {
+    // 菜单预热失败不影响登录
+  }
+}
+
 const handleLogin = async () => {
   if (!formRef.value) return
 
@@ -239,6 +252,7 @@ const handleLogin = async () => {
         }
 
         ElMessage.success('登录成功')
+        await warmUserMenuCache()
 
         // 检查是否有重定向URL（用于OAuth2 SSO流程）
         const redirectUrl = route.query.redirect as string

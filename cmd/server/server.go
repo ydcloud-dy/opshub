@@ -58,6 +58,12 @@ var (
 	globalHTTPServer *server.HTTPServer
 )
 
+const (
+	readonlyUsername = "test"
+	readonlyPassword = "OpsHub@Test2026"
+	readonlyRoleCode = "test_viewer"
+)
+
 var Cmd = &cobra.Command{
 	Use:   "server",
 	Short: "启动服务",
@@ -160,9 +166,15 @@ func runServer() (*conf.Config, error) {
 	if err := ensureAssetAgentMenu(data.DB()); err != nil {
 		appLogger.Warn("补充资产Agent管理菜单失败", zap.Error(err))
 	}
+	if err := ensureTestReadonlyAccess(data.DB()); err != nil {
+		appLogger.Warn("补充test只读账号失败", zap.Error(err))
+	}
 
 	// 初始化HTTP服务器
 	httpServer := server.NewHTTPServer(cfg, svc, data.DB())
+	if err := ensureTestReadonlyAccess(data.DB()); err != nil {
+		appLogger.Warn("同步test只读账号插件菜单失败", zap.Error(err))
+	}
 	globalHTTPServer = httpServer // 保存到全局变量
 
 	// 启动服务器
@@ -332,6 +344,166 @@ func ensureAssetAgentMenu(db *gorm.DB) error {
 		if err := db.Exec("INSERT IGNORE INTO sys_role_menu (role_id, menu_id) VALUES (?, ?)", role.ID, existing.ID).Error; err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func ensureTestReadonlyAccess(db *gorm.DB) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		dept, err := ensureReadonlyDepartment(tx)
+		if err != nil {
+			return err
+		}
+
+		role, err := ensureReadonlyRole(tx)
+		if err != nil {
+			return err
+		}
+
+		user, err := ensureReadonlyUser(tx, dept.ID)
+		if err != nil {
+			return err
+		}
+
+		if err := tx.Exec("INSERT IGNORE INTO sys_user_role (user_id, role_id) VALUES (?, ?)", user.ID, role.ID).Error; err != nil {
+			return fmt.Errorf("绑定test只读角色失败: %w", err)
+		}
+		if err := assignReadonlyRoleMenus(tx, role.ID); err != nil {
+			return err
+		}
+		if err := assignReadonlyAssetPermissions(tx, role.ID); err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
+func ensureReadonlyDepartment(db *gorm.DB) (*rbacmodel.SysDepartment, error) {
+	var dept rbacmodel.SysDepartment
+	err := db.Where("code = ?", "TEST").First(&dept).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		dept = rbacmodel.SysDepartment{
+			Name:     "演示部门",
+			Code:     "TEST",
+			ParentID: 0,
+			DeptType: 3,
+			Sort:     999,
+			Status:   1,
+		}
+		if createErr := db.Create(&dept).Error; createErr != nil {
+			return nil, fmt.Errorf("创建test演示部门失败: %w", createErr)
+		}
+		return &dept, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("查询test演示部门失败: %w", err)
+	}
+	return &dept, nil
+}
+
+func ensureReadonlyRole(db *gorm.DB) (*rbacmodel.SysRole, error) {
+	var role rbacmodel.SysRole
+	err := db.Where("code = ?", readonlyRoleCode).First(&role).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		role = rbacmodel.SysRole{
+			Name:        "只读演示",
+			Code:        readonlyRoleCode,
+			Description: "演示环境只读角色，仅允许查看数据",
+			Sort:        999,
+			Status:      1,
+		}
+		if createErr := db.Create(&role).Error; createErr != nil {
+			return nil, fmt.Errorf("创建test只读角色失败: %w", createErr)
+		}
+		return &role, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("查询test只读角色失败: %w", err)
+	}
+	if err := db.Model(&role).Updates(map[string]interface{}{
+		"name":        "只读演示",
+		"description": "演示环境只读角色，仅允许查看数据",
+		"status":      1,
+	}).Error; err != nil {
+		return nil, fmt.Errorf("修复test只读角色失败: %w", err)
+	}
+	return &role, nil
+}
+
+func ensureReadonlyUser(db *gorm.DB, deptID uint) (*rbacmodel.SysUser, error) {
+	var user rbacmodel.SysUser
+	err := db.Where("username = ?", readonlyUsername).First(&user).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		hashedPassword, hashErr := bcrypt.GenerateFromPassword([]byte(readonlyPassword), bcrypt.DefaultCost)
+		if hashErr != nil {
+			return nil, fmt.Errorf("加密test用户密码失败: %w", hashErr)
+		}
+		user = rbacmodel.SysUser{
+			Username:     readonlyUsername,
+			Password:     string(hashedPassword),
+			RealName:     "演示用户",
+			Email:        "test@opshub.io",
+			Status:       1,
+			Source:       rbacmodel.UserSourceLocal,
+			DepartmentID: deptID,
+		}
+		if createErr := db.Create(&user).Error; createErr != nil {
+			return nil, fmt.Errorf("创建test只读用户失败: %w", createErr)
+		}
+		return &user, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("查询test只读用户失败: %w", err)
+	}
+	updates := map[string]interface{}{
+		"real_name":     "演示用户",
+		"email":         "test@opshub.io",
+		"status":        1,
+		"source":        rbacmodel.UserSourceLocal,
+		"department_id": deptID,
+	}
+	if bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(readonlyPassword)) != nil {
+		hashedPassword, hashErr := bcrypt.GenerateFromPassword([]byte(readonlyPassword), bcrypt.DefaultCost)
+		if hashErr != nil {
+			return nil, fmt.Errorf("加密test用户密码失败: %w", hashErr)
+		}
+		updates["password"] = string(hashedPassword)
+	}
+	if err := db.Model(&user).Updates(updates).Error; err != nil {
+		return nil, fmt.Errorf("修复test只读用户失败: %w", err)
+	}
+	return &user, nil
+}
+
+func assignReadonlyRoleMenus(db *gorm.DB, roleID uint) error {
+	if err := db.Exec(`
+		INSERT IGNORE INTO sys_role_menu (role_id, menu_id)
+		SELECT ?, id
+		FROM sys_menu
+		WHERE deleted_at IS NULL AND status = 1 AND visible = 1
+	`, roleID).Error; err != nil {
+		return fmt.Errorf("分配test菜单权限失败: %w", err)
+	}
+	return nil
+}
+
+func assignReadonlyAssetPermissions(db *gorm.DB, roleID uint) error {
+	if err := db.Exec(`
+		UPDATE sys_role_asset_permission
+		SET permissions = ?
+		WHERE role_id = ? AND deleted_at IS NULL
+	`, rbacmodel.PermissionView, roleID).Error; err != nil {
+		return fmt.Errorf("修复test资产只读权限失败: %w", err)
+	}
+	if err := db.Exec(`
+		INSERT INTO sys_role_asset_permission (created_at, updated_at, role_id, asset_group_id, host_ids, permissions)
+		SELECT NOW(), NOW(), ?, g.id, JSON_ARRAY(), ?
+		FROM asset_group AS g
+		LEFT JOIN sys_role_asset_permission AS p
+			ON p.role_id = ? AND p.asset_group_id = g.id AND p.deleted_at IS NULL
+		WHERE g.deleted_at IS NULL AND p.id IS NULL
+	`, roleID, rbacmodel.PermissionView, roleID).Error; err != nil {
+		return fmt.Errorf("分配test资产只读权限失败: %w", err)
 	}
 	return nil
 }

@@ -29,7 +29,7 @@
         :data="tableData"
         v-loading="loading"
         class="modern-table"
-        :header-cell-style="{ background: '#fafbfc', color: '#606266', fontWeight: '600' }"
+        :header-cell-style="{ background: '#f8fafc', color: '#475467', fontWeight: '700' }"
       >
         <el-table-column label="名称" prop="name" min-width="120" />
 
@@ -165,7 +165,8 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
-import { ElMessage, ElMessageBox, FormInstance, FormRules } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import type { FormInstance, FormRules } from 'element-plus'
 import { Plus, Refresh, Edit, Delete, Connection } from '@element-plus/icons-vue'
 import {
   getDNSProviders,
@@ -361,17 +362,20 @@ onMounted(() => {
 .dns-provider-container {
   padding: 0;
   background-color: transparent;
+  color: #344054;
+  font-family: inherit;
 }
 
 .page-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 12px;
-  padding: 16px 20px;
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 18px 22px;
+  background: linear-gradient(135deg, #ffffff 0%, #fbfdff 100%);
+  border: 1px solid #e5e9f2;
+  border-radius: 14px;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
 }
 
 .page-title-group {
@@ -381,60 +385,95 @@ onMounted(() => {
 }
 
 .page-title-icon {
-  width: 48px;
-  height: 48px;
-  background: #f8fafc;
-  border-radius: 8px;
+  width: 46px;
+  height: 46px;
+  background: linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%);
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #111827;
+  color: #2563eb;
   font-size: 22px;
   flex-shrink: 0;
-  border: 1px solid #edf1f7;
+  border: 1px solid #dbeafe;
 }
 
 .page-title {
   margin: 0;
-  font-size: 20px;
-  font-weight: 600;
-  color: #303133;
+  font-size: 22px;
+  font-weight: 750;
+  color: #101828;
+  letter-spacing: -0.01em;
 }
 
 .page-subtitle {
-  margin: 4px 0 0 0;
+  margin: 6px 0 0 0;
   font-size: 13px;
-  color: #909399;
+  color: #667085;
 }
 
 .header-actions {
   display: flex;
-  gap: 12px;
+  gap: 10px;
+  align-items: center;
+}
+
+.header-actions :deep(.el-button) {
+  height: 36px;
+  border-radius: 9px;
+  font-weight: 600;
 }
 
 .table-wrapper {
   background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+  border: 1px solid #e5e9f2;
+  border-radius: 14px;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
   overflow: hidden;
+}
+
+.modern-table {
+  width: 100%;
+  color: #344054;
+  font-size: 13px;
+}
+
+.modern-table :deep(.el-table__header th) {
+  background: #f8fafc !important;
+  color: #475467 !important;
+  font-weight: 700 !important;
+}
+
+.modern-table :deep(.el-table__cell) {
+  padding: 12px 0;
+}
+
+.modern-table :deep(.cell) {
+  line-height: 1.45;
+}
+
+.modern-table :deep(.el-table__row:hover > td.el-table__cell) {
+  background: #f8fafc;
 }
 
 .action-buttons {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
   justify-content: center;
+  flex-wrap: nowrap;
 }
 
 .action-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
   transition: all 0.2s ease;
+  color: #667085;
 }
 
 .action-btn:hover {
-  transform: scale(1.1);
+  transform: translateY(-1px);
 }
 
 .action-test:hover {
@@ -453,7 +492,8 @@ onMounted(() => {
 }
 
 .pagination-wrapper {
-  padding: 16px;
+  padding: 14px 16px;
+  border-top: 1px solid #eef2f7;
   display: flex;
   justify-content: flex-end;
 }

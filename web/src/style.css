@@ -180,6 +180,28 @@ select {
   font-weight: 500;
 }
 
+.opshub-readonly-disabled,
+.opshub-readonly-disabled:hover,
+.opshub-readonly-disabled:focus {
+  cursor: not-allowed !important;
+  opacity: 0.45 !important;
+  filter: grayscale(0.2);
+  pointer-events: auto !important;
+}
+
+.opshub-readonly-disabled.el-button,
+.opshub-readonly-disabled.el-button:hover,
+.opshub-readonly-disabled.el-button:focus {
+  color: #98a2b3 !important;
+  border-color: #d0d5dd !important;
+  background: #f2f4f7 !important;
+}
+
+.opshub-readonly-disabled.el-dropdown-menu__item {
+  color: #98a2b3 !important;
+  background: transparent !important;
+}
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;

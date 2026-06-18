@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { getPublicConfig, getAllConfig } from '@/api/system'
+import { getPublicConfig, getBasicConfig } from '@/api/system'
 
 interface SystemState {
   systemName: string
@@ -36,11 +36,11 @@ export const useSystemStore = defineStore('system', {
     // 加载完整配置（需要认证）
     async loadFullConfig() {
       try {
-        const res = await getAllConfig()
-        if (res && res.basic) {
-          this.systemName = res.basic.systemName || 'OpsHub'
-          this.systemLogo = res.basic.systemLogo || ''
-          this.systemDescription = res.basic.systemDescription || '运维管理平台'
+        const res = await getBasicConfig()
+        if (res) {
+          this.systemName = res.systemName || 'OpsHub'
+          this.systemLogo = res.systemLogo || ''
+          this.systemDescription = res.systemDescription || '运维管理平台'
           this.loaded = true
           this.updatePageMeta()
         }

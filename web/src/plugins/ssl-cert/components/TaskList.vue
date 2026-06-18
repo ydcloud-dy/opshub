@@ -73,13 +73,24 @@
         :data="tableData"
         v-loading="loading"
         class="modern-table"
-        :header-cell-style="{ background: '#fafbfc', color: '#606266', fontWeight: '600' }"
+        :header-cell-style="{ background: '#f8fafc', color: '#475467', fontWeight: '700' }"
       >
-        <el-table-column label="ID" prop="id" width="80" />
-
-        <el-table-column label="关联证书" min-width="180">
+        <el-table-column label="ID" prop="id" width="80" align="center">
           <template #default="{ row }">
-            <span v-if="row.certificate">{{ row.certificate.name }} ({{ row.certificate.domain }})</span>
+            <span class="task-id">#{{ row.id }}</span>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="关联证书" width="300">
+          <template #default="{ row }">
+            <div v-if="row.certificate" class="cert-cell">
+              <el-tooltip :content="row.certificate.name" placement="top" :disabled="!row.certificate.name">
+                <span class="cert-name">{{ row.certificate.name }}</span>
+              </el-tooltip>
+              <el-tooltip :content="row.certificate.domain" placement="top" :disabled="!row.certificate.domain">
+                <span class="cert-domain">{{ row.certificate.domain }}</span>
+              </el-tooltip>
+            </div>
             <span v-else>-</span>
           </template>
         </el-table-column>
@@ -111,19 +122,19 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="开始时间" width="190">
+        <el-table-column label="开始时间" width="190" class-name="time-column">
           <template #default="{ row }">
             <span class="task-time-text">{{ formatDateTime(row.started_at) || '-' }}</span>
           </template>
         </el-table-column>
 
-        <el-table-column label="结束时间" width="190">
+        <el-table-column label="结束时间" width="190" class-name="time-column">
           <template #default="{ row }">
             <span class="task-time-text">{{ formatDateTime(row.finished_at) || '-' }}</span>
           </template>
         </el-table-column>
 
-        <el-table-column label="错误信息" min-width="300" show-overflow-tooltip>
+        <el-table-column label="错误信息" min-width="260" show-overflow-tooltip>
           <template #default="{ row }">
             <span v-if="row.error_message" class="error-text">{{ row.error_message }}</span>
             <span v-else>-</span>
@@ -228,7 +239,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Refresh, RefreshLeft, List, View, Loading } from '@element-plus/icons-vue'
 import { getTasks, getTask } from '../api/ssl-cert'
@@ -255,6 +266,7 @@ const tableData = ref<any[]>([])
 
 // 当前任务
 const currentTask = ref<any>(null)
+let refreshTimer: ReturnType<typeof setInterval> | null = null
 
 // 获取任务类型名称
 const getTaskTypeName = (type: string) => {
@@ -324,9 +336,16 @@ const handleView = async (row: any) => {
 onMounted(() => {
   loadData()
   // 每30秒自动刷新
-  setInterval(() => {
+  refreshTimer = setInterval(() => {
     loadData()
   }, 30000)
+})
+
+onBeforeUnmount(() => {
+  if (refreshTimer) {
+    clearInterval(refreshTimer)
+    refreshTimer = null
+  }
 })
 </script>
 
@@ -334,17 +353,20 @@ onMounted(() => {
 .task-list-container {
   padding: 0;
   background-color: transparent;
+  color: #344054;
+  font-family: inherit;
 }
 
 .page-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 12px;
-  padding: 16px 20px;
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 18px 22px;
+  background: linear-gradient(135deg, #ffffff 0%, #fbfdff 100%);
+  border: 1px solid #e5e9f2;
+  border-radius: 14px;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
 }
 
 .page-title-group {
@@ -354,55 +376,73 @@ onMounted(() => {
 }
 
 .page-title-icon {
-  width: 48px;
-  height: 48px;
-  background: #f8fafc;
-  border-radius: 8px;
+  width: 46px;
+  height: 46px;
+  background: linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%);
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #111827;
+  color: #2563eb;
   font-size: 22px;
   flex-shrink: 0;
-  border: 1px solid #edf1f7;
+  border: 1px solid #dbeafe;
 }
 
 .page-title {
   margin: 0;
-  font-size: 20px;
-  font-weight: 600;
-  color: #303133;
+  font-size: 22px;
+  font-weight: 750;
+  color: #101828;
+  letter-spacing: -0.01em;
 }
 
 .page-subtitle {
-  margin: 4px 0 0 0;
+  margin: 6px 0 0 0;
   font-size: 13px;
-  color: #909399;
+  color: #667085;
 }
 
 .header-actions {
   display: flex;
-  gap: 12px;
+  gap: 10px;
+  align-items: center;
+}
+
+.header-actions :deep(.el-button) {
+  height: 36px;
+  border-radius: 9px;
+  font-weight: 600;
 }
 
 .search-bar {
-  margin-bottom: 12px;
-  padding: 12px 16px;
+  margin-bottom: 16px;
+  padding: 14px 16px;
   background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+  border: 1px solid #e5e9f2;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 16px;
 }
 
 .search-inputs {
   display: flex;
   gap: 12px;
+  flex: 1;
 }
 
 .search-input {
   width: 160px;
+}
+
+.search-bar :deep(.el-input__wrapper),
+.search-bar :deep(.el-select__wrapper) {
+  min-height: 36px;
+  border-radius: 9px;
+  box-shadow: 0 0 0 1px #d9e1ec inset;
 }
 
 .search-actions {
@@ -411,16 +451,84 @@ onMounted(() => {
 }
 
 .reset-btn {
-  background: #f5f7fa;
-  border-color: #dcdfe6;
-  color: #606266;
+  height: 36px;
+  background: #f8fafc;
+  border-color: #d9e1ec;
+  border-radius: 9px;
+  color: #475467;
+  font-weight: 600;
 }
 
 .table-wrapper {
   background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+  border: 1px solid #e5e9f2;
+  border-radius: 14px;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
   overflow: hidden;
+}
+
+.modern-table {
+  width: 100%;
+  color: #344054;
+  font-size: 13px;
+}
+
+.modern-table :deep(.el-table__header th) {
+  background: #f8fafc !important;
+  color: #475467 !important;
+  font-weight: 700 !important;
+}
+
+.modern-table :deep(.el-table__cell) {
+  padding: 12px 0;
+}
+
+.modern-table :deep(.cell) {
+  line-height: 1.45;
+}
+
+.modern-table :deep(.el-table__row:hover > td.el-table__cell) {
+  background: #f8fafc;
+}
+
+.task-id {
+  color: #475467;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.cert-cell {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cert-name,
+.cert-domain {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cert-name {
+  color: #344054;
+  font-weight: 700;
+}
+
+.cert-domain {
+  color: #667085;
+  font-size: 12px;
+  font-family: inherit;
+  font-weight: 500;
+}
+
+.modern-table :deep(.time-column .cell) {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
 }
 
 .ellipsis {
@@ -436,26 +544,33 @@ onMounted(() => {
 }
 
 .task-time-text {
-  display: inline-block;
-  min-width: 168px;
+  display: inline-flex;
+  width: 100%;
+  align-items: center;
   white-space: nowrap;
+  color: #344054;
+  font-family: inherit;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
 
 .action-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
   transition: all 0.2s ease;
+  color: #667085;
 }
 
 .action-view:hover {
   background-color: #e8f4ff;
   color: #409eff;
-  transform: scale(1.1);
+  transform: translateY(-1px);
 }
 
 .pagination-wrapper {
-  padding: 16px;
+  padding: 14px 16px;
+  border-top: 1px solid #eef2f7;
   display: flex;
   justify-content: flex-end;
 }
@@ -525,22 +640,23 @@ onMounted(() => {
   align-items: center;
   gap: 12px;
   margin-bottom: 20px;
-  padding: 16px;
-  background: #f8fafc;
-  border-radius: 10px;
-  border: 1px solid #e8ecf0;
+  padding: 16px 18px;
+  background: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%);
+  border-radius: 12px;
+  border: 1px solid #e5e9f2;
 }
 
 .detail-task-type {
   font-size: 18px;
-  font-weight: 600;
-  color: #303133;
+  font-weight: 750;
+  color: #101828;
 }
 
 .detail-task-id {
   font-size: 14px;
-  color: #909399;
-  font-family: 'Monaco', 'Menlo', monospace;
+  color: #667085;
+  font-family: inherit;
+  font-weight: 700;
   margin-left: auto;
 }
 
@@ -552,20 +668,19 @@ onMounted(() => {
 
 .detail-info-section {
   background: #fff;
-  border: 1px solid #e8ecf0;
-  border-radius: 10px;
+  border: 1px solid #e5e9f2;
+  border-radius: 12px;
   overflow: hidden;
 }
 
 .detail-section-title {
   padding: 10px 16px;
   font-size: 13px;
-  font-weight: 600;
-  color: #909399;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  font-weight: 700;
+  color: #475467;
+  letter-spacing: 0;
   background: #f8fafc;
-  border-bottom: 1px solid #e8ecf0;
+  border-bottom: 1px solid #e5e9f2;
 }
 
 .error-section-title {
@@ -597,13 +712,13 @@ onMounted(() => {
 }
 
 .info-label {
-  color: #909399;
+  color: #667085;
   font-size: 12px;
   font-weight: 500;
 }
 
 .info-value {
-  color: #303133;
+  color: #344054;
   font-size: 14px;
   word-break: break-all;
   font-weight: 500;
@@ -632,6 +747,6 @@ onMounted(() => {
   word-break: break-all;
   font-family: 'Monaco', 'Menlo', monospace;
   line-height: 1.6;
-  color: #606266;
+  color: #475467;
 }
 </style>

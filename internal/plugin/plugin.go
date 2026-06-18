@@ -247,7 +247,7 @@ func (m *Manager) GetAllMenus() []MenuConfig {
 
 // pluginSysMenu 插件菜单数据库模型（本地定义，避免循环引用）
 type pluginSysMenu struct {
-	ID        uint           `gorm:"primarykey"`
+	ID        uint `gorm:"primarykey"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	DeletedAt gorm.DeletedAt `gorm:"index"`
@@ -393,23 +393,21 @@ func (m *Manager) syncPluginMenus(pluginName string, menus []MenuConfig) error {
 		allMenuIDs = append(allMenuIDs, newMenu.ID)
 	}
 
-	// 第十步：为管理员角色（code='admin'）分配所有插件菜单权限
+	// 第十步：为内置角色分配插件菜单权限
 	if len(allMenuIDs) > 0 {
-		// 获取管理员角色ID
-		var adminRole struct {
+		var roles []struct {
 			ID uint
 		}
-		if err := m.db.Table("sys_role").Select("id").Where("code = ?", "admin").First(&adminRole).Error; err != nil {
-			// 如果找不到管理员角色，记录警告但不返回错误（可能角色还未创建）
-			fmt.Printf("warning: admin role not found, skip assigning plugin menu permissions: %v\n", err)
+		if err := m.db.Table("sys_role").Select("id").Where("code IN ?", []string{"admin", "test_viewer"}).Find(&roles).Error; err != nil {
+			fmt.Printf("warning: built-in roles not found, skip assigning plugin menu permissions: %v\n", err)
 			return nil
 		}
 
-		// 批量插入角色菜单关联
-		for _, menuID := range allMenuIDs {
-			// 使用 ON DUPLICATE KEY UPDATE 避免重复插入
-			if err := m.db.Exec("INSERT INTO sys_role_menu (role_id, menu_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE role_id = role_id", adminRole.ID, menuID).Error; err != nil {
-				fmt.Printf("warning: failed to assign menu %d to admin role: %v\n", menuID, err)
+		for _, role := range roles {
+			for _, menuID := range allMenuIDs {
+				if err := m.db.Exec("INSERT INTO sys_role_menu (role_id, menu_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE role_id = role_id", role.ID, menuID).Error; err != nil {
+					fmt.Printf("warning: failed to assign menu %d to role %d: %v\n", menuID, role.ID, err)
+				}
 			}
 		}
 	}

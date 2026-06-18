@@ -206,6 +206,7 @@ func (s *HTTPServer) registerRoutes(router *gin.Engine, jwtSecret string) {
 	// API v1 - 需要认证的接口
 	v1 := router.Group("/api/v1")
 	v1.Use(authMiddleware.AuthRequired())
+	v1.Use(authMiddleware.ReadonlyUserRequired())
 	{
 		// Audit 路由
 		auditHTTPServer := auditserver.NewHTTPService(operationLogService, loginLogService, dataLogService)
@@ -234,11 +235,13 @@ func (s *HTTPServer) registerRoutes(router *gin.Engine, jwtSecret string) {
 	// 插件路由
 	pluginsGroup := router.Group("/api/v1/plugins")
 	pluginsGroup.Use(authMiddleware.AuthRequired())
+	pluginsGroup.Use(authMiddleware.ReadonlyUserRequired())
 	s.pluginMgr.RegisterAllRoutes(pluginsGroup)
 
 	// 插件管理接口
 	pluginInfoGroup := router.Group("/api/v1/plugins")
 	pluginInfoGroup.Use(authMiddleware.AuthRequired())
+	pluginInfoGroup.Use(authMiddleware.ReadonlyUserRequired())
 	{
 		pluginInfoGroup.GET("", s.listPlugins)
 		pluginInfoGroup.GET("/:name", s.getPlugin)

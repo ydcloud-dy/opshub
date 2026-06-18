@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/aliyun/alibaba-cloud-sdk-go/sdk"
@@ -77,6 +78,7 @@ func (p *AliyunProvider) ListCertificates(ctx context.Context) ([]*CertificateIn
 			StartDate     string `json:"StartDate"`
 			EndDate       string `json:"EndDate"`
 			Issuer        string `json:"Issuer"`
+			Status        string `json:"Status"`
 		} `json:"CertificateOrderList"`
 	}
 	if err := json.Unmarshal(response.GetHttpContentBytes(), &result); err != nil {
@@ -95,6 +97,7 @@ func (p *AliyunProvider) ListCertificates(ctx context.Context) ([]*CertificateIn
 			NotBefore:  notBefore,
 			NotAfter:   notAfter,
 			Issuer:     cert.Issuer,
+			Status:     cert.Status,
 		})
 	}
 	return certs, nil
@@ -191,14 +194,25 @@ func (p *AliyunProvider) ApplyCertificate(ctx context.Context, domain string, sa
 		return nil, fmt.Errorf("create certificate request failed: %s", string(responseBody))
 	}
 
+	orderID := fmt.Sprintf("%d", result.OrderId)
+	status, err := p.CheckCertificateStatus(ctx, orderID)
+	if err == nil && status.Status == "issued" {
+		return &ApplyResult{
+			OrderID:        orderID,
+			Status:         "issued",
+			ValidationType: "DNS",
+			Message:        status.Message,
+		}, nil
+	}
+
 	// 获取DNS验证信息
-	dnsInfo, err := p.GetDNSValidation(ctx, fmt.Sprintf("%d", result.OrderId))
+	dnsInfo, err := p.GetDNSValidation(ctx, orderID)
 	if err != nil {
 		return nil, fmt.Errorf("get dns validation failed: %w", err)
 	}
 
 	return &ApplyResult{
-		OrderID:        fmt.Sprintf("%d", result.OrderId),
+		OrderID:        orderID,
 		Status:         "pending_validation",
 		ValidationType: "DNS",
 		DNSRecord:      dnsInfo,
@@ -223,6 +237,7 @@ func (p *AliyunProvider) GetDNSValidation(ctx context.Context, orderID string) (
 	var result struct {
 		Type        string `json:"Type"`        // 验证类型
 		Domain      string `json:"Domain"`      // 验证域名
+		RecordName  string `json:"RecordName"`  // 记录名称
 		RecordType  string `json:"RecordType"`  // 记录类型
 		RecordValue string `json:"RecordValue"` // 记录值
 		Certificate string `json:"Certificate"` // 证书内容(签发后)
@@ -232,8 +247,13 @@ func (p *AliyunProvider) GetDNSValidation(ctx context.Context, orderID string) (
 		return nil, fmt.Errorf("parse response failed: %w", err)
 	}
 
+	recordName := strings.TrimSpace(result.RecordName)
+	if recordName == "" && result.Domain != "" {
+		recordName = "_dnsauth." + strings.TrimPrefix(result.Domain, "_dnsauth.")
+	}
+
 	return &DNSValidationRecord{
-		RecordName:  "_dnsauth." + result.Domain,
+		RecordName:  recordName,
 		RecordType:  result.RecordType,
 		RecordValue: result.RecordValue,
 	}, nil
@@ -256,22 +276,54 @@ func (p *AliyunProvider) CheckCertificateStatus(ctx context.Context, orderID str
 
 	var result struct {
 		Type        string `json:"Type"`
+		Status      string `json:"Status"`
+		Message     string `json:"Message"`
+		Code        string `json:"Code"`
 		Certificate string `json:"Certificate"`
 		PrivateKey  string `json:"PrivateKey"`
+		Cert        string `json:"Cert"`
+		Key         string `json:"Key"`
 	}
 	if err := json.Unmarshal(response.GetHttpContentBytes(), &result); err != nil {
 		return nil, fmt.Errorf("parse response failed: %w", err)
 	}
 
+	certificate := result.Certificate
+	if certificate == "" {
+		certificate = result.Cert
+	}
+	privateKey := result.PrivateKey
+	if privateKey == "" {
+		privateKey = result.Key
+	}
+
 	status := &CertificateStatus{
-		Status: "pending",
+		Status:  "pending",
+		Message: result.Message,
 	}
 
 	// 如果返回了证书内容，说明已签发
-	if result.Certificate != "" {
+	if certificate != "" {
 		status.Status = "issued"
-		status.Certificate = result.Certificate
-		status.PrivateKey = result.PrivateKey
+		status.Certificate = certificate
+		status.PrivateKey = privateKey
+		return status, nil
+	}
+
+	stateText := strings.ToLower(strings.TrimSpace(result.Status + " " + result.Type + " " + result.Code + " " + result.Message))
+	if strings.Contains(stateText, "issued") ||
+		strings.Contains(stateText, "success") ||
+		strings.Contains(stateText, "signed") ||
+		strings.Contains(stateText, "complete") ||
+		strings.Contains(stateText, "已签发") {
+		status.Status = "issued"
+		return status, nil
+	}
+	if strings.Contains(stateText, "fail") ||
+		strings.Contains(stateText, "error") ||
+		strings.Contains(stateText, "reject") ||
+		strings.Contains(stateText, "失败") {
+		status.Status = "failed"
 	}
 
 	return status, nil

@@ -32,6 +32,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -173,17 +174,17 @@ type NodeCondition struct {
 
 // PodInfo Pod信息
 type PodInfo struct {
-	Name       string          `json:"name"`
-	Namespace  string          `json:"namespace"`
-	Ready      string          `json:"ready"`
-	Status     string          `json:"status"`
-	Phase      string          `json:"phase"`
-	Restarts   int32           `json:"restarts"`
-	Age        string          `json:"age"`
-	IP         string          `json:"ip"`
-	Node       string          `json:"node"`
+	Name       string            `json:"name"`
+	Namespace  string            `json:"namespace"`
+	Ready      string            `json:"ready"`
+	Status     string            `json:"status"`
+	Phase      string            `json:"phase"`
+	Restarts   int32             `json:"restarts"`
+	Age        string            `json:"age"`
+	IP         string            `json:"ip"`
+	Node       string            `json:"node"`
 	Labels     map[string]string `json:"labels"`
-	Containers []ContainerInfo `json:"containers"`
+	Containers []ContainerInfo   `json:"containers"`
 }
 
 // ContainerInfo 容器信息
@@ -319,6 +320,20 @@ type InvolvedObjectInfo struct {
 	Kind      string `json:"kind"`
 	Name      string `json:"name"`
 	Namespace string `json:"namespace,omitempty"`
+}
+
+// NodePodMetricInfo 节点上运行 Pod 的资源指标
+type NodePodMetricInfo struct {
+	Name         string `json:"name"`
+	Namespace    string `json:"namespace"`
+	Status       string `json:"status"`
+	Age          string `json:"age"`
+	Restarts     int32  `json:"restarts"`
+	CPUUsed      int64  `json:"cpuUsed"`      // CPU 使用量（毫核）
+	MemoryUsed   int64  `json:"memoryUsed"`   // 内存使用量（字节）
+	CPUUsedText  string `json:"cpuUsedText"`  // 格式化 CPU
+	MemoryText   string `json:"memoryText"`   // 格式化内存
+	ContainerNum int    `json:"containerNum"` // 容器数量
 }
 
 // ListNodes 获取节点列表
@@ -582,30 +597,14 @@ func (h *ResourceHandler) GetNodeMetrics(c *gin.Context) {
 		if h.handleGetClientsetError(c, err) {
 			return
 		}
-		return
-	}
-
-	// 获取 metrics clientset
-	metricsClient, err := h.clusterService.GetCachedMetricsClientset(c.Request.Context(), uint(clusterID))
-	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    500,
-			"message": "获取 metrics client 失败: " + err.Error(),
+			"message": "获取集群连接失败: " + err.Error(),
 		})
 		return
 	}
 
-	// 获取节点指标
-	nodeMetrics, err := metricsClient.MetricsV1beta1().NodeMetricses().Get(c.Request.Context(), nodeName, metav1.GetOptions{})
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    500,
-			"message": fmt.Sprintf("获取节点指标失败: %v", err),
-		})
-		return
-	}
-
-	// 获取节点信息以获取容量
+	// 获取节点信息以获取容量和状态
 	node, err := clientset.CoreV1().Nodes().Get(c.Request.Context(), nodeName, metav1.GetOptions{})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -615,18 +614,262 @@ func (h *ResourceHandler) GetNodeMetrics(c *gin.Context) {
 		return
 	}
 
-	// 计算CPU使用率
-	cpuUsage := float64(nodeMetrics.Usage.Cpu().MilliValue()) / float64(node.Status.Capacity.Cpu().MilliValue())
-	memoryUsage := float64(nodeMetrics.Usage.Memory().Value()) / float64(node.Status.Capacity.Memory().Value())
+	// 获取该节点上的 Pod，用于容量、排行、事件和状态概览
+	pods, podErr := clientset.CoreV1().Pods("").List(c.Request.Context(), metav1.ListOptions{
+		FieldSelector: fmt.Sprintf("spec.nodeName=%s", nodeName),
+	})
+	if podErr != nil {
+		pods = &v1.PodList{}
+	}
+
+	// 获取节点事件，最多返回最近 8 条
+	events, eventErr := clientset.CoreV1().Events("").List(c.Request.Context(), metav1.ListOptions{
+		FieldSelector: fmt.Sprintf("involvedObject.kind=Node,involvedObject.name=%s", nodeName),
+	})
+	eventInfos := make([]EventInfo, 0)
+	if eventErr == nil {
+		sort.Slice(events.Items, func(i, j int) bool {
+			left := events.Items[i].LastTimestamp.Time
+			if left.IsZero() {
+				left = events.Items[i].EventTime.Time
+			}
+			right := events.Items[j].LastTimestamp.Time
+			if right.IsZero() {
+				right = events.Items[j].EventTime.Time
+			}
+			return left.After(right)
+		})
+		limit := len(events.Items)
+		if limit > 8 {
+			limit = 8
+		}
+		for i := 0; i < limit; i++ {
+			event := events.Items[i]
+			source := event.Source.Component
+			if event.Source.Host != "" {
+				source = source + " (" + event.Source.Host + ")"
+			}
+			eventInfo := EventInfo{
+				Type:    event.Type,
+				Reason:  event.Reason,
+				Message: event.Message,
+				Source:  source,
+				Count:   event.Count,
+				InvolvedObject: InvolvedObjectInfo{
+					Kind:      event.InvolvedObject.Kind,
+					Name:      event.InvolvedObject.Name,
+					Namespace: event.InvolvedObject.Namespace,
+				},
+			}
+			if !event.FirstTimestamp.IsZero() {
+				eventInfo.FirstTimestamp = event.FirstTimestamp.Format("2006-01-02 15:04:05")
+			}
+			if !event.LastTimestamp.IsZero() {
+				eventInfo.LastTimestamp = event.LastTimestamp.Format("2006-01-02 15:04:05")
+			} else if !event.EventTime.IsZero() {
+				eventInfo.LastTimestamp = event.EventTime.Format("2006-01-02 15:04:05")
+			}
+			eventInfos = append(eventInfos, eventInfo)
+		}
+	}
+
+	cpuCapacity := node.Status.Capacity.Cpu().MilliValue()
+	cpuAllocatable := node.Status.Allocatable.Cpu().MilliValue()
+	memoryCapacity := node.Status.Capacity.Memory().Value()
+	memoryAllocatable := node.Status.Allocatable.Memory().Value()
+	podCapacity := int(node.Status.Allocatable.Pods().Value())
+	if podCapacity == 0 {
+		podCapacity = int(node.Status.Capacity.Pods().Value())
+	}
+	if podCapacity == 0 {
+		podCapacity = 110
+	}
+
+	podRunning := 0
+	podPending := 0
+	podFailed := 0
+	podSucceeded := 0
+	totalRestarts := int32(0)
+	for _, pod := range pods.Items {
+		switch pod.Status.Phase {
+		case v1.PodRunning:
+			podRunning++
+		case v1.PodPending:
+			podPending++
+		case v1.PodFailed:
+			podFailed++
+		case v1.PodSucceeded:
+			podSucceeded++
+		}
+		for _, cs := range pod.Status.ContainerStatuses {
+			totalRestarts += cs.RestartCount
+		}
+	}
+
+	conditions := make([]NodeCondition, 0, len(node.Status.Conditions))
+	conditionSummary := gin.H{
+		"ready":              false,
+		"memoryPressure":     false,
+		"diskPressure":       false,
+		"pidPressure":        false,
+		"networkUnavailable": false,
+	}
+	for _, cond := range node.Status.Conditions {
+		conditions = append(conditions, NodeCondition{
+			Type:               string(cond.Type),
+			Status:             string(cond.Status),
+			LastHeartbeatTime:  cond.LastHeartbeatTime.Format("2006-01-02 15:04:05"),
+			LastTransitionTime: cond.LastTransitionTime.Format("2006-01-02 15:04:05"),
+			Reason:             cond.Reason,
+			Message:            cond.Message,
+		})
+		switch cond.Type {
+		case v1.NodeReady:
+			conditionSummary["ready"] = cond.Status == v1.ConditionTrue
+		case v1.NodeMemoryPressure:
+			conditionSummary["memoryPressure"] = cond.Status == v1.ConditionTrue
+		case v1.NodeDiskPressure:
+			conditionSummary["diskPressure"] = cond.Status == v1.ConditionTrue
+		case v1.NodePIDPressure:
+			conditionSummary["pidPressure"] = cond.Status == v1.ConditionTrue
+		case v1.NodeNetworkUnavailable:
+			conditionSummary["networkUnavailable"] = cond.Status == v1.ConditionTrue
+		}
+	}
+
+	addresses := gin.H{}
+	for _, addr := range node.Status.Addresses {
+		addresses[string(addr.Type)] = addr.Address
+	}
+
+	metricsAvailable := false
+	metricsMessage := ""
+	cpuUsed := int64(0)
+	memoryUsed := int64(0)
+	podMetricRows := make([]NodePodMetricInfo, 0)
+
+	metricsClient, err := h.clusterService.GetCachedMetricsClientset(c.Request.Context(), uint(clusterID))
+	if err != nil {
+		metricsMessage = "Metrics API 不可用，请确认集群已安装 metrics-server"
+	} else {
+		nodeMetrics, err := metricsClient.MetricsV1beta1().NodeMetricses().Get(c.Request.Context(), nodeName, metav1.GetOptions{})
+		if err != nil {
+			metricsMessage = fmt.Sprintf("获取节点指标失败: %v", err)
+		} else {
+			metricsAvailable = true
+			cpuUsed = nodeMetrics.Usage.Cpu().MilliValue()
+			memoryUsed = nodeMetrics.Usage.Memory().Value()
+		}
+
+		podMetrics, err := metricsClient.MetricsV1beta1().PodMetricses("").List(c.Request.Context(), metav1.ListOptions{})
+		if err == nil {
+			podInfoMap := make(map[string]v1.Pod, len(pods.Items))
+			for _, pod := range pods.Items {
+				podInfoMap[pod.Namespace+"/"+pod.Name] = pod
+			}
+			for _, podMetric := range podMetrics.Items {
+				pod, ok := podInfoMap[podMetric.Namespace+"/"+podMetric.Name]
+				if !ok {
+					continue
+				}
+				row := NodePodMetricInfo{
+					Name:         podMetric.Name,
+					Namespace:    podMetric.Namespace,
+					Status:       string(pod.Status.Phase),
+					Age:          calculateAge(pod.CreationTimestamp.Time),
+					ContainerNum: len(pod.Spec.Containers),
+				}
+				for _, cs := range pod.Status.ContainerStatuses {
+					row.Restarts += cs.RestartCount
+				}
+				for _, container := range podMetric.Containers {
+					row.CPUUsed += container.Usage.Cpu().MilliValue()
+					row.MemoryUsed += container.Usage.Memory().Value()
+				}
+				row.CPUUsedText = formatCPUMetrics(row.CPUUsed)
+				row.MemoryText = formatMemoryMetrics(row.MemoryUsed)
+				podMetricRows = append(podMetricRows, row)
+			}
+		}
+	}
+
+	sort.Slice(podMetricRows, func(i, j int) bool {
+		if podMetricRows[i].CPUUsed == podMetricRows[j].CPUUsed {
+			return podMetricRows[i].MemoryUsed > podMetricRows[j].MemoryUsed
+		}
+		return podMetricRows[i].CPUUsed > podMetricRows[j].CPUUsed
+	})
+	if len(podMetricRows) > 10 {
+		podMetricRows = podMetricRows[:10]
+	}
+
+	cpuUsage := 0.0
+	if cpuAllocatable > 0 {
+		cpuUsage = float64(cpuUsed) / float64(cpuAllocatable)
+	} else if cpuCapacity > 0 {
+		cpuUsage = float64(cpuUsed) / float64(cpuCapacity)
+	}
+	memoryUsage := 0.0
+	if memoryAllocatable > 0 {
+		memoryUsage = float64(memoryUsed) / float64(memoryAllocatable)
+	} else if memoryCapacity > 0 {
+		memoryUsage = float64(memoryUsed) / float64(memoryCapacity)
+	}
+
+	podUsage := 0.0
+	if podCapacity > 0 {
+		podUsage = float64(len(pods.Items)) / float64(podCapacity)
+	}
+
+	healthScore := 100
+	if ready, _ := conditionSummary["ready"].(bool); !ready {
+		healthScore -= 40
+	}
+	for _, key := range []string{"memoryPressure", "diskPressure", "pidPressure", "networkUnavailable"} {
+		if active, _ := conditionSummary[key].(bool); active {
+			healthScore -= 15
+		}
+	}
+	if podFailed > 0 {
+		healthScore -= 10
+	}
+	if healthScore < 0 {
+		healthScore = 0
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "success",
 		"data": gin.H{
-			"cpuUsage":    cpuUsage,
-			"memoryUsage": memoryUsage,
-			"cpuUsed":     nodeMetrics.Usage.Cpu().MilliValue(),
-			"memoryUsed":  nodeMetrics.Usage.Memory().Value(),
+			"collectedAt":       time.Now().Format("2006-01-02 15:04:05"),
+			"metricsAvailable":  metricsAvailable,
+			"metricsMessage":    metricsMessage,
+			"healthScore":       healthScore,
+			"cpuUsage":          cpuUsage,
+			"memoryUsage":       memoryUsage,
+			"podUsage":          podUsage,
+			"cpuUsed":           cpuUsed,
+			"memoryUsed":        memoryUsed,
+			"cpuCapacity":       cpuCapacity,
+			"cpuAllocatable":    cpuAllocatable,
+			"memoryCapacity":    memoryCapacity,
+			"memoryAllocatable": memoryAllocatable,
+			"podCount":          len(pods.Items),
+			"podCapacity":       podCapacity,
+			"podRunning":        podRunning,
+			"podPending":        podPending,
+			"podFailed":         podFailed,
+			"podSucceeded":      podSucceeded,
+			"totalRestarts":     totalRestarts,
+			"conditions":        conditions,
+			"conditionSummary":  conditionSummary,
+			"topPods":           podMetricRows,
+			"events":            eventInfos,
+			"addresses":         addresses,
+			"podCIDR":           node.Spec.PodCIDR,
+			"podCIDRs":          node.Spec.PodCIDRs,
+			"providerID":        node.Spec.ProviderID,
+			"unschedulable":     node.Spec.Unschedulable,
 		},
 	})
 }
@@ -2468,36 +2711,36 @@ type BatchNodesRequest struct {
 
 // BatchNodeLabelsRequest 批量节点标签操作请求
 type BatchNodeLabelsRequest struct {
-	ClusterID int                    `json:"clusterId" binding:"required"`
-	NodeNames []string              `json:"nodeNames" binding:"required"`
-	Labels    map[string]string     `json:"labels" binding:"required"`
-	Operation string                `json:"operation" binding:"required"` // add, remove, replace
+	ClusterID int               `json:"clusterId" binding:"required"`
+	NodeNames []string          `json:"nodeNames" binding:"required"`
+	Labels    map[string]string `json:"labels" binding:"required"`
+	Operation string            `json:"operation" binding:"required"` // add, remove, replace
 }
 
 // BatchNodeTaintsRequest 批量节点污点操作请求
 type BatchNodeTaintsRequest struct {
-	ClusterID int                    `json:"clusterId" binding:"required"`
-	NodeNames []string              `json:"nodeNames" binding:"required"`
-	Taints    []TaintInfo           `json:"taints" binding:"required"`
-	Operation string                `json:"operation" binding:"required"` // add, remove
+	ClusterID int         `json:"clusterId" binding:"required"`
+	NodeNames []string    `json:"nodeNames" binding:"required"`
+	Taints    []TaintInfo `json:"taints" binding:"required"`
+	Operation string      `json:"operation" binding:"required"` // add, remove
 }
 
 // BatchDrainNodesRequest 批量排空节点请求
 type BatchDrainNodesRequest struct {
-	ClusterID            int      `json:"clusterId" binding:"required"`
-	NodeNames            []string `json:"nodeNames" binding:"required"`
-	Force                bool     `json:"force"`
-	IgnoreDaemonsets     bool     `json:"ignoreDaemonsets"`
-	DeleteLocalData      bool     `json:"deleteLocalData"`
-	GracePeriodSeconds   int      `json:"gracePeriodSeconds"`
-	Timeout              int      `json:"timeout"`
+	ClusterID          int      `json:"clusterId" binding:"required"`
+	NodeNames          []string `json:"nodeNames" binding:"required"`
+	Force              bool     `json:"force"`
+	IgnoreDaemonsets   bool     `json:"ignoreDaemonsets"`
+	DeleteLocalData    bool     `json:"deleteLocalData"`
+	GracePeriodSeconds int      `json:"gracePeriodSeconds"`
+	Timeout            int      `json:"timeout"`
 }
 
 // BatchOperationResult 批量操作结果
 type BatchOperationResult struct {
-	NodeName  string `json:"nodeName"`
-	Success   bool   `json:"success"`
-	Message   string `json:"message"`
+	NodeName string `json:"nodeName"`
+	Success  bool   `json:"success"`
+	Message  string `json:"message"`
 }
 
 // BatchDrainNodes 批量排空节点
@@ -5957,7 +6200,7 @@ func (h *ResourceHandler) UpdateServiceYAML(c *gin.Context) {
 		}
 
 		// 清除状态相关的只读字段
-		delete(spec, "loadBalancerIP") // 已废弃
+		delete(spec, "loadBalancerIP")        // 已废弃
 		delete(spec, "sessionAffinityConfig") // 如果为空则删除
 	}
 
@@ -8277,9 +8520,9 @@ func (h *ResourceHandler) GetConfigMapYAML(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
 		"data": gin.H{
-			"items":   cleaned,
-			"total":   0,
-			"page":    0,
+			"items":    cleaned,
+			"total":    0,
+			"page":     0,
 			"pageSize": 0,
 		},
 		"msg": "获取成功",
@@ -8576,9 +8819,9 @@ func (h *ResourceHandler) GetSecretYAML(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"code": 0,
 		"data": gin.H{
-			"items":   cleaned,
-			"total":   0,
-			"page":    0,
+			"items":    cleaned,
+			"total":    0,
+			"page":     0,
 			"pageSize": 0,
 		},
 		"msg": "获取成功",
@@ -9362,8 +9605,8 @@ func (h *ResourceHandler) RollbackWorkload(c *gin.Context) {
 
 // BatchWorkloadsRequest 批量工作负载操作请求
 type BatchWorkloadsRequest struct {
-	ClusterID  uint                  `json:"clusterId" binding:"required"`
-	Workloads []WorkloadItem        `json:"workloads" binding:"required"`
+	ClusterID uint           `json:"clusterId" binding:"required"`
+	Workloads []WorkloadItem `json:"workloads" binding:"required"`
 }
 
 // WorkloadItem 工作负载项

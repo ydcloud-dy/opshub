@@ -250,14 +250,29 @@
     <el-dialog
       v-model="dialogVisible"
       :title="isEdit ? '编辑集群' : '注册集群'"
-      width="70%"
+      width="1080px"
       class="cluster-edit-dialog"
       @close="handleDialogClose"
     >
-      <el-form :model="clusterForm" :rules="rules" ref="formRef" label-width="100px">
+      <div class="cluster-dialog-hero">
+        <div class="cluster-dialog-hero-icon">
+          <el-icon><Platform /></el-icon>
+        </div>
+        <div class="cluster-dialog-hero-content">
+          <div class="cluster-dialog-hero-title">{{ isEdit ? '更新 Kubernetes 集群连接' : '接入 Kubernetes 集群' }}</div>
+          <div class="cluster-dialog-hero-desc">
+            支持 KubeConfig 或 Service Account Token，保存后即可统一管理资源、权限与状态同步。
+          </div>
+        </div>
+      </div>
+
+      <el-form :model="clusterForm" :rules="rules" ref="formRef" label-width="100px" class="cluster-form">
         <!-- 基本信息 -->
         <div class="form-section">
-          <div class="section-title">基本信息</div>
+          <div class="section-title">
+            <span class="section-title-dot"></span>
+            <span>基本信息</span>
+          </div>
           <el-row :gutter="20">
             <el-col :span="12">
               <el-form-item label="集群名称" prop="name">
@@ -274,7 +289,10 @@
 
         <!-- 认证配置 -->
         <div class="form-section">
-          <div class="section-title">认证配置</div>
+          <div class="section-title">
+            <span class="section-title-dot"></span>
+            <span>认证配置</span>
+          </div>
           <el-form-item label="认证方式">
             <el-radio-group v-model="authType" @change="handleAuthTypeChange">
               <el-radio-button label="config">KubeConfig 文件</el-radio-button>
@@ -308,7 +326,7 @@
               </template>
             </el-alert>
             <el-form-item label="配置内容" prop="kubeConfig">
-              <div style="margin-bottom: 8px;">
+              <div class="upload-row">
                 <el-button size="small" @click="handleUploadKubeConfig">
                   <el-icon><Upload /></el-icon>
                   上传 KubeConfig 文件
@@ -355,8 +373,8 @@
             </el-form-item>
             <el-form-item label="TLS 验证">
               <el-switch v-model="skipTLSVerify" active-text="跳过验证" inactive-text="验证证书" />
-              <span style="margin-left: 12px; font-size: 12px; color: #909399;">
-                ⚠️ 跳过 TLS 验证仅适用于测试环境，生产环境请提供 CA 证书
+              <span class="tls-tip">
+                跳过 TLS 验证仅适用于测试环境，生产环境请提供 CA 证书
               </span>
             </el-form-item>
             <el-form-item label="Token" prop="token">
@@ -383,7 +401,10 @@
 
         <!-- 集群信息 -->
         <div class="form-section">
-          <div class="section-title">集群信息</div>
+          <div class="section-title">
+            <span class="section-title-dot"></span>
+            <span>集群信息</span>
+          </div>
           <el-row :gutter="20">
             <el-col :span="12">
               <el-form-item label="服务商">
@@ -415,7 +436,7 @@
       <template #footer>
         <div class="dialog-footer">
           <el-button @click="dialogVisible = false">取消</el-button>
-          <el-button class="black-button" @click="handleSubmit" :loading="submitLoading">
+          <el-button type="primary" class="cluster-submit-button" @click="handleSubmit" :loading="submitLoading">
             {{ isEdit ? '保存' : '注册集群' }}
           </el-button>
         </div>
@@ -426,9 +447,20 @@
     <el-dialog
       v-model="configDialogVisible"
       title="集群凭证"
-      width="700px"
+      width="900px"
+      class="cluster-config-dialog"
     >
-      <div style="margin-bottom: 16px;">
+      <div class="credential-overview">
+        <div class="credential-overview-icon">
+          <el-icon><Key /></el-icon>
+        </div>
+        <div class="credential-overview-content">
+          <div class="credential-overview-title">{{ currentCluster?.alias || currentCluster?.name || '集群凭证' }}</div>
+          <div class="credential-overview-desc">查看、复制或下载该集群的 KubeConfig 配置，请妥善保管访问凭证。</div>
+        </div>
+      </div>
+
+      <div class="credential-description">
         <el-descriptions :column="2" border>
           <el-descriptions-item label="集群名称">{{ currentCluster?.name }}</el-descriptions-item>
           <el-descriptions-item label="别名">{{ currentCluster?.alias || '-' }}</el-descriptions-item>
@@ -437,9 +469,12 @@
         </el-descriptions>
       </div>
 
-      <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
-        <span style="font-weight: 500;">KubeConfig 配置</span>
-        <div>
+      <div class="credential-toolbar">
+        <div class="credential-toolbar-title">
+          <span class="section-title-dot"></span>
+          <span>KubeConfig 配置</span>
+        </div>
+        <div class="credential-toolbar-actions">
           <el-button size="small" @click="handleCopyConfig">
             <el-icon><DocumentCopy /></el-icon>
             复制
@@ -2352,55 +2387,70 @@ watch(paginatedClusterList, () => {
 }
 
 .black-button {
-  background-color: #000000 !important;
+  background: #111827 !important;
   color: #ffffff !important;
-  border-color: #000000 !important;
-  border-radius: 8px;
-  padding: 10px 20px;
-  font-weight: 500;
+  border-color: #111827 !important;
+  border-radius: 10px;
+  padding: 10px 18px;
+  font-weight: 600;
+  box-shadow: 0 8px 20px rgba(17, 24, 39, 0.12);
 }
 
 .black-button:hover {
-  background-color: #333333 !important;
-  border-color: #333333 !important;
+  background: #1f2937 !important;
+  border-color: #1f2937 !important;
+  transform: translateY(-1px);
 }
 
 .form-section {
-  margin-bottom: 24px;
-  padding-bottom: 20px;
-  border-bottom: 1px dashed #dcdfe6;
+  margin-bottom: 16px;
+  padding: 18px 20px 4px;
+  border: 1px solid #e5e9f2;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
 }
 
 .form-section:last-of-type {
-  border-bottom: none;
   margin-bottom: 0;
-  padding-bottom: 0;
 }
 
 .section-title {
   font-size: 14px;
-  font-weight: 600;
-  color: #303133;
+  font-weight: 700;
+  color: #111827;
   margin-bottom: 16px;
-  padding-left: 8px;
-  border-left: 3px solid #000000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  letter-spacing: 0.2px;
+}
+
+.section-title-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #2563eb;
+  box-shadow: 0 0 0 5px rgba(37, 99, 235, 0.1);
+  flex-shrink: 0;
 }
 
 .code-editor-wrapper {
   display: flex;
   width: 100%;
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
+  border: 1px solid #d7deea;
+  border-radius: 12px;
   overflow: hidden;
-  background-color: #282c34;
+  background-color: #1f2937;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .line-numbers {
   display: flex;
   flex-direction: column;
   padding: 12px 8px;
-  background-color: #21252b;
-  border-right: 1px solid #3e4451;
+  background-color: #111827;
+  border-right: 1px solid #374151;
   user-select: none;
   min-width: 40px;
   text-align: right;
@@ -2410,7 +2460,7 @@ watch(paginatedClusterList, () => {
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
   font-size: 13px;
   line-height: 1.6;
-  color: #5c6370;
+  color: #6b7280;
   min-height: 20.8px;
 }
 
@@ -2421,8 +2471,8 @@ watch(paginatedClusterList, () => {
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
   font-size: 13px;
   line-height: 1.6;
-  color: #abb2bf;
-  background-color: #282c34;
+  color: #d1d5db;
+  background-color: #1f2937;
   border: none;
   outline: none;
   resize: vertical;
@@ -2430,12 +2480,12 @@ watch(paginatedClusterList, () => {
 }
 
 .code-textarea::placeholder {
-  color: #5c6370;
+  color: #6b7280;
 }
 
 .code-textarea:focus {
-  background-color: #282c34;
-  color: #abb2bf;
+  background-color: #1f2937;
+  color: #e5e7eb;
 }
 
 .code-tip {
@@ -2443,11 +2493,12 @@ watch(paginatedClusterList, () => {
   align-items: center;
   gap: 6px;
   margin-top: 8px;
-  padding: 8px 12px;
-  background-color: #f4f4f5;
-  border-radius: 4px;
+  padding: 10px 12px;
+  background-color: #f8fafc;
+  border: 1px solid #e5e9f2;
+  border-radius: 10px;
   font-size: 12px;
-  color: #606266;
+  color: #667085;
 }
 
 .code-tip .el-icon {
@@ -2461,6 +2512,175 @@ watch(paginatedClusterList, () => {
   gap: 12px;
 }
 
+.cluster-dialog-hero,
+.credential-overview {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  margin-bottom: 16px;
+  border: 1px solid #e5e9f2;
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(37, 99, 235, 0.07), rgba(255, 255, 255, 0.95)),
+    #ffffff;
+}
+
+.cluster-dialog-hero-icon,
+.credential-overview-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #2563eb;
+  background: #eff6ff;
+  border: 1px solid #dbeafe;
+  font-size: 22px;
+  flex-shrink: 0;
+}
+
+.cluster-dialog-hero-title,
+.credential-overview-title {
+  font-size: 17px;
+  line-height: 1.4;
+  font-weight: 700;
+  color: #111827;
+}
+
+.cluster-dialog-hero-desc,
+.credential-overview-desc {
+  margin-top: 4px;
+  font-size: 13px;
+  color: #667085;
+}
+
+.cluster-form :deep(.el-form-item__label) {
+  color: #344054;
+  font-weight: 600;
+}
+
+.cluster-form :deep(.el-input__wrapper),
+.cluster-form :deep(.el-textarea__inner),
+.cluster-form :deep(.el-select__wrapper) {
+  border-radius: 10px;
+  box-shadow: 0 0 0 1px #d7deea inset;
+}
+
+.cluster-form :deep(.el-input__wrapper:hover),
+.cluster-form :deep(.el-textarea__inner:hover),
+.cluster-form :deep(.el-select__wrapper:hover) {
+  box-shadow: 0 0 0 1px #a9b9d5 inset;
+}
+
+.cluster-form :deep(.el-input__wrapper.is-focus),
+.cluster-form :deep(.el-textarea__inner:focus),
+.cluster-form :deep(.el-select__wrapper.is-focused) {
+  box-shadow: 0 0 0 1px #2563eb inset, 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.cluster-form :deep(.el-radio-button__inner) {
+  border-color: #d7deea;
+  color: #475467;
+  font-weight: 600;
+}
+
+.cluster-form :deep(.el-radio-button:first-child .el-radio-button__inner) {
+  border-radius: 10px 0 0 10px;
+}
+
+.cluster-form :deep(.el-radio-button:last-child .el-radio-button__inner) {
+  border-radius: 0 10px 10px 0;
+}
+
+.cluster-form :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #ffffff;
+  box-shadow: -1px 0 0 0 #2563eb;
+}
+
+.upload-row {
+  margin-bottom: 10px;
+}
+
+.upload-row .el-button,
+.credential-toolbar-actions .el-button {
+  border-radius: 9px;
+  font-weight: 600;
+}
+
+.tls-tip {
+  margin-left: 12px;
+  font-size: 12px;
+  color: #667085;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: #f8fafc;
+  border: 1px solid #e5e9f2;
+}
+
+.cluster-submit-button {
+  border-radius: 10px;
+  font-weight: 700;
+  padding: 10px 20px;
+  background: #2563eb;
+  border-color: #2563eb;
+  box-shadow: 0 10px 20px rgba(37, 99, 235, 0.18);
+}
+
+.cluster-submit-button:hover {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+  transform: translateY(-1px);
+}
+
+.credential-description {
+  margin-bottom: 16px;
+  border: 1px solid #e5e9f2;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.credential-description :deep(.el-descriptions__body) {
+  background: #ffffff;
+}
+
+.credential-description :deep(.el-descriptions__label) {
+  width: 130px;
+  background: #f8fafc !important;
+  color: #475467;
+  font-weight: 700;
+}
+
+.credential-description :deep(.el-descriptions__content) {
+  color: #111827;
+  font-weight: 500;
+}
+
+.credential-toolbar {
+  margin-bottom: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.credential-toolbar-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.credential-toolbar-actions {
+  display: flex;
+  gap: 8px;
+}
+
 /* 授权对话框样式 */
 .connection-info {
   padding: 20px;
@@ -2470,7 +2690,7 @@ watch(paginatedClusterList, () => {
   margin-bottom: 24px;
 }
 
-.section-title {
+.connection-info .section-title {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2567,12 +2787,45 @@ watch(paginatedClusterList, () => {
 
 /* 集群编辑对话框样式 */
 :deep(.cluster-edit-dialog) {
-  width: 70% !important;
-  max-width: 90vw;
+  width: min(1080px, 92vw) !important;
 }
 
-:deep(.cluster-edit-dialog .el-dialog__body) {
+:deep(.cluster-config-dialog) {
+  width: min(900px, 92vw) !important;
+}
+
+:deep(.cluster-edit-dialog),
+:deep(.cluster-config-dialog) {
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+:deep(.cluster-edit-dialog .el-dialog__header),
+:deep(.cluster-config-dialog .el-dialog__header) {
+  padding: 22px 28px 16px;
+  margin-right: 0;
+  border-bottom: 1px solid #eef2f7;
+}
+
+:deep(.cluster-edit-dialog .el-dialog__title),
+:deep(.cluster-config-dialog .el-dialog__title) {
+  color: #111827;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+:deep(.cluster-edit-dialog .el-dialog__body),
+:deep(.cluster-config-dialog .el-dialog__body) {
   max-height: 70vh;
   overflow-y: auto;
+  padding: 20px 28px 18px;
+  background: #fbfcfe;
+}
+
+:deep(.cluster-edit-dialog .el-dialog__footer),
+:deep(.cluster-config-dialog .el-dialog__footer) {
+  padding: 16px 28px 20px;
+  border-top: 1px solid #eef2f7;
+  background: #ffffff;
 }
 </style>

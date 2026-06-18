@@ -128,7 +128,7 @@
         :data="tableData"
         v-loading="loading"
         class="modern-table"
-        :header-cell-style="{ background: '#fafbfc', color: '#606266', fontWeight: '600' }"
+        :header-cell-style="{ background: '#f8fafc', color: '#475467', fontWeight: '700' }"
       >
         <el-table-column label="证书名称" prop="name" width="120" show-overflow-tooltip>
           <template #default="{ row }">
@@ -1369,17 +1369,20 @@ onMounted(() => {
 .certificate-container {
   padding: 0;
   background-color: transparent;
+  color: #344054;
+  font-family: inherit;
 }
 
 .page-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 12px;
-  padding: 16px 20px;
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 18px 22px;
+  background: linear-gradient(135deg, #ffffff 0%, #fbfdff 100%);
+  border: 1px solid #e5e9f2;
+  border-radius: 14px;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
 }
 
 .page-title-group {
@@ -1389,46 +1392,54 @@ onMounted(() => {
 }
 
 .page-title-icon {
-  width: 48px;
-  height: 48px;
-  background: #f8fafc;
-  border-radius: 8px;
+  width: 46px;
+  height: 46px;
+  background: linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%);
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #111827;
+  color: #2563eb;
   font-size: 22px;
   flex-shrink: 0;
-  border: 1px solid #edf1f7;
+  border: 1px solid #dbeafe;
 }
 
 .page-title {
   margin: 0;
-  font-size: 20px;
-  font-weight: 600;
-  color: #303133;
+  font-size: 22px;
+  font-weight: 750;
+  color: #101828;
   line-height: 1.3;
+  letter-spacing: -0.01em;
 }
 
 .page-subtitle {
-  margin: 4px 0 0 0;
+  margin: 6px 0 0 0;
   font-size: 13px;
-  color: #909399;
+  color: #667085;
   line-height: 1.4;
 }
 
 .header-actions {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
 }
 
+.header-actions :deep(.el-button) {
+  height: 36px;
+  border-radius: 9px;
+  font-weight: 600;
+}
+
 .search-bar {
-  margin-bottom: 12px;
-  padding: 12px 16px;
+  margin-bottom: 16px;
+  padding: 14px 16px;
   background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+  border: 1px solid #e5e9f2;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1445,37 +1456,48 @@ onMounted(() => {
   width: 200px;
 }
 
+.search-bar :deep(.el-input__wrapper),
+.search-bar :deep(.el-select__wrapper) {
+  min-height: 36px;
+  border-radius: 9px;
+  box-shadow: 0 0 0 1px #d9e1ec inset;
+}
+
 .search-actions {
   display: flex;
   gap: 10px;
 }
 
 .reset-btn {
-  background: #f5f7fa;
-  border-color: #dcdfe6;
-  color: #606266;
+  height: 36px;
+  background: #f8fafc;
+  border-color: #d9e1ec;
+  border-radius: 9px;
+  color: #475467;
+  font-weight: 600;
 }
 
 .stats-cards {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-  margin-bottom: 12px;
+  gap: 14px;
+  margin-bottom: 16px;
 }
 
 .stat-card {
   background: #fff;
-  border-radius: 8px;
-  padding: 20px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+  border: 1px solid #e5e9f2;
+  border-radius: 14px;
+  padding: 18px;
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.05);
   display: flex;
   align-items: center;
   gap: 16px;
 }
 
 .stat-icon {
-  width: 56px;
-  height: 56px;
+  width: 50px;
+  height: 50px;
   border-radius: 12px;
   display: flex;
   align-items: center;
@@ -1485,9 +1507,9 @@ onMounted(() => {
 }
 
 .stat-icon-primary {
-  background: #f8fafc;
-  color: #111827;
-  border: 1px solid #edf1f7;
+  background: #eff6ff;
+  color: #2563eb;
+  border: 1px solid #dbeafe;
 }
 
 .stat-icon-success {
@@ -1510,30 +1532,54 @@ onMounted(() => {
 }
 
 .stat-label {
-  font-size: 14px;
-  color: #909399;
-  margin-bottom: 4px;
+  font-size: 13px;
+  color: #667085;
+  margin-bottom: 6px;
+  font-weight: 500;
 }
 
 .stat-value {
-  font-size: 28px;
-  font-weight: 600;
-  color: #303133;
+  font-size: 26px;
+  font-weight: 750;
+  color: #101828;
+  letter-spacing: -0.02em;
 }
 
 .table-wrapper {
   background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+  border: 1px solid #e5e9f2;
+  border-radius: 14px;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
   overflow: hidden;
 }
 
 .modern-table {
   width: 100%;
+  color: #344054;
+  font-size: 13px;
+}
+
+.modern-table :deep(.el-table__header th) {
+  background: #f8fafc !important;
+  color: #475467 !important;
+  font-weight: 700 !important;
+}
+
+.modern-table :deep(.el-table__cell) {
+  padding: 12px 0;
+}
+
+.modern-table :deep(.cell) {
+  line-height: 1.45;
+}
+
+.modern-table :deep(.el-table__row:hover > td.el-table__cell) {
+  background: #f8fafc;
 }
 
 .cert-name {
-  font-weight: 500;
+  font-weight: 700;
+  color: #344054;
 }
 
 .domain-cell {
@@ -1542,7 +1588,9 @@ onMounted(() => {
 }
 
 .domain-main {
-  font-family: 'Monaco', 'Menlo', monospace;
+  color: #344054;
+  font-family: inherit;
+  font-weight: 600;
 }
 
 .ellipsis {
@@ -1553,7 +1601,7 @@ onMounted(() => {
 
 .expiry-days {
   font-size: 12px;
-  color: #909399;
+  color: #667085;
 }
 
 .expiry-normal {
@@ -1575,23 +1623,25 @@ onMounted(() => {
 
 .action-buttons {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
   justify-content: center;
+  flex-wrap: nowrap;
 }
 
 .action-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.2s ease;
+  color: #667085;
 }
 
 .action-btn:hover {
-  transform: scale(1.1);
+  transform: translateY(-1px);
 }
 
 .action-view:hover {
@@ -1625,7 +1675,8 @@ onMounted(() => {
 }
 
 .pagination-wrapper {
-  padding: 16px;
+  padding: 14px 16px;
+  border-top: 1px solid #eef2f7;
   display: flex;
   justify-content: flex-end;
 }
@@ -1730,17 +1781,17 @@ onMounted(() => {
   align-items: center;
   gap: 12px;
   margin-bottom: 20px;
-  padding: 16px;
-  background: #f8fafc;
-  border-radius: 10px;
-  border: 1px solid #e8ecf0;
+  padding: 16px 18px;
+  background: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%);
+  border-radius: 12px;
+  border: 1px solid #e5e9f2;
 }
 
 .detail-domain {
   font-size: 18px;
-  font-weight: 600;
-  color: #303133;
-  font-family: 'Monaco', 'Menlo', monospace;
+  font-weight: 750;
+  color: #101828;
+  font-family: inherit;
 }
 
 .detail-info {
@@ -1751,20 +1802,19 @@ onMounted(() => {
 
 .detail-info-section {
   background: #fff;
-  border: 1px solid #e8ecf0;
-  border-radius: 10px;
+  border: 1px solid #e5e9f2;
+  border-radius: 12px;
   overflow: hidden;
 }
 
 .detail-section-title {
   padding: 10px 16px;
   font-size: 13px;
-  font-weight: 600;
-  color: #909399;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  font-weight: 700;
+  color: #475467;
+  letter-spacing: 0;
   background: #f8fafc;
-  border-bottom: 1px solid #e8ecf0;
+  border-bottom: 1px solid #e5e9f2;
 }
 
 .error-section-title {
@@ -1801,13 +1851,13 @@ onMounted(() => {
 }
 
 .info-label {
-  color: #909399;
+  color: #667085;
   font-size: 12px;
   font-weight: 500;
 }
 
 .info-value {
-  color: #303133;
+  color: #344054;
   font-size: 14px;
   word-break: break-all;
   font-weight: 500;
@@ -1857,16 +1907,16 @@ onMounted(() => {
 }
 
 .domain-icon {
-  width: 48px;
-  height: 48px;
-  background: #f8fafc;
-  border-radius: 8px;
+  width: 46px;
+  height: 46px;
+  background: #eff6ff;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #111827;
+  color: #2563eb;
   font-size: 22px;
-  border: 1px solid #edf1f7;
+  border: 1px solid #dbeafe;
 }
 
 .domain-text {
@@ -1877,9 +1927,9 @@ onMounted(() => {
 
 .domain-name {
   font-size: 16px;
-  font-weight: 600;
-  color: #303133;
-  font-family: 'Monaco', 'Menlo', monospace;
+  font-weight: 700;
+  color: #101828;
+  font-family: inherit;
 }
 
 .domain-hint {
@@ -2005,9 +2055,9 @@ onMounted(() => {
 
 .file-name {
   font-size: 14px;
-  font-weight: 500;
-  color: #303133;
-  font-family: 'Monaco', 'Menlo', monospace;
+  font-weight: 600;
+  color: #344054;
+  font-family: inherit;
 }
 
 .file-size {
