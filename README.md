@@ -13,6 +13,14 @@
 
 ---
 
+## 🚀 在线演示
+
+- 演示地址：[https://opshub.dycloud.fun/](https://opshub.dycloud.fun/)
+- 演示账号：`test`
+- 演示密码：`test@123`
+
+---
+
 ## 💎 OpsHub 是什么？
 
 **🎯 一站式运维管理平台，让运维更简单**
