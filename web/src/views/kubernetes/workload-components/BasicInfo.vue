@@ -108,25 +108,36 @@ const emit = defineEmits<{
 </script>
 
 <style scoped>
+.basic-panel {
+  --editor-primary: #1d4ed8;
+  --editor-primary-dark: #1e40af;
+  --editor-primary-soft: #dbeafe;
+  --editor-ink: #101828;
+  --editor-muted: #475569;
+  --editor-border: #cbd5e1;
+  --editor-danger: #be123c;
+  --editor-danger-soft: #fff1f2;
+}
+
 .info-panel {
-  background: #ffffff;
-  border-radius: 12px;
-  border: 1px solid #e8e8e8;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  background: #f8fafc;
+  border-radius: 18px;
+  border: 1px solid var(--editor-border);
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.1);
   overflow: hidden;
 }
 
 .basic-panel {
-  border-right: 1px solid #f0f0f0;
+  border-right: 0;
 }
 
 .panel-header {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 16px 20px;
-  border-bottom: 2px solid #d4af37;
-  background: linear-gradient(135deg, #fafafa 0%, #ffffff 100%);
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--editor-border);
+  background: linear-gradient(135deg, #eaf2ff 0%, #dbeafe 100%);
   position: sticky;
   top: 0;
   z-index: 10;
@@ -139,54 +150,55 @@ const emit = defineEmits<{
   justify-content: center;
   width: 36px;
   height: 36px;
-  background: #d4af37;
-  border-radius: 8px;
-  color: #ffffff;
-  box-shadow: 0 2px 8px rgba(212, 175, 55, 0.3);
+  background: var(--editor-primary-soft);
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+  color: var(--editor-primary);
+  box-shadow: none;
 }
 
 .panel-title {
   font-size: 16px;
-  font-weight: 600;
-  color: #1a1a1a;
+  font-weight: 800;
+  color: var(--editor-ink);
   flex: 1;
-  letter-spacing: 0.3px;
+  letter-spacing: -0.01em;
 }
 
 .panel-content {
-  padding: 20px;
-  background: #ffffff;
+  padding: 18px;
+  background: #eef4fb;
 }
 
 .form-row {
-  margin-bottom: 20px;
+  margin-bottom: 18px;
 }
 
 .form-row label {
   display: block;
   font-size: 13px;
-  font-weight: 600;
-  color: #333;
+  font-weight: 800;
+  color: #344054;
   margin-bottom: 8px;
-  letter-spacing: 0.3px;
+  letter-spacing: 0;
 }
 
 .form-row .el-input :deep(.el-input__wrapper) {
-  background: #fafafa;
-  border: 1px solid #e0e0e0;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  transition: all 0.3s ease;
+  background: #ffffff;
+  border: 1px solid #d8dee8;
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: all 0.2s ease;
 }
 
 .form-row .el-input :deep(.el-input__wrapper:hover) {
-  border-color: #d4af37;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 0 0 3px rgba(212, 175, 55, 0.1);
+  border-color: #bfdbfe;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08);
 }
 
 .form-row .el-input :deep(.el-input__wrapper.is-focus) {
-  border-color: #d4af37;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 0 0 4px rgba(212, 175, 55, 0.15);
+  border-color: var(--editor-primary);
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
 }
 
 .form-row .el-input-number {
@@ -194,24 +206,24 @@ const emit = defineEmits<{
 }
 
 .form-row .el-input-number :deep(.el-input__wrapper) {
-  background: #fafafa;
-  border: 1px solid #e0e0e0;
-  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid #d8dee8;
+  border-radius: 10px;
 }
 
 .form-tip {
   font-size: 12px;
-  color: #999;
+  color: var(--editor-muted);
   margin-top: 6px;
   line-height: 1.5;
 }
 
 .form-section {
-  margin-bottom: 24px;
-  padding: 16px;
-  background: linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%);
-  border-radius: 10px;
-  border: 1px solid #e8e8e8;
+  margin-bottom: 18px;
+  padding: 14px;
+  background: #eaf2ff;
+  border-radius: 16px;
+  border: 1px solid var(--editor-border);
 }
 
 .form-section-header {
@@ -223,33 +235,29 @@ const emit = defineEmits<{
 
 .form-section-header label {
   font-size: 14px;
-  font-weight: 600;
-  color: #333;
-  letter-spacing: 0.3px;
+  font-weight: 800;
+  color: var(--editor-ink);
+  letter-spacing: 0;
 }
 
 .form-section-header .section-add-btn {
   height: 30px;
   padding: 0 12px;
-  border: 1px solid rgba(176, 132, 18, 0.28);
+  border: 1px solid var(--editor-primary);
   border-radius: 999px;
-  background: linear-gradient(135deg, #f0cf55 0%, #d4af37 100%);
-  color: #1f1600;
+  background: var(--editor-primary);
+  color: #ffffff;
   font-weight: 700;
-  letter-spacing: 0.2px;
-  box-shadow:
-    0 8px 16px rgba(212, 175, 55, 0.22),
-    inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  letter-spacing: 0;
+  box-shadow: 0 10px 22px rgba(29, 78, 216, 0.22);
   transition: all 0.2s ease;
 }
 
 .form-section-header .section-add-btn:hover {
-  border-color: rgba(154, 111, 10, 0.36);
-  background: linear-gradient(135deg, #f5d96a 0%, #cfa72f 100%);
-  color: #141006;
-  box-shadow:
-    0 10px 20px rgba(212, 175, 55, 0.28),
-    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  border-color: var(--editor-primary-dark);
+  background: var(--editor-primary-dark);
+  color: #ffffff;
+  box-shadow: 0 14px 28px rgba(29, 78, 216, 0.28);
   transform: translateY(-1px);
 }
 
@@ -274,14 +282,15 @@ const emit = defineEmits<{
   gap: 10px;
   padding: 10px;
   background: #ffffff;
-  border-radius: 8px;
-  border: 1px solid #e8e8e8;
-  transition: all 0.3s ease;
+  border-radius: 14px;
+  border: 1px solid #c7d2e4;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+  transition: all 0.2s ease;
 }
 
 .key-value-row:hover {
-  border-color: #d4af37;
-  box-shadow: 0 2px 8px rgba(212, 175, 55, 0.15);
+  border-color: #93c5fd;
+  box-shadow: 0 14px 28px rgba(37, 99, 235, 0.14);
 }
 
 .key-value-row .el-input {
@@ -298,30 +307,32 @@ const emit = defineEmits<{
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: #fff5f5;
-  color: #ff6b6b;
+  border: 1px solid #fecdd3;
+  background: var(--editor-danger-soft);
+  color: var(--editor-danger);
   transition: all 0.2s ease;
 }
 
 .kv-delete-btn:hover {
-  background: #ffe3e3;
-  color: #e03131;
+  background: #ffe4e6;
+  color: #be123c;
+  box-shadow: 0 10px 20px rgba(225, 29, 72, 0.12);
   transform: translateY(-1px);
 }
 
 .separator {
-  color: #d4af37;
-  font-weight: 600;
+  color: var(--editor-primary);
+  font-weight: 800;
   font-size: 16px;
 }
 
 .empty-tip {
   text-align: center;
   padding: 24px;
-  color: #999;
+  color: var(--editor-muted);
   font-size: 13px;
   background: #ffffff;
-  border-radius: 8px;
-  border: 1px dashed #e0e0e0;
+  border-radius: 14px;
+  border: 1px dashed #cbd5e1;
 }
 </style>

@@ -319,7 +319,7 @@
                     <li>服务商: {{ clusterForm.provider ? getProviderText(clusterForm.provider) : '未配置' }}</li>
                     <li>区域: {{ clusterForm.region || '未配置' }}</li>
                   </ul>
-                  <p style="margin: 8px 0 0 0; color: #409eff;">
+                  <p style="margin: 8px 0 0 0; color: #111827;">
                     💡 下方显示的是当前的 KubeConfig 配置，您可以直接编辑或上传新文件替换
                   </p>
                 </div>
@@ -2430,8 +2430,8 @@ watch(paginatedClusterList, () => {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #2563eb;
-  box-shadow: 0 0 0 5px rgba(37, 99, 235, 0.1);
+  background: #111827;
+  box-shadow: 0 0 0 5px rgba(17, 24, 39, 0.08);
   flex-shrink: 0;
 }
 
@@ -2502,7 +2502,7 @@ watch(paginatedClusterList, () => {
 }
 
 .code-tip .el-icon {
-  color: #409eff;
+  color: #111827;
   font-size: 14px;
 }
 
@@ -2521,9 +2521,7 @@ watch(paginatedClusterList, () => {
   margin-bottom: 16px;
   border: 1px solid #e5e9f2;
   border-radius: 16px;
-  background:
-    linear-gradient(135deg, rgba(37, 99, 235, 0.07), rgba(255, 255, 255, 0.95)),
-    #ffffff;
+  background: #ffffff;
 }
 
 .cluster-dialog-hero-icon,
@@ -2534,9 +2532,9 @@ watch(paginatedClusterList, () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #2563eb;
-  background: #eff6ff;
-  border: 1px solid #dbeafe;
+  color: #ffffff;
+  background: #111827;
+  border: 1px solid #111827;
   font-size: 22px;
   flex-shrink: 0;
 }
@@ -2577,13 +2575,18 @@ watch(paginatedClusterList, () => {
 .cluster-form :deep(.el-input__wrapper.is-focus),
 .cluster-form :deep(.el-textarea__inner:focus),
 .cluster-form :deep(.el-select__wrapper.is-focused) {
-  box-shadow: 0 0 0 1px #2563eb inset, 0 0 0 3px rgba(37, 99, 235, 0.12);
+  box-shadow: 0 0 0 1px #111827 inset, 0 0 0 3px rgba(17, 24, 39, 0.08);
 }
 
 .cluster-form :deep(.el-radio-button__inner) {
   border-color: #d7deea;
   color: #475467;
   font-weight: 600;
+}
+
+.cluster-form :deep(.el-radio-button__inner:hover) {
+  color: #111827;
+  border-color: #111827;
 }
 
 .cluster-form :deep(.el-radio-button:first-child .el-radio-button__inner) {
@@ -2595,10 +2598,10 @@ watch(paginatedClusterList, () => {
 }
 
 .cluster-form :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) {
-  background: #2563eb;
-  border-color: #2563eb;
+  background: #111827;
+  border-color: #111827;
   color: #ffffff;
-  box-shadow: -1px 0 0 0 #2563eb;
+  box-shadow: -1px 0 0 0 #111827;
 }
 
 .upload-row {
@@ -2609,6 +2612,19 @@ watch(paginatedClusterList, () => {
 .credential-toolbar-actions .el-button {
   border-radius: 9px;
   font-weight: 600;
+}
+
+.upload-row :deep(.el-button) {
+  background: #111827;
+  border-color: #111827;
+  color: #ffffff;
+}
+
+.upload-row :deep(.el-button:hover),
+.upload-row :deep(.el-button:focus) {
+  background: #030712;
+  border-color: #030712;
+  color: #ffffff;
 }
 
 .tls-tip {
@@ -2625,15 +2641,24 @@ watch(paginatedClusterList, () => {
   border-radius: 10px;
   font-weight: 700;
   padding: 10px 20px;
-  background: #2563eb;
-  border-color: #2563eb;
-  box-shadow: 0 10px 20px rgba(37, 99, 235, 0.18);
+  background: #111827;
+  border-color: #111827;
+  color: #ffffff;
+  box-shadow: 0 10px 20px rgba(17, 24, 39, 0.16);
 }
 
 .cluster-submit-button:hover {
-  background: #1d4ed8;
-  border-color: #1d4ed8;
+  background: #030712;
+  border-color: #030712;
+  color: #ffffff;
   transform: translateY(-1px);
+}
+
+.cluster-submit-button:focus,
+.cluster-submit-button:active {
+  background: #030712;
+  border-color: #030712;
+  color: #ffffff;
 }
 
 .credential-description {

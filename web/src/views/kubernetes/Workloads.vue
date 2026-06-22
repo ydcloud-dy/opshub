@@ -1089,6 +1089,8 @@
                   :containers="editWorkloadData.containers || []"
                   :initContainers="editWorkloadData.initContainers || []"
                   :volumes="editWorkloadData.volumes || []"
+                  :configMaps="configMaps"
+                  :secrets="secrets"
                   @updateContainers="updateContainers"
                   @updateInitContainers="updateInitContainers"
                 />
@@ -1137,7 +1139,7 @@
                     <NodeSelector
                       :formData="editWorkloadData"
                       :nodeList="nodeList"
-                      :commonNodeLabels="[]"
+                      :commonNodeLabels="commonNodeLabels"
                       @addMatchRule="handleAddMatchRule"
                       @removeMatchRule="handleRemoveMatchRule"
                       @update="handleUpdateScheduling"
@@ -1747,6 +1749,22 @@ const editingAffinityRule = ref<any>(null)
 // 节点列表
 const nodeList = ref<{ name: string }[]>([])
 
+const commonNodeLabels = computed(() => {
+  const labelMap = new Map<string, Set<string>>()
+  nodeList.value.forEach((node: any) => {
+    Object.entries(node.labels || {}).forEach(([key, value]) => {
+      if (!labelMap.has(key)) {
+        labelMap.set(key, new Set())
+      }
+      labelMap.get(key)!.add(String(value))
+    })
+  })
+
+  return Array.from(labelMap.entries()).flatMap(([key, values]) =>
+    Array.from(values).map(value => ({ key, value }))
+  )
+})
+
 // 扩缩容策略
 const scalingStrategyData = ref<any>({
   strategyType: 'RollingUpdate',
@@ -2091,6 +2109,9 @@ const handleAddWorkloadForm = async () => {
     initContainers: [],
     volumes: [],
     nodeSelector: {},
+    specifiedNode: '',
+    schedulingType: 'any',
+    matchRules: [],
     affinity: {},
     tolerations: [],
     strategy: {
@@ -2649,6 +2670,13 @@ const handleUpdateScheduling = (data: { schedulingType: string; specifiedNode: s
     return
   }
 
+  if (data.schedulingType === 'match' && !Array.isArray(editWorkloadData.value.matchRules)) {
+    editWorkloadData.value.matchRules = []
+  }
+
+  if (data.schedulingType === 'specified' && !data.specifiedNode) {
+    editWorkloadData.value.matchRules = editWorkloadData.value.matchRules || []
+  }
 
   // 使用 Object.assign 确保响应式更新
   Object.assign(editWorkloadData.value, {
@@ -4825,32 +4853,33 @@ const buildContainer = (container: any, volumes: any[]): any => {
   if (container.env && container.env.length > 0) {
     c.env = container.env.map((e: any) => {
       const env: any = { name: e.name }
-      if (e.valueFrom === 'configmap') {
+      const valueFromType = typeof e.valueFrom === 'string' ? e.valueFrom : e.valueFrom?.type
+      if (valueFromType === 'configmap') {
         env.valueFrom = {
           configMapKeyRef: {
-            name: e.configmapName,
-            key: e.key
+            name: e.configmapName || e.valueFrom?.configMapName,
+            key: e.key || e.valueFrom?.key
           }
         }
-      } else if (e.valueFrom === 'secret') {
+      } else if (valueFromType === 'secret') {
         env.valueFrom = {
           secretKeyRef: {
-            name: e.secretName,
-            key: e.key
+            name: e.secretName || e.valueFrom?.secretName,
+            key: e.key || e.valueFrom?.key
           }
         }
-      } else if (e.valueFrom === 'field') {
+      } else if (valueFromType === 'field') {
         env.valueFrom = {
           fieldRef: {
-            fieldPath: e.fieldPath
+            fieldPath: e.fieldPath || e.valueFrom?.fieldPath
           }
         }
-      } else if (e.valueFrom === 'resource') {
+      } else if (valueFromType === 'resource') {
         env.valueFrom = {
           resourceFieldRef: {
             container: container.name,
-            resource: e.resourceField,
-            divisor: e.divisor || '1'
+            resource: e.resourceField || e.valueFrom?.resource,
+            divisor: e.divisor || e.valueFrom?.divisor || '1'
           }
         }
       } else {
@@ -5407,8 +5436,9 @@ const loadConfigMaps = async () => {
 
   try {
     const data = await getConfigMaps(selectedClusterId.value, editWorkloadData.value.namespace)
-    configMaps.value = data || []
+    configMaps.value = Array.isArray(data) ? data : ((data as any)?.data || [])
   } catch (error) {
+    configMaps.value = []
   }
 }
 
@@ -5418,8 +5448,9 @@ const loadSecrets = async () => {
 
   try {
     const data = await getSecrets(selectedClusterId.value, editWorkloadData.value.namespace)
-    secrets.value = data || []
+    secrets.value = Array.isArray(data) ? data : ((data as any)?.data || [])
   } catch (error) {
+    secrets.value = []
   }
 }
 
@@ -5429,8 +5460,9 @@ const loadPVCs = async () => {
 
   try {
     const data = await getPersistentVolumeClaims(selectedClusterId.value, editWorkloadData.value.namespace)
-    pvcs.value = data || []
+    pvcs.value = Array.isArray(data) ? data : ((data as any)?.data || [])
   } catch (error) {
+    pvcs.value = []
   }
 }
 
@@ -8799,6 +8831,2123 @@ onMounted(() => {
     grid-column: auto;
   }
 
+}
+
+/* 编辑工作负载 UI v2：去掉旧金色体系，统一成蓝灰配置面板 */
+.workload-edit-dialog {
+  --workload-editor-primary: #2563eb;
+  --workload-editor-primary-dark: #1d4ed8;
+  --workload-editor-primary-soft: #eff6ff;
+  --workload-editor-primary-softer: #f8fbff;
+  --workload-editor-ink: #101828;
+  --workload-editor-muted: #667085;
+  --workload-editor-border: #e4eaf2;
+  --workload-editor-panel: #ffffff;
+  --workload-editor-page: #f5f7fb;
+  --workload-editor-danger: #e5484d;
+  --workload-editor-danger-soft: #fff1f2;
+}
+
+.workload-edit-dialog :deep(.el-dialog) {
+  max-width: 1760px;
+  border: 1px solid rgba(226, 232, 240, 0.92) !important;
+  border-radius: 22px !important;
+  background:
+    radial-gradient(circle at 96% -8%, rgba(37, 99, 235, 0.1), transparent 28%),
+    var(--workload-editor-page) !important;
+  box-shadow: 0 28px 90px rgba(15, 23, 42, 0.24) !important;
+}
+
+.workload-edit-dialog :deep(.el-dialog__header) {
+  display: flex;
+  align-items: center;
+  min-height: 62px;
+  padding: 18px 24px !important;
+  background: rgba(255, 255, 255, 0.96) !important;
+  border-bottom: 1px solid var(--workload-editor-border) !important;
+}
+
+.workload-edit-dialog :deep(.el-dialog__title) {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--workload-editor-ink) !important;
+  font-size: 18px !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.01em !important;
+}
+
+.workload-edit-dialog :deep(.el-dialog__title::before) {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--workload-editor-primary);
+  box-shadow: 0 0 0 6px rgba(37, 99, 235, 0.12);
+}
+
+.workload-edit-dialog :deep(.el-dialog__headerbtn) {
+  top: 16px;
+  right: 18px;
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  transition: all 0.2s ease;
+}
+
+.workload-edit-dialog :deep(.el-dialog__headerbtn:hover) {
+  background: #f1f5f9;
+}
+
+.workload-edit-dialog :deep(.el-dialog__headerbtn .el-dialog__close) {
+  color: #64748b !important;
+  font-size: 18px !important;
+  font-weight: 700 !important;
+}
+
+.workload-edit-dialog :deep(.el-dialog__headerbtn .el-dialog__close:hover) {
+  color: var(--workload-editor-ink) !important;
+  transform: none !important;
+}
+
+.workload-edit-dialog :deep(.el-dialog__body) {
+  padding: 0 !important;
+  background: var(--workload-editor-page) !important;
+}
+
+.workload-edit-content {
+  display: grid !important;
+  grid-template-columns: 336px minmax(0, 1fr);
+  gap: 16px;
+  height: min(760px, calc(100vh - 184px)) !important;
+  max-height: none !important;
+  padding: 16px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.65), rgba(245, 247, 251, 0.95)),
+    var(--workload-editor-page) !important;
+}
+
+.edit-sidebar {
+  width: auto !important;
+  min-width: 0;
+  background: transparent !important;
+  border-right: none !important;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.edit-main {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--workload-editor-border);
+  border-radius: 20px;
+  background: var(--workload-editor-panel) !important;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.07);
+}
+
+.edit-sidebar::-webkit-scrollbar,
+.edit-main :deep(.el-tabs__content)::-webkit-scrollbar {
+  width: 8px !important;
+}
+
+.edit-sidebar::-webkit-scrollbar-track,
+.edit-main :deep(.el-tabs__content)::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+.edit-sidebar::-webkit-scrollbar-thumb,
+.edit-main :deep(.el-tabs__content)::-webkit-scrollbar-thumb {
+  border-radius: 999px !important;
+  background: #cbd5e1 !important;
+}
+
+.edit-sidebar::-webkit-scrollbar-thumb:hover,
+.edit-main :deep(.el-tabs__content)::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8 !important;
+}
+
+.workload-edit-dialog :deep(.el-dialog__footer) {
+  padding: 14px 20px !important;
+  background: rgba(255, 255, 255, 0.98) !important;
+  border-top: 1px solid var(--workload-editor-border) !important;
+}
+
+.workload-edit-dialog .dialog-footer {
+  align-items: center;
+  gap: 10px;
+}
+
+.workload-edit-dialog .dialog-footer :deep(.el-button) {
+  height: 36px;
+  padding: 0 18px;
+  border-radius: 10px;
+  font-weight: 700;
+}
+
+.workload-edit-dialog .dialog-footer :deep(.el-button--default) {
+  border: 1px solid #d8dee8 !important;
+  background: #ffffff !important;
+  color: #475467 !important;
+  box-shadow: none !important;
+}
+
+.workload-edit-dialog .dialog-footer :deep(.el-button--default:hover) {
+  border-color: #b8c2d3 !important;
+  background: #f8fafc !important;
+  color: var(--workload-editor-ink) !important;
+}
+
+.workload-edit-dialog .dialog-footer :deep(.black-button),
+.workload-edit-dialog .dialog-footer :deep(.el-button--primary) {
+  border: none !important;
+  background: #111827 !important;
+  color: #ffffff !important;
+  box-shadow: 0 12px 24px rgba(17, 24, 39, 0.18) !important;
+}
+
+.workload-edit-dialog .dialog-footer :deep(.black-button:hover),
+.workload-edit-dialog .dialog-footer :deep(.el-button--primary:hover) {
+  background: #1f2937 !important;
+  box-shadow: 0 14px 28px rgba(17, 24, 39, 0.22) !important;
+  transform: translateY(-1px);
+}
+
+.edit-main :deep(.el-tabs--border-card) {
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.edit-main :deep(.el-tabs__header) {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin: 0 !important;
+  padding: 10px 16px 0 !important;
+  border-bottom: 1px solid var(--workload-editor-border) !important;
+  background:
+    linear-gradient(180deg, #ffffff 0%, #fbfdff 100%) !important;
+}
+
+.edit-main :deep(.el-tabs__nav) {
+  border: none !important;
+}
+
+.edit-main :deep(.el-tabs__item) {
+  height: 46px !important;
+  line-height: 46px !important;
+  margin-right: 6px;
+  padding: 0 18px !important;
+  border: none !important;
+  border-radius: 12px 12px 0 0;
+  color: #667085 !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0 !important;
+}
+
+.edit-main :deep(.el-tabs__item:hover) {
+  color: var(--workload-editor-primary) !important;
+  background: var(--workload-editor-primary-softer) !important;
+}
+
+.edit-main :deep(.el-tabs__item.is-active) {
+  color: var(--workload-editor-primary) !important;
+  background: var(--workload-editor-primary-soft) !important;
+}
+
+.edit-main :deep(.el-tabs__active-bar) {
+  height: 3px !important;
+  border-radius: 999px 999px 0 0;
+  background: var(--workload-editor-primary) !important;
+}
+
+.edit-main :deep(.el-tabs__content) {
+  padding: 0 !important;
+  background: #f8fafc !important;
+}
+
+.edit-main .tab-content {
+  padding: 18px !important;
+}
+
+.edit-sidebar :deep(.info-panel),
+.edit-main :deep(.info-panel),
+.edit-main .info-panel {
+  overflow: hidden;
+  border: 1px solid var(--workload-editor-border) !important;
+  border-radius: 18px !important;
+  background: #ffffff !important;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06) !important;
+}
+
+.edit-sidebar :deep(.panel-header),
+.edit-main :deep(.panel-header),
+.edit-main .panel-header {
+  padding: 16px 18px !important;
+  border-bottom: 1px solid var(--workload-editor-border) !important;
+  background:
+    linear-gradient(135deg, #ffffff 0%, #f8fbff 100%) !important;
+}
+
+.edit-sidebar :deep(.panel-icon),
+.edit-main :deep(.panel-icon),
+.edit-main .panel-icon {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+  background: var(--workload-editor-primary-soft) !important;
+  color: var(--workload-editor-primary) !important;
+  box-shadow: none !important;
+  font-size: 17px !important;
+}
+
+.edit-sidebar :deep(.panel-title),
+.edit-main :deep(.panel-title),
+.edit-main .panel-title {
+  color: var(--workload-editor-ink) !important;
+  font-size: 15px !important;
+  font-weight: 800 !important;
+}
+
+.edit-sidebar :deep(.panel-content),
+.edit-main :deep(.panel-content),
+.edit-main .panel-content {
+  padding: 18px !important;
+  background: #ffffff !important;
+}
+
+.edit-sidebar :deep(.form-row label),
+.edit-main :deep(.form-row label),
+.edit-main :deep(.el-form-item__label),
+.edit-main :deep(.port-field label) {
+  color: #344054 !important;
+  font-size: 13px !important;
+  font-weight: 800 !important;
+}
+
+.edit-sidebar :deep(.form-tip),
+.edit-main :deep(.form-tip) {
+  color: var(--workload-editor-muted) !important;
+}
+
+.edit-sidebar :deep(.form-section) {
+  padding: 14px !important;
+  border: 1px solid var(--workload-editor-border) !important;
+  border-radius: 16px !important;
+  background: #f8fafc !important;
+}
+
+.edit-sidebar :deep(.form-section-header label) {
+  color: var(--workload-editor-ink) !important;
+  font-weight: 800 !important;
+}
+
+.edit-sidebar :deep(.section-add-btn),
+.edit-main :deep(.section-add-btn),
+.edit-main :deep(.add-btn),
+.edit-main :deep(.add-port-section .el-button),
+.edit-main :deep(.panel-header .el-button) {
+  border: 1px solid #bfdbfe !important;
+  border-radius: 999px !important;
+  background: var(--workload-editor-primary-soft) !important;
+  color: var(--workload-editor-primary) !important;
+  font-weight: 800 !important;
+  box-shadow: none !important;
+}
+
+.edit-sidebar :deep(.section-add-btn:hover),
+.edit-main :deep(.section-add-btn:hover),
+.edit-main :deep(.add-btn:hover),
+.edit-main :deep(.add-port-section .el-button:hover),
+.edit-main :deep(.panel-header .el-button:hover) {
+  border-color: #93c5fd !important;
+  background: #dbeafe !important;
+  color: var(--workload-editor-primary-dark) !important;
+  box-shadow: 0 10px 20px rgba(37, 99, 235, 0.12) !important;
+  transform: translateY(-1px);
+}
+
+.edit-sidebar :deep(.key-value-row),
+.edit-main :deep(.item-row),
+.edit-main :deep(.command-item) {
+  border: 1px solid var(--workload-editor-border) !important;
+  border-radius: 14px !important;
+  background: #ffffff !important;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04) !important;
+}
+
+.edit-sidebar :deep(.key-value-row:hover),
+.edit-main :deep(.item-row:hover),
+.edit-main :deep(.command-item:hover) {
+  border-color: #bfdbfe !important;
+  box-shadow: 0 12px 24px rgba(37, 99, 235, 0.1) !important;
+}
+
+.edit-sidebar :deep(.separator),
+.edit-main :deep(.arrow) {
+  color: var(--workload-editor-primary) !important;
+}
+
+.edit-sidebar :deep(.kv-delete-btn),
+.edit-main :deep(.el-button--danger),
+.edit-main :deep(.remove-btn) {
+  border: 1px solid #fecdd3 !important;
+  border-radius: 999px !important;
+  background: var(--workload-editor-danger-soft) !important;
+  color: var(--workload-editor-danger) !important;
+  box-shadow: none !important;
+}
+
+.edit-sidebar :deep(.kv-delete-btn:hover),
+.edit-main :deep(.el-button--danger:hover),
+.edit-main :deep(.remove-btn:hover) {
+  border-color: #fda4af !important;
+  background: #ffe4e6 !important;
+  color: #be123c !important;
+  box-shadow: 0 10px 20px rgba(225, 29, 72, 0.12) !important;
+  transform: translateY(-1px);
+}
+
+.edit-main :deep(.container-config) {
+  gap: 18px !important;
+}
+
+.edit-main :deep(.container-section) {
+  overflow: hidden;
+  border: 1px solid var(--workload-editor-border) !important;
+  border-radius: 20px !important;
+  background: #ffffff !important;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.06) !important;
+}
+
+.edit-main :deep(.section-header) {
+  padding: 16px 18px !important;
+  border-bottom: 1px solid var(--workload-editor-border) !important;
+  background:
+    linear-gradient(135deg, #ffffff 0%, #f7fbff 100%) !important;
+}
+
+.edit-main :deep(.section-title) {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--workload-editor-ink) !important;
+  font-size: 15px !important;
+  font-weight: 900 !important;
+}
+
+.edit-main :deep(.section-title::before) {
+  content: '';
+  width: 9px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--workload-editor-primary);
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+}
+
+.edit-main :deep(.container-list) {
+  padding: 18px !important;
+  background: #ffffff !important;
+}
+
+.edit-main :deep(.el-collapse) {
+  border: none !important;
+}
+
+.edit-main :deep(.el-collapse-item) {
+  margin-bottom: 14px;
+  border: 1px solid var(--workload-editor-border);
+  border-radius: 16px;
+  overflow: hidden;
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+}
+
+.edit-main :deep(.el-collapse-item:last-child) {
+  margin-bottom: 0;
+}
+
+.edit-main :deep(.el-collapse-item__header) {
+  min-height: 58px;
+  margin: 0 !important;
+  padding: 0 16px !important;
+  border: none !important;
+  border-bottom: 1px solid var(--workload-editor-border) !important;
+  border-radius: 0 !important;
+  background: #ffffff !important;
+  color: var(--workload-editor-ink) !important;
+}
+
+.edit-main :deep(.el-collapse-item__header:hover) {
+  background: var(--workload-editor-primary-softer) !important;
+}
+
+.edit-main :deep(.el-collapse-item__wrap) {
+  border: none !important;
+  background: #f8fafc !important;
+}
+
+.edit-main :deep(.el-collapse-item__content) {
+  padding: 0 !important;
+}
+
+.edit-main :deep(.container-title) {
+  gap: 10px !important;
+  min-width: 0;
+}
+
+.edit-main :deep(.container-icon-badge) {
+  width: 34px !important;
+  height: 34px !important;
+  flex: 0 0 34px !important;
+  border: 1px solid #bfdbfe !important;
+  border-radius: 12px !important;
+  background: var(--workload-editor-primary-soft) !important;
+  color: var(--workload-editor-primary) !important;
+  box-shadow: none !important;
+}
+
+.edit-main :deep(.container-icon-badge.init) {
+  border-color: #c4b5fd !important;
+  background: #f5f3ff !important;
+  color: #7c3aed !important;
+}
+
+.edit-main :deep(.container-name) {
+  min-width: 96px !important;
+  color: var(--workload-editor-ink) !important;
+  font-weight: 900 !important;
+}
+
+.edit-main :deep(.container-title .el-tag) {
+  min-width: 0;
+  max-width: min(620px, 52vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border: 1px solid #bfdbfe !important;
+  border-radius: 999px !important;
+  background: var(--workload-editor-primary-soft) !important;
+  color: var(--workload-editor-primary-dark) !important;
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-weight: 800 !important;
+}
+
+.edit-main :deep(.container-detail) {
+  padding: 18px !important;
+  background: #f8fafc !important;
+}
+
+.edit-main :deep(.container-detail .el-tabs__header) {
+  position: static !important;
+  padding: 8px !important;
+  border: 1px solid var(--workload-editor-border) !important;
+  border-radius: 14px !important;
+  background: #ffffff !important;
+}
+
+.edit-main :deep(.container-detail .el-tabs__item) {
+  height: 38px !important;
+  line-height: 38px !important;
+  border-radius: 10px !important;
+}
+
+.edit-main :deep(.container-detail .el-tabs__item.is-active) {
+  background: var(--workload-editor-primary-soft) !important;
+}
+
+.edit-main :deep(.container-detail .el-tabs__active-bar) {
+  display: none !important;
+}
+
+.edit-main :deep(.el-input__wrapper),
+.edit-sidebar :deep(.el-input__wrapper),
+.edit-main :deep(.el-textarea__inner),
+.edit-sidebar :deep(.el-textarea__inner),
+.edit-main :deep(.el-select .el-input__wrapper),
+.edit-sidebar :deep(.el-select .el-input__wrapper) {
+  border: 1px solid #d8dee8 !important;
+  border-radius: 10px !important;
+  background: #ffffff !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
+}
+
+.edit-main :deep(.el-input__wrapper:hover),
+.edit-sidebar :deep(.el-input__wrapper:hover),
+.edit-main :deep(.el-textarea__inner:hover),
+.edit-sidebar :deep(.el-textarea__inner:hover),
+.edit-main :deep(.el-select .el-input__wrapper:hover),
+.edit-sidebar :deep(.el-select .el-input__wrapper:hover) {
+  border-color: #bfdbfe !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08) !important;
+}
+
+.edit-main :deep(.el-input__wrapper.is-focus),
+.edit-sidebar :deep(.el-input__wrapper.is-focus),
+.edit-main :deep(.el-textarea__inner:focus),
+.edit-sidebar :deep(.el-textarea__inner:focus),
+.edit-main :deep(.el-select .el-input__wrapper.is-focus),
+.edit-sidebar :deep(.el-select .el-input__wrapper.is-focus) {
+  border-color: var(--workload-editor-primary) !important;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12) !important;
+}
+
+.edit-main :deep(.el-input__inner),
+.edit-sidebar :deep(.el-input__inner),
+.edit-main :deep(.el-textarea__inner),
+.edit-sidebar :deep(.el-textarea__inner) {
+  color: var(--workload-editor-ink) !important;
+  font-weight: 600 !important;
+}
+
+.edit-main :deep(.el-input.is-disabled .el-input__wrapper),
+.edit-sidebar :deep(.el-input.is-disabled .el-input__wrapper) {
+  background: #f1f5f9 !important;
+  color: #94a3b8 !important;
+}
+
+.edit-main :deep(.el-tag) {
+  border: 1px solid #bfdbfe !important;
+  border-radius: 999px !important;
+  background: var(--workload-editor-primary-soft) !important;
+  color: var(--workload-editor-primary-dark) !important;
+  font-weight: 800 !important;
+}
+
+.edit-main :deep(.el-tag--danger) {
+  border-color: #fecdd3 !important;
+  background: var(--workload-editor-danger-soft) !important;
+  color: var(--workload-editor-danger) !important;
+}
+
+.edit-main :deep(.el-checkbox__input.is-checked .el-checkbox__inner),
+.edit-main :deep(.el-switch.is-checked .el-switch__core) {
+  border-color: var(--workload-editor-primary) !important;
+  background: var(--workload-editor-primary) !important;
+}
+
+.edit-main :deep(.el-input-number__decrease),
+.edit-main :deep(.el-input-number__increase) {
+  border-color: #d8dee8 !important;
+  background: #f8fafc !important;
+  color: var(--workload-editor-primary) !important;
+}
+
+.edit-main :deep(.el-table) {
+  overflow: hidden;
+  border: 1px solid var(--workload-editor-border) !important;
+  border-radius: 14px !important;
+  background: #ffffff !important;
+  color: var(--workload-editor-ink) !important;
+}
+
+.edit-main :deep(.el-table th) {
+  border-bottom: 1px solid var(--workload-editor-border) !important;
+  background: #f8fafc !important;
+  color: #475467 !important;
+  font-weight: 900 !important;
+}
+
+.edit-main :deep(.el-table tr:hover > td) {
+  background: var(--workload-editor-primary-softer) !important;
+}
+
+.edit-main :deep(.volume-panel),
+.edit-main :deep(.volume-item),
+.edit-main :deep(.port-item-card) {
+  border: 1px solid var(--workload-editor-border) !important;
+  border-radius: 18px !important;
+  background: #ffffff !important;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06) !important;
+}
+
+.edit-main :deep(.volume-item:hover),
+.edit-main :deep(.port-item-card:hover) {
+  border-color: #bfdbfe !important;
+  box-shadow: 0 16px 34px rgba(37, 99, 235, 0.1) !important;
+}
+
+.edit-main :deep(.volume-row),
+.edit-main :deep(.port-card-header) {
+  border-bottom: 1px solid var(--workload-editor-border) !important;
+  background: #f8fafc !important;
+}
+
+.edit-main :deep(.volume-row:hover) {
+  background: var(--workload-editor-primary-softer) !important;
+}
+
+.edit-main :deep(.port-name),
+.edit-main :deep(.env-resource) {
+  border: 1px solid #bfdbfe !important;
+  border-radius: 999px !important;
+  background: var(--workload-editor-primary-soft) !important;
+  color: var(--workload-editor-primary-dark) !important;
+  box-shadow: none !important;
+}
+
+.edit-main :deep(.empty-tip),
+.edit-main :deep(.empty-items),
+.edit-main :deep(.empty-ports),
+.edit-sidebar :deep(.empty-tip),
+.placeholder {
+  border: 1px dashed #cbd5e1 !important;
+  border-radius: 16px !important;
+  background: #f8fafc !important;
+  color: #667085 !important;
+}
+
+.placeholder :deep(.el-icon) {
+  color: var(--workload-editor-primary) !important;
+}
+
+@media (max-width: 1180px) {
+  .workload-edit-content {
+    grid-template-columns: 1fr;
+    height: min(820px, calc(100vh - 184px)) !important;
+    overflow-y: auto;
+  }
+
+  .edit-sidebar {
+    max-height: none;
+    padding-right: 0;
+  }
+
+  .edit-main {
+    min-height: 560px;
+  }
+}
+
+/* 编辑工作负载 UI v3：加强对比度，避免纯白发虚 */
+.workload-edit-dialog {
+  --workload-editor-primary: #1d4ed8;
+  --workload-editor-primary-dark: #1e40af;
+  --workload-editor-primary-soft: #dbeafe;
+  --workload-editor-primary-softer: #eff6ff;
+  --workload-editor-ink: #0f172a;
+  --workload-editor-muted: #475569;
+  --workload-editor-border: #cbd5e1;
+  --workload-editor-panel: #f8fafc;
+  --workload-editor-page: #e9eff7;
+  --workload-editor-danger: #be123c;
+  --workload-editor-danger-soft: #fff1f2;
+}
+
+.workload-edit-dialog :deep(.el-dialog) {
+  background:
+    radial-gradient(circle at 92% -10%, rgba(37, 99, 235, 0.16), transparent 30%),
+    linear-gradient(180deg, #f8fafc 0%, #e9eff7 100%) !important;
+}
+
+.workload-edit-dialog :deep(.el-dialog__header) {
+  background: linear-gradient(135deg, #ffffff 0%, #edf4ff 100%) !important;
+  border-bottom-color: #c7d2e4 !important;
+}
+
+.workload-edit-dialog :deep(.el-dialog__footer) {
+  background: #f8fafc !important;
+  border-top-color: #c7d2e4 !important;
+}
+
+.workload-edit-content {
+  padding: 18px !important;
+  background:
+    linear-gradient(135deg, rgba(238, 244, 255, 0.96), rgba(226, 234, 246, 0.96)),
+    var(--workload-editor-page) !important;
+}
+
+.edit-main {
+  border-color: #c7d2e4 !important;
+  background: #eef4fb !important;
+  box-shadow: 0 20px 42px rgba(15, 23, 42, 0.12) !important;
+}
+
+.edit-main :deep(.el-tabs__header) {
+  padding: 12px 16px 0 !important;
+  background: linear-gradient(180deg, #eef4fb 0%, #e4ecf7 100%) !important;
+  border-bottom-color: #c7d2e4 !important;
+}
+
+.edit-main :deep(.el-tabs__item) {
+  color: #334155 !important;
+  border: 1px solid transparent !important;
+}
+
+.edit-main :deep(.el-tabs__item:hover) {
+  border-color: #bfdbfe !important;
+  background: #dbeafe !important;
+  color: #1e40af !important;
+}
+
+.edit-main :deep(.el-tabs__item.is-active) {
+  border-color: #1d4ed8 !important;
+  background: #1d4ed8 !important;
+  color: #ffffff !important;
+  box-shadow: 0 10px 20px rgba(29, 78, 216, 0.22);
+}
+
+.edit-main :deep(.el-tabs__content) {
+  background: #eef4fb !important;
+}
+
+.edit-sidebar :deep(.info-panel),
+.edit-main :deep(.info-panel),
+.edit-main .info-panel,
+.edit-main :deep(.container-section),
+.edit-main :deep(.volume-panel),
+.edit-main :deep(.volume-item),
+.edit-main :deep(.port-item-card) {
+  border-color: #c7d2e4 !important;
+  background: #f8fafc !important;
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.1) !important;
+}
+
+.edit-sidebar :deep(.panel-header),
+.edit-main :deep(.panel-header),
+.edit-main .panel-header,
+.edit-main :deep(.section-header) {
+  background: linear-gradient(135deg, #eaf2ff 0%, #dbeafe 100%) !important;
+  border-bottom-color: #bfdbfe !important;
+}
+
+.edit-sidebar :deep(.panel-content),
+.edit-main :deep(.panel-content),
+.edit-main .panel-content,
+.edit-main :deep(.container-list),
+.edit-main :deep(.container-detail) {
+  background: #eef4fb !important;
+}
+
+.edit-sidebar :deep(.form-section) {
+  border-color: #cbd5e1 !important;
+  background: #eaf2ff !important;
+}
+
+.edit-sidebar :deep(.section-add-btn),
+.edit-main :deep(.section-add-btn),
+.edit-main :deep(.add-btn),
+.edit-main :deep(.add-port-section .el-button),
+.edit-main :deep(.panel-header .el-button:not(.el-button--danger)) {
+  border: 1px solid #1d4ed8 !important;
+  background: #1d4ed8 !important;
+  color: #ffffff !important;
+  box-shadow: 0 10px 22px rgba(29, 78, 216, 0.22) !important;
+}
+
+.edit-sidebar :deep(.section-add-btn:hover),
+.edit-main :deep(.section-add-btn:hover),
+.edit-main :deep(.add-btn:hover),
+.edit-main :deep(.add-port-section .el-button:hover),
+.edit-main :deep(.panel-header .el-button:not(.el-button--danger):hover) {
+  border-color: #1e40af !important;
+  background: #1e40af !important;
+  color: #ffffff !important;
+  box-shadow: 0 14px 28px rgba(29, 78, 216, 0.28) !important;
+}
+
+.edit-sidebar :deep(.key-value-row),
+.edit-main :deep(.item-row),
+.edit-main :deep(.command-item),
+.edit-main :deep(.el-collapse-item) {
+  border-color: #c7d2e4 !important;
+  background: #ffffff !important;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08) !important;
+}
+
+.edit-main :deep(.el-collapse-item__header) {
+  background: #ffffff !important;
+  border-bottom-color: #c7d2e4 !important;
+}
+
+.edit-main :deep(.el-collapse-item__header:hover) {
+  background: #eff6ff !important;
+}
+
+.edit-main :deep(.container-detail .el-tabs__header) {
+  border-color: #c7d2e4 !important;
+  background: #eaf2ff !important;
+}
+
+.edit-main :deep(.container-detail .el-tabs__item) {
+  color: #334155 !important;
+}
+
+.edit-main :deep(.container-detail .el-tabs__item.is-active) {
+  background: #ffffff !important;
+  color: #1d4ed8 !important;
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.08);
+}
+
+.edit-main :deep(.container-title .el-tag),
+.edit-main :deep(.port-name),
+.edit-main :deep(.env-resource) {
+  border-color: #93c5fd !important;
+  background: #eaf2ff !important;
+  color: #1e40af !important;
+}
+
+.edit-main :deep(.container-icon-badge),
+.edit-sidebar :deep(.panel-icon),
+.edit-main :deep(.panel-icon),
+.edit-main .panel-icon {
+  border-color: #93c5fd !important;
+  background: #dbeafe !important;
+  color: #1d4ed8 !important;
+}
+
+.edit-main :deep(.container-icon-badge.init) {
+  border-color: #a78bfa !important;
+  background: #ede9fe !important;
+  color: #6d28d9 !important;
+}
+
+.edit-main :deep(.el-input__wrapper),
+.edit-sidebar :deep(.el-input__wrapper),
+.edit-main :deep(.el-textarea__inner),
+.edit-sidebar :deep(.el-textarea__inner),
+.edit-main :deep(.el-select .el-input__wrapper),
+.edit-sidebar :deep(.el-select .el-input__wrapper) {
+  border-color: #cbd5e1 !important;
+  background: #ffffff !important;
+  box-shadow: inset 0 1px 0 rgba(15, 23, 42, 0.04) !important;
+}
+
+.edit-main :deep(.el-input.is-disabled .el-input__wrapper),
+.edit-sidebar :deep(.el-input.is-disabled .el-input__wrapper) {
+  border-color: #cbd5e1 !important;
+  background: #e8eef6 !important;
+}
+
+.edit-sidebar :deep(.kv-delete-btn),
+.edit-main :deep(.el-button--danger),
+.edit-main :deep(.remove-btn) {
+  border-color: #fda4af !important;
+  background: #fff1f2 !important;
+  color: #be123c !important;
+  font-weight: 800 !important;
+}
+
+.edit-sidebar :deep(.kv-delete-btn:hover),
+.edit-main :deep(.el-button--danger:hover),
+.edit-main :deep(.remove-btn:hover) {
+  border-color: #fb7185 !important;
+  background: #ffe4e6 !important;
+  color: #9f1239 !important;
+}
+
+.edit-main :deep(.empty-tip),
+.edit-main :deep(.empty-items),
+.edit-main :deep(.empty-ports),
+.edit-sidebar :deep(.empty-tip),
+.placeholder {
+  border-color: #94a3b8 !important;
+  background: #eaf2ff !important;
+}
+
+/* 编辑工作负载 UI v4：中性工作台，去掉发灰淡蓝和旧金色残留 */
+.workload-edit-dialog {
+  --workload-editor-primary: #2563eb;
+  --workload-editor-primary-dark: #1d4ed8;
+  --workload-editor-accent: #0f172a;
+  --workload-editor-page: #f3f6fa;
+  --workload-editor-panel: #ffffff;
+  --workload-editor-panel-soft: #f8fafc;
+  --workload-editor-border: #d9e2ee;
+  --workload-editor-border-strong: #b9c7d8;
+  --workload-editor-ink: #111827;
+  --workload-editor-muted: #64748b;
+  --workload-editor-danger: #dc2626;
+  --workload-editor-danger-soft: #fff1f2;
+}
+
+.workload-edit-dialog :deep(.el-dialog) {
+  background: #ffffff !important;
+  border: 1px solid #d5deea !important;
+  border-radius: 18px !important;
+  box-shadow: 0 30px 90px rgba(15, 23, 42, 0.28) !important;
+}
+
+.workload-edit-dialog :deep(.el-dialog__header) {
+  min-height: 58px !important;
+  padding: 16px 22px !important;
+  background: #ffffff !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+}
+
+.workload-edit-dialog :deep(.el-dialog__title) {
+  color: var(--workload-editor-ink) !important;
+  font-size: 19px !important;
+  font-weight: 850 !important;
+}
+
+.workload-edit-dialog :deep(.el-dialog__title::before) {
+  width: 6px !important;
+  height: 24px !important;
+  border-radius: 999px !important;
+  background: var(--workload-editor-primary) !important;
+  box-shadow: none !important;
+}
+
+.workload-edit-dialog :deep(.el-dialog__body) {
+  background: var(--workload-editor-page) !important;
+}
+
+.workload-edit-dialog :deep(.el-dialog__footer) {
+  background: #ffffff !important;
+  border-top: 1px solid #e2e8f0 !important;
+}
+
+.workload-edit-content {
+  grid-template-columns: 320px minmax(0, 1fr) !important;
+  gap: 18px !important;
+  padding: 18px !important;
+  background: var(--workload-editor-page) !important;
+}
+
+.edit-sidebar {
+  background: transparent !important;
+}
+
+.edit-sidebar :deep(.info-panel) {
+  border: 1px solid var(--workload-editor-border) !important;
+  border-radius: 18px !important;
+  background: #ffffff !important;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.1) !important;
+}
+
+.edit-sidebar :deep(.panel-header) {
+  padding: 18px 20px !important;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%) !important;
+  border-bottom: none !important;
+}
+
+.edit-sidebar :deep(.panel-title) {
+  color: #ffffff !important;
+  font-size: 16px !important;
+  font-weight: 850 !important;
+}
+
+.edit-sidebar :deep(.panel-icon) {
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  background: rgba(37, 99, 235, 0.22) !important;
+  color: #bfdbfe !important;
+}
+
+.edit-sidebar :deep(.panel-content) {
+  background: #ffffff !important;
+  padding: 18px !important;
+}
+
+.edit-sidebar :deep(.form-section) {
+  border: 1px solid #e2e8f0 !important;
+  background: #f8fafc !important;
+  box-shadow: none !important;
+}
+
+.edit-sidebar :deep(.key-value-row) {
+  border-color: #d9e2ee !important;
+  background: #ffffff !important;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06) !important;
+}
+
+.edit-main {
+  border: 1px solid var(--workload-editor-border) !important;
+  border-radius: 18px !important;
+  background: #ffffff !important;
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.11) !important;
+}
+
+.edit-main :deep(.el-tabs__header) {
+  padding: 12px 16px !important;
+  background: #ffffff !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+}
+
+.edit-main :deep(.el-tabs__nav-wrap::after) {
+  display: none !important;
+}
+
+.edit-main :deep(.el-tabs__item) {
+  height: 40px !important;
+  line-height: 40px !important;
+  margin-right: 8px !important;
+  padding: 0 18px !important;
+  border: 1px solid transparent !important;
+  border-radius: 999px !important;
+  background: transparent !important;
+  color: #475569 !important;
+  font-weight: 800 !important;
+}
+
+.edit-main :deep(.el-tabs__item:hover) {
+  border-color: #c7d2fe !important;
+  background: #eef2ff !important;
+  color: #1d4ed8 !important;
+}
+
+.edit-main :deep(.el-tabs__item.is-active) {
+  border-color: var(--workload-editor-accent) !important;
+  background: var(--workload-editor-accent) !important;
+  color: #ffffff !important;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.22) !important;
+}
+
+.edit-main :deep(.el-tabs__active-bar) {
+  display: none !important;
+}
+
+.edit-main :deep(.el-tabs__content) {
+  background: var(--workload-editor-page) !important;
+}
+
+.edit-main .tab-content {
+  padding: 18px !important;
+}
+
+.edit-main :deep(.info-panel),
+.edit-main .info-panel,
+.edit-main :deep(.container-section),
+.edit-main :deep(.volume-panel),
+.edit-main :deep(.volume-item),
+.edit-main :deep(.port-item-card),
+.edit-main :deep(.config-form-section) {
+  border: 1px solid var(--workload-editor-border) !important;
+  border-radius: 16px !important;
+  background: #ffffff !important;
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.07) !important;
+}
+
+.edit-main :deep(.panel-header),
+.edit-main .panel-header,
+.edit-main :deep(.section-header) {
+  min-height: 56px !important;
+  padding: 14px 18px !important;
+  background: #ffffff !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+}
+
+.edit-main :deep(.panel-title),
+.edit-main .panel-title,
+.edit-main :deep(.section-title),
+.edit-main :deep(.form-section-title) {
+  color: var(--workload-editor-ink) !important;
+  font-weight: 850 !important;
+}
+
+.edit-main :deep(.panel-icon),
+.edit-main .panel-icon,
+.edit-main :deep(.container-icon-badge) {
+  border: 1px solid #c7d2fe !important;
+  background: #eef2ff !important;
+  color: var(--workload-editor-primary) !important;
+}
+
+.edit-main :deep(.panel-content),
+.edit-main .panel-content,
+.edit-main :deep(.container-list),
+.edit-main :deep(.container-detail) {
+  background: var(--workload-editor-panel-soft) !important;
+}
+
+.edit-main :deep(.network-config-form) {
+  gap: 16px !important;
+}
+
+.edit-main :deep(.form-item-row) {
+  border-bottom-color: #e2e8f0 !important;
+}
+
+.edit-main :deep(.form-label) {
+  color: #334155 !important;
+  font-weight: 800 !important;
+}
+
+.edit-main :deep(.form-hint) {
+  color: #94a3b8 !important;
+}
+
+.edit-main :deep(.el-collapse-item),
+.edit-main :deep(.item-row),
+.edit-main :deep(.command-item),
+.edit-main :deep(.dns-input-item),
+.edit-main :deep(.dns-option-item) {
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 14px !important;
+  background: #ffffff !important;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06) !important;
+}
+
+.edit-main :deep(.dns-input-item),
+.edit-main :deep(.dns-option-item) {
+  padding: 8px;
+}
+
+.edit-main :deep(.dns-inputs-wrapper),
+.edit-main :deep(.dns-options-wrapper) {
+  align-items: flex-start !important;
+}
+
+.workload-edit-dialog :deep(.el-button--primary:not(.black-button)),
+.workload-edit-dialog :deep(.el-button--primary.is-link:not(.black-button)),
+.edit-main :deep(.dns-inputs-wrapper .el-button--primary),
+.edit-main :deep(.dns-options-wrapper .el-button--primary) {
+  width: auto !important;
+  min-width: 118px !important;
+  height: 32px !important;
+  padding: 0 14px !important;
+  border: 1px solid var(--workload-editor-primary) !important;
+  border-radius: 999px !important;
+  background: var(--workload-editor-primary) !important;
+  color: #ffffff !important;
+  font-weight: 800 !important;
+  box-shadow: 0 10px 20px rgba(37, 99, 235, 0.2) !important;
+}
+
+.workload-edit-dialog :deep(.el-button--primary:not(.black-button):hover),
+.workload-edit-dialog :deep(.el-button--primary.is-link:not(.black-button):hover),
+.edit-main :deep(.dns-inputs-wrapper .el-button--primary:hover),
+.edit-main :deep(.dns-options-wrapper .el-button--primary:hover) {
+  border-color: var(--workload-editor-primary-dark) !important;
+  background: var(--workload-editor-primary-dark) !important;
+  color: #ffffff !important;
+  box-shadow: 0 14px 26px rgba(37, 99, 235, 0.26) !important;
+}
+
+.workload-edit-dialog .dialog-footer :deep(.black-button) {
+  border: none !important;
+  background: var(--workload-editor-accent) !important;
+  color: #ffffff !important;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.24) !important;
+}
+
+.workload-edit-dialog :deep(.el-button--danger),
+.workload-edit-dialog :deep(.el-button--danger.is-link),
+.edit-sidebar :deep(.kv-delete-btn),
+.edit-main :deep(.remove-btn) {
+  width: auto !important;
+  min-width: auto !important;
+  border: 1px solid #fecdd3 !important;
+  border-radius: 999px !important;
+  background: #fff1f2 !important;
+  color: var(--workload-editor-danger) !important;
+  box-shadow: none !important;
+}
+
+.workload-edit-dialog :deep(.el-button--danger:hover),
+.workload-edit-dialog :deep(.el-button--danger.is-link:hover),
+.edit-sidebar :deep(.kv-delete-btn:hover),
+.edit-main :deep(.remove-btn:hover) {
+  border-color: #fda4af !important;
+  background: #ffe4e6 !important;
+  color: #b91c1c !important;
+}
+
+.edit-main :deep(.el-input__wrapper),
+.edit-sidebar :deep(.el-input__wrapper),
+.edit-main :deep(.el-textarea__inner),
+.edit-sidebar :deep(.el-textarea__inner),
+.edit-main :deep(.el-select .el-input__wrapper),
+.edit-sidebar :deep(.el-select .el-input__wrapper) {
+  border-color: #cfd8e6 !important;
+  background: #ffffff !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
+}
+
+.edit-main :deep(.el-input__wrapper:hover),
+.edit-sidebar :deep(.el-input__wrapper:hover),
+.edit-main :deep(.el-textarea__inner:hover),
+.edit-sidebar :deep(.el-textarea__inner:hover),
+.edit-main :deep(.el-select .el-input__wrapper:hover),
+.edit-sidebar :deep(.el-select .el-input__wrapper:hover) {
+  border-color: #94a3b8 !important;
+}
+
+.edit-main :deep(.el-input__wrapper.is-focus),
+.edit-sidebar :deep(.el-input__wrapper.is-focus),
+.edit-main :deep(.el-textarea__inner:focus),
+.edit-sidebar :deep(.el-textarea__inner:focus),
+.edit-main :deep(.el-select .el-input__wrapper.is-focus),
+.edit-sidebar :deep(.el-select .el-input__wrapper.is-focus) {
+  border-color: var(--workload-editor-primary) !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12) !important;
+}
+
+/* 编辑工作负载 UI v5：回归 OpsHub 常规卡片/页签/按钮风格 */
+.workload-edit-dialog {
+  --workload-editor-primary: #111827;
+  --workload-editor-primary-dark: #000000;
+  --workload-editor-page: #f5f7fb;
+  --workload-editor-card: #ffffff;
+  --workload-editor-border: #e5e7eb;
+  --workload-editor-border-strong: #d1d5db;
+  --workload-editor-text: #1f2937;
+  --workload-editor-muted: #6b7280;
+}
+
+.workload-edit-dialog :deep(.el-dialog) {
+  border-radius: 14px !important;
+  border: 1px solid #e5e7eb !important;
+  background: #ffffff !important;
+  box-shadow: 0 24px 72px rgba(15, 23, 42, 0.24) !important;
+}
+
+.workload-edit-dialog :deep(.el-dialog__header) {
+  min-height: 56px !important;
+  padding: 16px 24px !important;
+  background: #ffffff !important;
+  border-bottom: 1px solid #e5e7eb !important;
+}
+
+.workload-edit-dialog :deep(.el-dialog__title) {
+  color: #1f2937 !important;
+  font-size: 18px !important;
+  font-weight: 700 !important;
+}
+
+.workload-edit-dialog :deep(.el-dialog__title::before) {
+  display: none !important;
+}
+
+.workload-edit-dialog :deep(.el-dialog__body) {
+  background: var(--workload-editor-page) !important;
+}
+
+.workload-edit-dialog :deep(.el-dialog__footer) {
+  padding: 14px 24px !important;
+  background: #ffffff !important;
+  border-top: 1px solid #e5e7eb !important;
+}
+
+.workload-edit-content {
+  grid-template-columns: 330px minmax(0, 1fr) !important;
+  gap: 16px !important;
+  padding: 16px !important;
+  background: var(--workload-editor-page) !important;
+}
+
+.edit-sidebar :deep(.info-panel),
+.edit-main {
+  border: 1px solid var(--workload-editor-border) !important;
+  border-radius: 12px !important;
+  background: #ffffff !important;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06) !important;
+}
+
+.edit-sidebar :deep(.panel-header) {
+  min-height: 56px !important;
+  padding: 14px 18px !important;
+  background: #ffffff !important;
+  border-bottom: 1px solid var(--workload-editor-border) !important;
+}
+
+.edit-sidebar :deep(.panel-title) {
+  color: var(--workload-editor-text) !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+}
+
+.edit-sidebar :deep(.panel-icon) {
+  width: 36px !important;
+  height: 36px !important;
+  border: 1px solid #dbeafe !important;
+  border-radius: 8px !important;
+  background: #eff6ff !important;
+  color: #2563eb !important;
+  box-shadow: none !important;
+}
+
+.edit-sidebar :deep(.panel-content) {
+  background: #ffffff !important;
+  padding: 18px !important;
+}
+
+.edit-sidebar :deep(.form-section) {
+  border: 1px solid var(--workload-editor-border) !important;
+  border-radius: 12px !important;
+  background: #f9fafb !important;
+  box-shadow: none !important;
+}
+
+.edit-main :deep(.el-tabs--border-card) {
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.edit-main :deep(.el-tabs__header) {
+  height: 56px !important;
+  margin: 0 !important;
+  padding: 0 24px !important;
+  background: #ffffff !important;
+  border-bottom: 1px solid var(--workload-editor-border) !important;
+}
+
+.edit-main :deep(.el-tabs__nav) {
+  height: 56px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 28px !important;
+  border: none !important;
+}
+
+.edit-main :deep(.el-tabs__item) {
+  position: relative !important;
+  height: 56px !important;
+  line-height: 56px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: #4b5563 !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+}
+
+.edit-main :deep(.el-tabs__item:hover) {
+  background: transparent !important;
+  border: none !important;
+  color: #111827 !important;
+  box-shadow: none !important;
+}
+
+.edit-main :deep(.el-tabs__item.is-active) {
+  background: transparent !important;
+  border: none !important;
+  color: #111827 !important;
+  box-shadow: none !important;
+}
+
+.edit-main :deep(.el-tabs__item.is-active::after) {
+  content: '' !important;
+  position: absolute !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  height: 3px !important;
+  border-radius: 999px 999px 0 0 !important;
+  background: #111827 !important;
+}
+
+.edit-main :deep(.el-tabs__active-bar) {
+  display: none !important;
+}
+
+.edit-main :deep(.el-tabs__content) {
+  background: var(--workload-editor-page) !important;
+}
+
+.edit-main .tab-content {
+  padding: 16px !important;
+}
+
+.edit-main :deep(.info-panel),
+.edit-main .info-panel,
+.edit-main :deep(.container-section),
+.edit-main :deep(.volume-panel),
+.edit-main :deep(.volume-item),
+.edit-main :deep(.port-item-card),
+.edit-main :deep(.config-form-section) {
+  border: 1px solid var(--workload-editor-border) !important;
+  border-radius: 12px !important;
+  background: #ffffff !important;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05) !important;
+}
+
+.edit-main :deep(.panel-header),
+.edit-main .panel-header,
+.edit-main :deep(.section-header) {
+  min-height: 52px !important;
+  padding: 12px 16px !important;
+  background: #ffffff !important;
+  border-bottom: 1px solid var(--workload-editor-border) !important;
+}
+
+.edit-main :deep(.panel-title),
+.edit-main .panel-title,
+.edit-main :deep(.section-title),
+.edit-main :deep(.form-section-title) {
+  color: var(--workload-editor-text) !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+}
+
+.edit-main :deep(.section-title::before) {
+  display: none !important;
+}
+
+.edit-main :deep(.panel-icon),
+.edit-main .panel-icon,
+.edit-main :deep(.container-icon-badge) {
+  border: 1px solid #dbeafe !important;
+  border-radius: 8px !important;
+  background: #eff6ff !important;
+  color: #2563eb !important;
+  box-shadow: none !important;
+}
+
+.edit-main :deep(.panel-content),
+.edit-main .panel-content,
+.edit-main :deep(.container-list),
+.edit-main :deep(.container-detail) {
+  background: #ffffff !important;
+}
+
+.edit-main :deep(.el-collapse-item),
+.edit-main :deep(.item-row),
+.edit-main :deep(.command-item),
+.edit-main :deep(.dns-input-item),
+.edit-main :deep(.dns-option-item),
+.edit-sidebar :deep(.key-value-row) {
+  border: 1px solid var(--workload-editor-border) !important;
+  border-radius: 10px !important;
+  background: #ffffff !important;
+  box-shadow: none !important;
+}
+
+.workload-edit-dialog :deep(.el-button) {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 4px !important;
+  height: 32px !important;
+  padding: 0 14px !important;
+  border-radius: 8px !important;
+  font-weight: 600 !important;
+  line-height: 1 !important;
+}
+
+.workload-edit-dialog :deep(.el-button + .el-button) {
+  margin-left: 8px !important;
+}
+
+.workload-edit-dialog :deep(.el-button--primary:not(.black-button)),
+.workload-edit-dialog :deep(.el-button--primary.is-link:not(.black-button)),
+.edit-sidebar :deep(.section-add-btn),
+.edit-main :deep(.section-add-btn),
+.edit-main :deep(.add-btn),
+.edit-main :deep(.add-port-section .el-button),
+.edit-main :deep(.panel-header .el-button:not(.el-button--danger)),
+.edit-main :deep(.dns-inputs-wrapper .el-button--primary),
+.edit-main :deep(.dns-options-wrapper .el-button--primary) {
+  width: auto !important;
+  min-width: auto !important;
+  height: 32px !important;
+  padding: 0 14px !important;
+  border: 1px solid #111827 !important;
+  border-radius: 8px !important;
+  background: #111827 !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+.workload-edit-dialog :deep(.el-button--primary:not(.black-button) span),
+.workload-edit-dialog :deep(.el-button--primary.is-link:not(.black-button) span),
+.edit-main :deep(.dns-inputs-wrapper .el-button--primary span),
+.edit-main :deep(.dns-options-wrapper .el-button--primary span) {
+  color: #ffffff !important;
+}
+
+.workload-edit-dialog :deep(.el-button--primary:not(.black-button):hover),
+.workload-edit-dialog :deep(.el-button--primary.is-link:not(.black-button):hover),
+.edit-sidebar :deep(.section-add-btn:hover),
+.edit-main :deep(.section-add-btn:hover),
+.edit-main :deep(.add-btn:hover),
+.edit-main :deep(.add-port-section .el-button:hover),
+.edit-main :deep(.panel-header .el-button:not(.el-button--danger):hover),
+.edit-main :deep(.dns-inputs-wrapper .el-button--primary:hover),
+.edit-main :deep(.dns-options-wrapper .el-button--primary:hover) {
+  border-color: #374151 !important;
+  background: #374151 !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+.workload-edit-dialog :deep(.el-button--danger),
+.workload-edit-dialog :deep(.el-button--danger.is-link),
+.edit-sidebar :deep(.kv-delete-btn),
+.edit-main :deep(.remove-btn) {
+  width: auto !important;
+  min-width: auto !important;
+  border: 1px solid #fecdd3 !important;
+  background: #fff1f2 !important;
+  color: #dc2626 !important;
+  box-shadow: none !important;
+}
+
+.workload-edit-dialog :deep(.el-button--danger span),
+.workload-edit-dialog :deep(.el-button--danger.is-link span) {
+  color: #dc2626 !important;
+}
+
+.workload-edit-dialog .dialog-footer :deep(.black-button) {
+  height: 36px !important;
+  padding: 0 20px !important;
+  border: 1px solid #111827 !important;
+  border-radius: 8px !important;
+  background: #111827 !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+.workload-edit-dialog .dialog-footer :deep(.el-button--default) {
+  height: 36px !important;
+  padding: 0 20px !important;
+  border: 1px solid #d1d5db !important;
+  border-radius: 8px !important;
+  background: #ffffff !important;
+  color: #374151 !important;
+  box-shadow: none !important;
+}
+
+.edit-main :deep(.el-input__wrapper),
+.edit-sidebar :deep(.el-input__wrapper),
+.edit-main :deep(.el-textarea__inner),
+.edit-sidebar :deep(.el-textarea__inner),
+.edit-main :deep(.el-select .el-input__wrapper),
+.edit-sidebar :deep(.el-select .el-input__wrapper) {
+  border-color: #d1d5db !important;
+  border-radius: 8px !important;
+  background: #ffffff !important;
+  box-shadow: none !important;
+}
+
+.edit-main :deep(.el-input__wrapper:hover),
+.edit-sidebar :deep(.el-input__wrapper:hover),
+.edit-main :deep(.el-textarea__inner:hover),
+.edit-sidebar :deep(.el-textarea__inner:hover),
+.edit-main :deep(.el-select .el-input__wrapper:hover),
+.edit-sidebar :deep(.el-select .el-input__wrapper:hover) {
+  border-color: #9ca3af !important;
+}
+
+.edit-main :deep(.el-input__wrapper.is-focus),
+.edit-sidebar :deep(.el-input__wrapper.is-focus),
+.edit-main :deep(.el-textarea__inner:focus),
+.edit-sidebar :deep(.el-textarea__inner:focus),
+.edit-main :deep(.el-select .el-input__wrapper.is-focus),
+.edit-sidebar :deep(.el-select .el-input__wrapper.is-focus) {
+  border-color: #111827 !important;
+  box-shadow: 0 0 0 2px rgba(17, 24, 39, 0.08) !important;
+}
+
+/* 工作负载弹窗最终收口：覆盖早期黑金/蓝色实验样式，保持和 OpsHub 其他模块一致 */
+.workload-edit-dialog {
+  --workload-editor-primary: #111827;
+  --workload-editor-primary-dark: #374151;
+  --workload-editor-page: #f5f7fb;
+  --workload-editor-card: #ffffff;
+  --workload-editor-border: #e5e7eb;
+  --workload-editor-border-strong: #d1d5db;
+  --workload-editor-text: #111827;
+  --workload-editor-muted: #6b7280;
+  --workload-editor-danger: #dc2626;
+  --workload-editor-danger-soft: #fff1f2;
+}
+
+.edit-main :deep(.panel-header),
+.edit-main .panel-header,
+.edit-main :deep(.env-header),
+.edit-main :deep(.mount-header),
+.edit-main :deep(.port-card-header),
+.edit-main :deep(.volume-row),
+.edit-main :deep(.config-container-header),
+.edit-main :deep(.affinity-rule-header) {
+  background: #ffffff !important;
+  border-color: var(--workload-editor-border) !important;
+  box-shadow: none !important;
+}
+
+.edit-main :deep(.panel-title),
+.edit-main .panel-title,
+.edit-main :deep(.section-title),
+.edit-main :deep(.env-header-title),
+.edit-main :deep(.mount-header-title),
+.edit-main :deep(.group-title),
+.edit-main :deep(.form-section-title),
+.edit-main :deep(.header-title) {
+  color: var(--workload-editor-text) !important;
+  font-weight: 700 !important;
+}
+
+.edit-main :deep(.panel-icon),
+.edit-main .panel-icon,
+.edit-main :deep(.container-icon-badge),
+.edit-main :deep(.container-icon-badge.init),
+.edit-main :deep(.env-header-title .el-icon),
+.edit-main :deep(.mount-header-title .el-icon) {
+  border: 1px solid var(--workload-editor-border) !important;
+  border-radius: 8px !important;
+  background: #f3f4f6 !important;
+  color: #111827 !important;
+  box-shadow: none !important;
+}
+
+.edit-main :deep(.container-list),
+.edit-main :deep(.container-detail),
+.edit-main :deep(.panel-content),
+.edit-main .panel-content {
+  background: #ffffff !important;
+}
+
+.edit-main :deep(.container-title) {
+  display: grid !important;
+  grid-template-columns: 34px minmax(140px, 260px) minmax(0, 1fr) 40px !important;
+  align-items: center !important;
+  gap: 12px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+
+.edit-main :deep(.container-name) {
+  min-width: 0 !important;
+  overflow: hidden !important;
+  color: #374151 !important;
+  font-weight: 800 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  word-break: normal !important;
+}
+
+.edit-main :deep(.container-title .el-tag) {
+  justify-self: start !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  border-color: #bfdbfe !important;
+  background: #eff6ff !important;
+  color: #2563eb !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  box-shadow: none !important;
+}
+
+.edit-main :deep(.container-title .el-tag__content) {
+  display: block !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.edit-main :deep(.container-detail .el-tabs__header) {
+  height: auto !important;
+  min-height: 42px !important;
+  margin: 0 0 16px !important;
+  padding: 0 !important;
+  background: #ffffff !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--workload-editor-border) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.edit-main :deep(.container-detail .el-tabs__nav) {
+  height: 42px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 24px !important;
+  border: 0 !important;
+}
+
+.edit-main :deep(.container-detail .el-tabs__item) {
+  position: relative !important;
+  height: 42px !important;
+  line-height: 42px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: #4b5563 !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  box-shadow: none !important;
+}
+
+.edit-main :deep(.container-detail .el-tabs__item:hover),
+.edit-main :deep(.container-detail .el-tabs__item.is-active) {
+  background: transparent !important;
+  color: #111827 !important;
+  box-shadow: none !important;
+}
+
+.edit-main :deep(.container-detail .el-tabs__item.is-active::after) {
+  content: '' !important;
+  position: absolute !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  height: 3px !important;
+  border-radius: 999px 999px 0 0 !important;
+  background: #111827 !important;
+}
+
+.edit-main :deep(.container-detail .el-tabs__active-bar) {
+  display: none !important;
+}
+
+.edit-main :deep(.env-type-tabs .el-tabs__content) {
+  padding-top: 14px !important;
+}
+
+.edit-main :deep(.env-type-tabs > .el-tabs__header) {
+  height: auto !important;
+  min-height: 44px !important;
+  margin: 0 0 14px !important;
+  padding: 6px !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 12px !important;
+  background: #f9fafb !important;
+  box-shadow: none !important;
+}
+
+.edit-main :deep(.env-type-tabs > .el-tabs__header .el-tabs__nav) {
+  height: auto !important;
+  display: flex !important;
+  gap: 6px !important;
+  border: none !important;
+}
+
+.edit-main :deep(.env-type-tabs > .el-tabs__header .el-tabs__item) {
+  height: 32px !important;
+  line-height: 32px !important;
+  margin: 0 !important;
+  padding: 0 14px !important;
+  border: 1px solid transparent !important;
+  border-radius: 8px !important;
+  background: transparent !important;
+  color: #6b7280 !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  box-shadow: none !important;
+}
+
+.edit-main :deep(.env-type-tabs > .el-tabs__header .el-tabs__item:hover) {
+  background: #ffffff !important;
+  color: #111827 !important;
+}
+
+.edit-main :deep(.env-type-tabs > .el-tabs__header .el-tabs__item.is-active) {
+  border-color: #d1d5db !important;
+  background: #ffffff !important;
+  color: #111827 !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06) !important;
+}
+
+.edit-main :deep(.env-type-tabs > .el-tabs__header .el-tabs__item.is-active::after),
+.edit-main :deep(.env-type-tabs > .el-tabs__header .el-tabs__active-bar) {
+  display: none !important;
+}
+
+.workload-edit-dialog :deep(.el-button--primary:not(.black-button)),
+.workload-edit-dialog :deep(.el-button--primary.is-link:not(.black-button)),
+.edit-main :deep(.section-add-btn),
+.edit-main :deep(.add-btn),
+.edit-main :deep(.add-port-section .el-button),
+.edit-main :deep(.env-header .el-button),
+.edit-main :deep(.mount-header .el-button),
+.edit-main :deep(.affinity-action-buttons .el-button),
+.edit-main :deep(.section-header .el-button--primary),
+.edit-main :deep(.config-header-actions .el-button--primary),
+.edit-main :deep(.panel-header .el-button--primary),
+.edit-main :deep(.dns-inputs-wrapper .el-button--primary),
+.edit-main :deep(.dns-options-wrapper .el-button--primary) {
+  width: auto !important;
+  min-width: auto !important;
+  height: 32px !important;
+  padding: 0 14px !important;
+  border: 1px solid #111827 !important;
+  border-radius: 8px !important;
+  background: #111827 !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  box-shadow: none !important;
+}
+
+.workload-edit-dialog :deep(.el-button--primary:not(.black-button) span),
+.workload-edit-dialog :deep(.el-button--primary.is-link:not(.black-button) span),
+.edit-main :deep(.section-add-btn span),
+.edit-main :deep(.add-btn span),
+.edit-main :deep(.env-header .el-button span),
+.edit-main :deep(.mount-header .el-button span),
+.edit-main :deep(.affinity-action-buttons .el-button span) {
+  color: #ffffff !important;
+}
+
+.workload-edit-dialog :deep(.el-button--primary:not(.black-button):hover),
+.workload-edit-dialog :deep(.el-button--primary.is-link:not(.black-button):hover),
+.edit-main :deep(.section-add-btn:hover),
+.edit-main :deep(.add-btn:hover),
+.edit-main :deep(.add-port-section .el-button:hover),
+.edit-main :deep(.env-header .el-button:hover),
+.edit-main :deep(.mount-header .el-button:hover),
+.edit-main :deep(.affinity-action-buttons .el-button:hover),
+.edit-main :deep(.section-header .el-button--primary:hover),
+.edit-main :deep(.config-header-actions .el-button--primary:hover),
+.edit-main :deep(.panel-header .el-button--primary:hover),
+.edit-main :deep(.dns-inputs-wrapper .el-button--primary:hover),
+.edit-main :deep(.dns-options-wrapper .el-button--primary:hover) {
+  border-color: #374151 !important;
+  background: #374151 !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+.edit-main :deep(.container-title .remove-btn),
+.edit-main :deep(.el-button--danger),
+.edit-main :deep(.el-button--danger.is-link),
+.edit-sidebar :deep(.kv-delete-btn) {
+  width: 32px !important;
+  min-width: 32px !important;
+  height: 32px !important;
+  padding: 0 !important;
+  border: 1px solid #fecdd3 !important;
+  border-radius: 8px !important;
+  background: #fff1f2 !important;
+  color: #dc2626 !important;
+  box-shadow: none !important;
+}
+
+.edit-main :deep(.el-button--danger span),
+.edit-main :deep(.el-button--danger.is-link span),
+.edit-main :deep(.container-title .remove-btn span) {
+  display: none !important;
+}
+
+.edit-main :deep(.container-title .remove-btn:hover),
+.edit-main :deep(.el-button--danger:hover),
+.edit-main :deep(.el-button--danger.is-link:hover),
+.edit-sidebar :deep(.kv-delete-btn:hover) {
+  border-color: #fca5a5 !important;
+  background: #fee2e2 !important;
+  color: #b91c1c !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.edit-main :deep(.env-table .action-buttons .el-button--primary),
+.edit-main :deep(.env-table .action-buttons .el-button--primary.is-link),
+.edit-main :deep(.env-table .action-buttons .el-button--info),
+.edit-main :deep(.env-table .action-buttons .el-button--info.is-link),
+.edit-main :deep(.env-table .action-buttons .el-button--success),
+.edit-main :deep(.env-table .action-buttons .el-button--success.is-link),
+.edit-main :deep(.env-table .action-buttons .el-button--danger),
+.edit-main :deep(.env-table .action-buttons .el-button--danger.is-link) {
+  width: auto !important;
+  min-width: 56px !important;
+  height: 32px !important;
+  padding: 0 10px !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+}
+
+.edit-main :deep(.env-table .action-buttons .el-button--primary),
+.edit-main :deep(.env-table .action-buttons .el-button--primary.is-link),
+.edit-main :deep(.env-table .action-buttons .el-button--info),
+.edit-main :deep(.env-table .action-buttons .el-button--info.is-link) {
+  border-color: #d1d5db !important;
+  background: #f9fafb !important;
+  color: #111827 !important;
+}
+
+.edit-main :deep(.env-table .action-buttons .el-button--success),
+.edit-main :deep(.env-table .action-buttons .el-button--success.is-link) {
+  border-color: #bbf7d0 !important;
+  background: #f0fdf4 !important;
+  color: #15803d !important;
+}
+
+.edit-main :deep(.env-table .action-buttons .el-button--danger),
+.edit-main :deep(.env-table .action-buttons .el-button--danger.is-link) {
+  border-color: #fecdd3 !important;
+  background: #fff1f2 !important;
+  color: #dc2626 !important;
+}
+
+.edit-main :deep(.env-table .action-buttons .el-button span) {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+}
+
+.edit-main :deep(.env-table .action-buttons .el-button--primary:hover),
+.edit-main :deep(.env-table .action-buttons .el-button--primary.is-link:hover),
+.edit-main :deep(.env-table .action-buttons .el-button--info:hover),
+.edit-main :deep(.env-table .action-buttons .el-button--info.is-link:hover) {
+  border-color: #9ca3af !important;
+  background: #f3f4f6 !important;
+  color: #111827 !important;
+}
+
+.edit-main :deep(.env-table .action-buttons .el-button--danger:hover),
+.edit-main :deep(.env-table .action-buttons .el-button--danger.is-link:hover) {
+  border-color: #fca5a5 !important;
+  background: #fee2e2 !important;
+  color: #b91c1c !important;
+}
+
+.edit-main :deep(.env-header),
+.edit-main :deep(.mount-header),
+.edit-main :deep(.env-table-wrapper),
+.edit-main :deep(.mount-table-wrapper),
+.edit-main :deep(.env-table th),
+.edit-main :deep(.mount-table th) {
+  border-color: var(--workload-editor-border) !important;
+}
+
+.edit-main :deep(.env-table th),
+.edit-main :deep(.mount-table th),
+.edit-main :deep(.el-table th) {
+  background: #f9fafb !important;
+  color: #374151 !important;
+  font-weight: 700 !important;
+}
+
+.edit-main :deep(.env-resource),
+.edit-main :deep(.port-name),
+.edit-main :deep(.rule-label-item) {
+  border: 1px solid #e5e7eb !important;
+  border-radius: 999px !important;
+  background: #f3f4f6 !important;
+  color: #374151 !important;
+  box-shadow: none !important;
+}
+
+.edit-main :deep(.arrow),
+.edit-main :deep(.example-value),
+.edit-main :deep(.example-config),
+.edit-main :deep(.exp-key),
+.edit-main :deep(.exp-operator),
+.edit-main :deep(.el-input__prefix),
+.edit-main :deep(.el-input__prefix-inner) {
+  color: #111827 !important;
+}
+
+.edit-main :deep(.volume-item:hover),
+.edit-main :deep(.port-item-card:hover),
+.edit-main :deep(.resource-group:hover),
+.edit-main :deep(.example-item:hover),
+.edit-main :deep(.expression-config-row:hover),
+.edit-main :deep(.affinity-rule-card:hover) {
+  border-color: var(--workload-editor-border-strong) !important;
+  background: #ffffff !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.edit-main :deep(.el-checkbox__input.is-checked .el-checkbox__inner),
+.edit-main :deep(.el-switch.is-checked .el-switch__core),
+.edit-main :deep(.el-radio__input.is-checked .el-radio__inner) {
+  border-color: #111827 !important;
+  background: #111827 !important;
+}
+
+.edit-main :deep(.el-radio__input.is-checked + .el-radio__label),
+.edit-main :deep(.el-checkbox__input.is-checked + .el-checkbox__label) {
+  color: #111827 !important;
+}
+
+.edit-main :deep(.el-input-number__decrease),
+.edit-main :deep(.el-input-number__increase) {
+  color: #6b7280 !important;
+}
+
+.edit-main :deep(.el-input-number__decrease:hover),
+.edit-main :deep(.el-input-number__increase:hover) {
+  color: #111827 !important;
+}
+
+/* 工作负载弹窗最终精准覆盖：只处理本轮反馈中仍可能被旧样式污染的控件 */
+.workload-edit-dialog .edit-main :deep(.affinity-action-buttons .el-button),
+.workload-edit-dialog .edit-main :deep(.tolerations-actions .el-button--primary),
+.workload-edit-dialog .edit-main :deep(.ports-config-wrapper .add-port-section .el-button),
+.workload-edit-dialog .edit-main :deep(.ports-config-wrapper .empty-ports .el-button--primary) {
+  height: 32px !important;
+  padding: 0 14px !important;
+  border: 1px solid #111827 !important;
+  border-radius: 8px !important;
+  background: #111827 !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  box-shadow: none !important;
+}
+
+.workload-edit-dialog .edit-main :deep(.affinity-action-buttons .el-button:hover),
+.workload-edit-dialog .edit-main :deep(.tolerations-actions .el-button--primary:hover),
+.workload-edit-dialog .edit-main :deep(.ports-config-wrapper .add-port-section .el-button:hover),
+.workload-edit-dialog .edit-main :deep(.ports-config-wrapper .empty-ports .el-button--primary:hover) {
+  border-color: #374151 !important;
+  background: #374151 !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.workload-edit-dialog .edit-main :deep(.affinity-action-buttons .el-button span),
+.workload-edit-dialog .edit-main :deep(.tolerations-actions .el-button--primary span),
+.workload-edit-dialog .edit-main :deep(.ports-config-wrapper .add-port-section .el-button span),
+.workload-edit-dialog .edit-main :deep(.ports-config-wrapper .empty-ports .el-button--primary span) {
+  color: #ffffff !important;
+}
+
+.workload-edit-dialog .edit-main :deep(.env-type-tabs > .el-tabs__header) {
+  padding: 6px !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 12px !important;
+  background: #f9fafb !important;
+}
+
+.workload-edit-dialog .edit-main :deep(.env-type-tabs > .el-tabs__header .el-tabs__item) {
+  height: 32px !important;
+  line-height: 32px !important;
+  padding: 0 14px !important;
+  border: 1px solid transparent !important;
+  border-radius: 8px !important;
+  background: transparent !important;
+  color: #6b7280 !important;
+  box-shadow: none !important;
+}
+
+.workload-edit-dialog .edit-main :deep(.env-type-tabs > .el-tabs__header .el-tabs__item.is-active) {
+  border-color: #d1d5db !important;
+  background: #ffffff !important;
+  color: #111827 !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06) !important;
+}
+
+.workload-edit-dialog .edit-main :deep(.container-title) {
+  grid-template-columns: 34px minmax(140px, 260px) minmax(0, 1fr) 40px !important;
+  overflow: hidden !important;
+}
+
+.workload-edit-dialog .edit-main :deep(.container-title .el-tag),
+.workload-edit-dialog .edit-main :deep(.container-title .el-tag__content) {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.workload-edit-dialog .edit-main :deep(.port-card-header .el-button--danger),
+.workload-edit-dialog .edit-main :deep(.tolerations-table-wrapper .el-button--danger) {
+  width: 32px !important;
+  min-width: 32px !important;
+  height: 32px !important;
+  padding: 0 !important;
+  border: 1px solid #fecdd3 !important;
+  border-radius: 8px !important;
+  background: #fff1f2 !important;
+  color: #dc2626 !important;
+  box-shadow: none !important;
 }
 
 </style>

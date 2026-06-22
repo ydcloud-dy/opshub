@@ -113,14 +113,35 @@
           type="primary"
           :icon="isCurrentTargetAttached ? Link : Download"
           @click="handleAttach"
-          :disabled="!selectedProcess || isCurrentTargetAttached"
+          :disabled="!selectedProcess || isCurrentTargetAttached || attaching"
           :loading="attaching"
           class="attach-btn"
         >
-          {{ isCurrentTargetAttached ? '已连接' : '连接' }}
+          {{ attachButtonText }}
         </el-button>
       </div>
     </div>
+
+    <el-alert
+      v-if="attachStatus || attachError"
+      :title="attachError ? 'Arthas 连接失败' : attachStatus"
+      :type="attachError ? 'error' : 'info'"
+      :closable="!!attachError"
+      show-icon
+      class="attach-status-alert"
+      @close="clearAttachError"
+    >
+      <template #default>
+        <div v-if="attachError" class="attach-error-body">
+          <div>{{ attachError }}</div>
+          <el-collapse v-if="attachDetail" class="attach-detail-collapse">
+            <el-collapse-item title="查看诊断详情" name="detail">
+              <pre>{{ attachDetail }}</pre>
+            </el-collapse-item>
+          </el-collapse>
+        </div>
+      </template>
+    </el-alert>
 
     <!-- Tab 内容区 -->
     <div class="content-wrapper">
@@ -283,6 +304,9 @@ const attaching = ref(false)
 const attached = ref(false)
 const attachedTargetKey = ref('')
 const loadingProcesses = ref(false)
+const attachStatus = ref('')
+const attachError = ref('')
+const attachDetail = ref('')
 
 const unwrapData = <T>(res: unknown): T => {
   return ((res as any)?.data ?? res) as T
@@ -310,9 +334,32 @@ const isCurrentTargetAttached = computed(() => {
   return attached.value && attachedTargetKey.value === currentTargetKey.value
 })
 
+const attachButtonText = computed(() => {
+  if (isCurrentTargetAttached.value) {
+    return '已连接'
+  }
+  if (attaching.value && attachStatus.value) {
+    if (attachStatus.value.includes('检查')) return '检查中'
+    if (attachStatus.value.includes('注入') || attachStatus.value.includes('安装')) return '安装中'
+    if (attachStatus.value.includes('验证')) return '验证中'
+    return '处理中'
+  }
+  return '连接'
+})
+
 const resetAttachment = () => {
   attached.value = false
   attachedTargetKey.value = ''
+}
+
+const clearAttachError = () => {
+  attachError.value = ''
+  attachDetail.value = ''
+}
+
+const resetAttachFeedback = () => {
+  attachStatus.value = ''
+  clearAttachError()
 }
 
 // 保存状态到 localStorage
@@ -409,6 +456,15 @@ const formatProcessLabel = (proc: JavaProcess) => {
 const getArthasOutput = (res: unknown) => {
   const data = unwrapData<unknown>(res)
   return typeof data === 'string' ? data : JSON.stringify(data || '')
+}
+
+const getErrorDetail = (error: any) => {
+  const data = error?.response?.data
+  const detail = data?.data?.detail || data?.detail || data?.error
+  if (detail) {
+    return String(detail)
+  }
+  return ''
 }
 
 const getArthasConnectError = (output: string) => {
@@ -569,6 +625,7 @@ const handleClusterChange = async () => {
   containers.value = []
   processes.value = []
   resetAttachment()
+  resetAttachFeedback()
 
   await loadNamespaces()
   saveState()
@@ -583,6 +640,7 @@ const handleNamespaceChange = async () => {
   containers.value = []
   processes.value = []
   resetAttachment()
+  resetAttachFeedback()
 
   await loadPods()
   saveState()
@@ -595,6 +653,7 @@ const handlePodChange = async () => {
   containers.value = []
   processes.value = []
   resetAttachment()
+  resetAttachFeedback()
 
   const podInfo = getSelectedPodInfo()
   if (podInfo && !isPodConnectable(podInfo)) {
@@ -613,6 +672,7 @@ const handleContainerChange = async () => {
   selectedProcess.value = ''
   processes.value = []
   resetAttachment()
+  resetAttachFeedback()
 
   await loadProcesses()
   saveState()
@@ -621,6 +681,7 @@ const handleContainerChange = async () => {
 // 进程变更
 const handleProcessChange = () => {
   resetAttachment()
+  resetAttachFeedback()
   saveState()
 }
 
@@ -655,24 +716,26 @@ const handleAttach = async () => {
   }
 
   attaching.value = true
+  resetAttachFeedback()
   try {
     // 先检查Arthas是否已安装
+    attachStatus.value = '正在检查 Java 和 Arthas 环境…'
     const checkRes = await checkArthasInstalled({
       clusterId: selectedCluster.value,
       namespace: selectedNamespace.value,
       pod: selectedPod.value,
-      container: selectedContainer.value
+      container: selectedContainer.value,
+      processId: selectedProcess.value
     })
 
     const checkData = unwrapData<ArthasCheckResult>(checkRes)
 
     if (!checkData?.hasJava) {
-      ElMessage.error('容器中未检测到Java环境，无法使用Arthas诊断')
-      return
+      console.warn('Arthas precheck did not detect Java, continue with selected process:', selectedProcess.value)
     }
 
     if (!checkData?.hasArthas) {
-      ElMessage.info('正在安装Arthas...')
+      attachStatus.value = '正在注入 OpsHub 内置 Arthas…'
       await installArthas({
         clusterId: selectedCluster.value,
         namespace: selectedNamespace.value,
@@ -681,7 +744,7 @@ const handleAttach = async () => {
       })
     }
 
-    ElMessage.info('正在验证 Arthas 连接...')
+    attachStatus.value = '正在验证 Arthas 连接…'
     const verifyRes = await executeArthasCommand({
       clusterId: selectedCluster.value,
       namespace: selectedNamespace.value,
@@ -698,12 +761,16 @@ const handleAttach = async () => {
 
     attached.value = true
     attachedTargetKey.value = currentTargetKey.value
+    attachStatus.value = ''
     saveState()
     ElMessage.success('连接成功')
   } catch (error: any) {
     resetAttachment()
     saveState()
-    ElMessage.error('连接失败: ' + (error.message || '未知错误'))
+    attachStatus.value = ''
+    attachError.value = error.message || '未知错误'
+    attachDetail.value = getErrorDetail(error)
+    ElMessage.error('连接失败: ' + attachError.value)
   } finally {
     attaching.value = false
   }
@@ -814,6 +881,45 @@ onMounted(async () => {
 .selector-actions {
   display: flex;
   gap: 10px;
+}
+
+.attach-status-alert {
+  margin-bottom: 12px;
+  border-radius: 8px;
+}
+
+.attach-error-body {
+  width: 100%;
+}
+
+.attach-detail-collapse {
+  margin-top: 8px;
+  border: 0;
+}
+
+.attach-detail-collapse :deep(.el-collapse-item__header) {
+  height: 32px;
+  line-height: 32px;
+  border: 0;
+  color: #606266;
+  font-size: 12px;
+}
+
+.attach-detail-collapse :deep(.el-collapse-item__wrap) {
+  border: 0;
+}
+
+.attach-detail-collapse pre {
+  margin: 0;
+  max-height: 260px;
+  overflow: auto;
+  padding: 12px;
+  border-radius: 8px;
+  background: #111827;
+  color: #e5e7eb;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
 }
 
 .attach-btn {

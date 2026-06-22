@@ -137,9 +137,9 @@ const updateMounts = () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 20px;
-  background: #d4af37;
-  border: 1px solid #d4af37;
+  padding: 12px 16px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
   border-radius: 12px 12px 0 0;
   margin-bottom: 0;
 }
@@ -148,45 +148,49 @@ const updateMounts = () => {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 16px;
-  font-weight: 600;
-  color: #1a1a1a;
-  letter-spacing: 0.3px;
+  font-size: 15px;
+  font-weight: 800;
+  color: #111827;
+  letter-spacing: 0;
 }
 
 .mount-header-title .el-icon {
   font-size: 18px;
-  color: #d4af37;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  background: #ffffff;
-  border-radius: 6px;
-  color: #d4af37;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  width: 30px;
+  height: 30px;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  color: #111827;
+  box-shadow: none;
 }
 
 .mount-header .el-button {
-  font-weight: 500;
+  height: 32px;
+  padding: 0 14px;
+  font-weight: 700;
   border-radius: 8px;
-  background: #ffffff;
-  border: 1px solid #d4af37;
-  color: #d4af37;
+  background: #111827;
+  border: 1px solid #111827;
+  color: #ffffff;
+  box-shadow: none;
 }
 
 .mount-header .el-button:hover {
-  background: #fafafa;
-  border-color: #c9a227;
-  box-shadow: 0 2px 8px rgba(212, 175, 55, 0.3);
+  background: #374151;
+  border-color: #374151;
+  color: #ffffff;
+  box-shadow: none;
 }
 
 .mount-table-wrapper {
-  border: 1px solid #e8e8e8;
+  border: 1px solid #e5e7eb;
   border-top: none;
   border-radius: 0 0 12px 12px;
-  padding: 20px;
+  padding: 16px;
   background: #ffffff;
 }
 
@@ -197,16 +201,16 @@ const updateMounts = () => {
 }
 
 .mount-table :deep(.el-table__header-wrapper) {
-  background: linear-gradient(135deg, #fafafa 0%, #ffffff 100%);
+  background: #f9fafb;
 }
 
 .mount-table :deep(.el-table__header th) {
-  background: transparent;
-  color: #333;
-  font-weight: 600;
+  background: #f9fafb;
+  color: #374151;
+  font-weight: 700;
   font-size: 13px;
-  letter-spacing: 0.3px;
-  border-bottom: 1px solid #e8e8e8;
+  letter-spacing: 0;
+  border-bottom: 1px solid #e5e7eb;
 }
 
 .mount-table :deep(.el-table__body) {
@@ -218,11 +222,11 @@ const updateMounts = () => {
 }
 
 .mount-table :deep(.el-table__body tr:hover) {
-  background: #fafafa;
+  background: #f9fafb;
 }
 
 .mount-table :deep(.el-table__body td) {
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid #f3f4f6;
 }
 
 .mount-table :deep(.el-input__wrapper) {
@@ -234,13 +238,13 @@ const updateMounts = () => {
 }
 
 .mount-table :deep(.el-input__wrapper:hover) {
-  border-color: #d4af37;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 0 0 3px rgba(212, 175, 55, 0.1);
+  border-color: #9ca3af;
+  box-shadow: none;
 }
 
 .mount-table :deep(.el-input__wrapper.is-focus) {
-  border-color: #d4af37;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 0 0 4px rgba(212, 175, 55, 0.15);
+  border-color: #111827;
+  box-shadow: 0 0 0 2px rgba(17, 24, 39, 0.08);
 }
 
 .mount-table :deep(.el-select .el-input__wrapper) {
@@ -250,7 +254,26 @@ const updateMounts = () => {
 }
 
 .mount-table :deep(.el-switch) {
-  --el-switch-on-color: #d4af37;
+  --el-switch-on-color: #111827;
+}
+
+.mount-table :deep(.el-button--danger),
+.mount-table :deep(.el-button--danger.is-link) {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid #fecdd3;
+  border-radius: 8px;
+  background: #fff1f2;
+  color: #dc2626;
+}
+
+.mount-table :deep(.el-button--danger:hover),
+.mount-table :deep(.el-button--danger.is-link:hover) {
+  border-color: #fca5a5;
+  background: #fee2e2;
+  color: #b91c1c;
 }
 
 :deep(.el-empty) {

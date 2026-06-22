@@ -2788,8 +2788,11 @@ func (h *DataSourceHandler) ListAlertEvents(c *gin.Context) {
 	if page < 1 {
 		page = 1
 	}
-	if pageSize < 1 || pageSize > 100 {
+	if pageSize < 1 {
 		pageSize = 10
+	}
+	if pageSize > 500 {
+		pageSize = 500
 	}
 
 	activeScope := strings.TrimSpace(c.Query("scope")) == "active"
@@ -2843,7 +2846,7 @@ func (h *DataSourceHandler) ListAlertEvents(c *gin.Context) {
 	query.Count(&total)
 
 	var events []model.AlertEvent
-	if err := query.Order("last_eval_at DESC, id DESC").
+	if err := query.Order(alertEventListOrder(strings.TrimSpace(c.Query("scope")), strings.TrimSpace(c.Query("sort")))).
 		Offset((page - 1) * pageSize).
 		Limit(pageSize).
 		Find(&events).Error; err != nil {
@@ -2861,6 +2864,26 @@ func (h *DataSourceHandler) ListAlertEvents(c *gin.Context) {
 			"pageSize": pageSize,
 		},
 	})
+}
+
+func alertEventListOrder(scope, sortBy string) string {
+	switch strings.ToLower(strings.TrimSpace(sortBy)) {
+	case "last_eval_at", "last_eval":
+		return "last_eval_at DESC, id DESC"
+	case "ended_at", "ended":
+		return "COALESCE(ended_at, last_eval_at) DESC, id DESC"
+	case "started_at", "started":
+		return "started_at DESC, id DESC"
+	}
+
+	switch strings.ToLower(strings.TrimSpace(scope)) {
+	case "active":
+		return "started_at DESC, id DESC"
+	case "history":
+		return "COALESCE(ended_at, last_eval_at) DESC, id DESC"
+	default:
+		return "started_at DESC, id DESC"
+	}
 }
 
 func (h *DataSourceHandler) GetAlertEvent(c *gin.Context) {

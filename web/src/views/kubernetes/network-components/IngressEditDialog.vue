@@ -3,6 +3,7 @@
     v-model="visible"
     :title="isEdit ? '编辑 Ingress' : '创建 Ingress'"
     width="1000px"
+    class="network-resource-dialog"
     :close-on-click-modal="false"
     :lock-scroll="false"
     @close="handleClose"
@@ -1245,5 +1246,269 @@ defineExpose({
 :deep(.el-form-item__label) {
   color: #606266;
   font-weight: 500;
+}
+
+/* 网络资源编辑弹窗统一视觉：去掉旧金色，保持和 OpsHub 其他模块一致 */
+:deep(.network-resource-dialog.el-dialog),
+:deep(.network-resource-dialog .el-dialog) {
+  --net-dialog-ink: #111827;
+  --net-dialog-muted: #6b7280;
+  --net-dialog-border: #e5e7eb;
+  --net-dialog-soft: #f8fafc;
+  --net-dialog-panel: #ffffff;
+  border-radius: 18px;
+  overflow: hidden;
+  background: var(--net-dialog-panel);
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.2);
+}
+
+:deep(.network-resource-dialog .el-dialog__header),
+:deep(.network-resource-dialog.el-dialog .el-dialog__header) {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--net-dialog-border);
+  background: #ffffff;
+}
+
+:deep(.network-resource-dialog .el-dialog__title),
+:deep(.network-resource-dialog.el-dialog .el-dialog__title) {
+  color: var(--net-dialog-ink);
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+:deep(.network-resource-dialog .el-dialog__headerbtn .el-dialog__close),
+:deep(.network-resource-dialog.el-dialog .el-dialog__headerbtn .el-dialog__close) {
+  color: #9ca3af;
+}
+
+:deep(.network-resource-dialog .el-dialog__headerbtn:hover .el-dialog__close),
+:deep(.network-resource-dialog.el-dialog .el-dialog__headerbtn:hover .el-dialog__close) {
+  color: var(--net-dialog-ink);
+}
+
+:deep(.network-resource-dialog .el-dialog__body),
+:deep(.network-resource-dialog.el-dialog .el-dialog__body) {
+  padding: 20px 24px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  color: var(--net-dialog-ink);
+}
+
+:deep(.network-resource-dialog .el-dialog__footer),
+:deep(.network-resource-dialog.el-dialog .el-dialog__footer) {
+  padding: 16px 24px;
+  border-top: 1px solid var(--net-dialog-border);
+  background: #ffffff;
+}
+
+.basic-info-section {
+  margin-bottom: 18px;
+  padding: 18px 18px 2px;
+  border: 1px solid var(--net-dialog-border);
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.ingress-tabs {
+  margin-top: 0;
+}
+
+.ingress-tabs :deep(.el-tabs__header) {
+  margin: 0 0 16px;
+  padding: 0 2px;
+  border-bottom: 1px solid var(--net-dialog-border);
+}
+
+.ingress-tabs :deep(.el-tabs__item) {
+  height: 42px;
+  color: var(--net-dialog-muted);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.ingress-tabs :deep(.el-tabs__item:hover),
+.ingress-tabs :deep(.el-tabs__item.is-active) {
+  color: var(--net-dialog-ink);
+}
+
+.ingress-tabs :deep(.el-tabs__active-bar) {
+  height: 3px;
+  border-radius: 999px 999px 0 0;
+  background: var(--net-dialog-ink);
+}
+
+.tab-content {
+  min-height: 400px;
+}
+
+.rule-item,
+.path-card,
+.tls-item,
+.labels-config,
+.annotations-config,
+.kv-item {
+  border-color: var(--net-dialog-border);
+  background: #ffffff;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
+}
+
+.rule-item,
+.tls-item {
+  border-radius: 16px;
+}
+
+.path-card {
+  border-radius: 14px;
+}
+
+.rule-header,
+.tls-header,
+.rule-paths-section,
+.config-header-with-desc {
+  border-color: var(--net-dialog-border);
+}
+
+.rule-title,
+.tls-title,
+.paths-title,
+.path-card-header,
+.header-text .title {
+  color: var(--net-dialog-ink);
+  font-weight: 800;
+}
+
+.rule-title .title-icon,
+.tls-title .title-icon {
+  color: #111827;
+}
+
+.field-group label,
+:deep(.el-form-item__label) {
+  color: #374151;
+  font-weight: 700;
+}
+
+:deep(.el-input__wrapper),
+:deep(.el-select .el-input__wrapper),
+:deep(.el-input-number .el-input__wrapper) {
+  border: 1px solid #d8dee8;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+:deep(.el-input__wrapper:hover),
+:deep(.el-select .el-input__wrapper:hover),
+:deep(.el-input-number .el-input__wrapper:hover) {
+  border-color: #9ca3af;
+  box-shadow: none;
+}
+
+:deep(.el-input__wrapper.is-focus),
+:deep(.el-select .el-input__wrapper.is-focus),
+:deep(.el-input-number .el-input__wrapper.is-focus) {
+  border-color: #111827;
+  box-shadow: 0 0 0 2px rgba(17, 24, 39, 0.08);
+}
+
+:deep(.el-input-number__decrease),
+:deep(.el-input-number__increase) {
+  border-color: #d8dee8;
+  background: #f9fafb;
+  color: #6b7280;
+}
+
+:deep(.el-input-number__decrease:hover),
+:deep(.el-input-number__increase:hover) {
+  color: #111827;
+}
+
+:deep(.el-button--primary:not(.is-link)) {
+  height: 36px;
+  padding: 0 18px;
+  border: 1px solid #111827;
+  border-radius: 10px;
+  background: #111827;
+  color: #ffffff;
+  font-weight: 800;
+  box-shadow: none;
+}
+
+:deep(.el-button--primary:not(.is-link):hover) {
+  border-color: #374151;
+  background: #374151;
+  color: #ffffff;
+}
+
+:deep(.el-button--default) {
+  height: 36px;
+  padding: 0 18px;
+  border: 1px solid #d8dee8;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #4b5563;
+  font-weight: 700;
+}
+
+:deep(.el-button--default:hover) {
+  border-color: #9ca3af;
+  background: #f9fafb;
+  color: #111827;
+}
+
+:deep(.el-button--primary.is-link) {
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 9px;
+  background: #ffffff;
+  color: #111827;
+  font-weight: 800;
+}
+
+:deep(.el-button--primary.is-link:hover) {
+  border-color: #9ca3af;
+  background: #f3f4f6;
+  color: #111827;
+}
+
+:deep(.el-button.is-link.is-danger),
+:deep(.el-button--danger.is-link) {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid #fecdd3;
+  border-radius: 9px;
+  background: #fff1f2;
+  color: #dc2626;
+}
+
+:deep(.el-button.is-link.is-danger:hover),
+:deep(.el-button--danger.is-link:hover) {
+  border-color: #fca5a5;
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.host-tag {
+  border-color: #d1d5db;
+  background: #f3f4f6;
+  color: #111827;
+  font-weight: 700;
+}
+
+.kv-item:hover {
+  border-color: #9ca3af;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+}
+
+.empty-state {
+  border-color: #d8dee8;
+  background: #f9fafb;
+}
+
+.dialog-footer {
+  gap: 10px;
 }
 </style>

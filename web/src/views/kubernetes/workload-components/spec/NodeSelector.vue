@@ -3,13 +3,13 @@
     <!-- 调度类型选择 -->
     <div class="scheduling-type-content">
       <el-radio-group v-model="localSchedulingType" class="scheduling-type-radio" @change="handleSchedulingTypeChange">
-        <el-radio value="any" class="scheduling-radio-item">
+        <el-radio value="any" class="scheduling-radio-item" @click="selectSchedulingType('any')">
           <span class="radio-label">任意可用节点</span>
         </el-radio>
-        <el-radio value="specified" class="scheduling-radio-item">
+        <el-radio value="specified" class="scheduling-radio-item" @click="selectSchedulingType('specified')">
           <span class="radio-label">指定节点</span>
         </el-radio>
-        <el-radio value="match" class="scheduling-radio-item">
+        <el-radio value="match" class="scheduling-radio-item" @click="selectSchedulingType('match')">
           <span class="radio-label">调度规则匹配</span>
         </el-radio>
       </el-radio-group>
@@ -137,6 +137,15 @@ const emit = defineEmits<{
 const localSchedulingType = ref(props.formData.schedulingType || 'any')
 const localSpecifiedNode = ref(props.formData.specifiedNode || '')
 
+const selectSchedulingType = (type: string) => {
+  if (localSchedulingType.value === type) {
+    handleSchedulingTypeChange(type)
+    return
+  }
+  localSchedulingType.value = type
+  handleSchedulingTypeChange(type)
+}
+
 // 监听 props 变化
 watch(() => props.formData, (newData) => {
   localSchedulingType.value = newData.schedulingType || 'any'
@@ -145,6 +154,7 @@ watch(() => props.formData, (newData) => {
 
 // 处理调度类型变化
 const handleSchedulingTypeChange = async (newType: string) => {
+  localSchedulingType.value = newType
 
   // 如果切换到非"指定节点"类型，清空指定节点
   if (newType !== 'specified') {

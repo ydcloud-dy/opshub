@@ -9613,7 +9613,7 @@ type BatchWorkloadsRequest struct {
 type WorkloadItem struct {
 	Namespace string `json:"namespace" binding:"required"`
 	Name      string `json:"name" binding:"required"`
-	Type      string `json:"type" binding:"required"` // Deployment, StatefulSet, DaemonSet, Job, Pod
+	Type      string `json:"type" binding:"required"` // Deployment, StatefulSet, DaemonSet, Job, CronJob, Pod
 }
 
 // BatchWorkloadResult 批量工作负载操作结果
@@ -9681,6 +9681,8 @@ func (h *ResourceHandler) BatchDeleteWorkloads(c *gin.Context) {
 			err = clientset.AppsV1().DaemonSets(item.Namespace).Delete(c.Request.Context(), item.Name, metav1.DeleteOptions{})
 		case "Job":
 			err = clientset.BatchV1().Jobs(item.Namespace).Delete(c.Request.Context(), item.Name, metav1.DeleteOptions{})
+		case "CronJob":
+			err = clientset.BatchV1().CronJobs(item.Namespace).Delete(c.Request.Context(), item.Name, metav1.DeleteOptions{})
 		case "Pod":
 			err = clientset.CoreV1().Pods(item.Namespace).Delete(c.Request.Context(), item.Name, metav1.DeleteOptions{})
 		default:

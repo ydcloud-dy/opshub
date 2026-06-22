@@ -8,7 +8,15 @@
             <span class="port-number">端口 {{ index + 1 }}</span>
             <span v-if="port.name" class="port-name">{{ port.name }}</span>
           </div>
-          <el-button type="danger" link @click="removePort(index)" :icon="Delete" size="small">删除</el-button>
+          <el-button
+            type="danger"
+            link
+            @click="removePort(index)"
+            :icon="Delete"
+            size="small"
+            title="删除端口"
+            aria-label="删除端口"
+          />
         </div>
         <div class="port-card-body">
           <div class="port-field-row">
@@ -125,7 +133,7 @@ const updatePorts = () => {
 }
 
 .port-item-card {
-  border: 1px solid #e8e8e8;
+  border: 1px solid #e5e7eb;
   border-radius: 12px;
   overflow: hidden;
   background: #ffffff;
@@ -134,8 +142,8 @@ const updatePorts = () => {
 }
 
 .port-item-card:hover {
-  border-color: #d4af37;
-  box-shadow: 0 4px 16px rgba(212, 175, 55, 0.15);
+  border-color: #d1d5db;
+  box-shadow: none;
 }
 
 .port-card-header {
@@ -143,8 +151,8 @@ const updatePorts = () => {
   justify-content: space-between;
   align-items: center;
   padding: 16px 20px;
-  background: linear-gradient(135deg, #fafafa 0%, #ffffff 100%);
-  border-bottom: 1px solid #e8e8e8;
+  background: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
 }
 
 .port-title {
@@ -161,12 +169,13 @@ const updatePorts = () => {
 
 .port-name {
   padding: 4px 12px;
-  background: #d4af37;
-  color: #1a1a1a;
-  border-radius: 6px;
+  background: #f3f4f6;
+  color: #374151;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
   font-size: 12px;
-  font-weight: 600;
-  box-shadow: 0 2px 6px rgba(212, 175, 55, 0.3);
+  font-weight: 700;
+  box-shadow: none;
 }
 
 .port-card-body {
@@ -211,13 +220,13 @@ const updatePorts = () => {
 }
 
 .port-card-body :deep(.el-input__wrapper:hover) {
-  border-color: #d4af37;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 0 0 3px rgba(212, 175, 55, 0.1);
+  border-color: #9ca3af;
+  box-shadow: none;
 }
 
 .port-card-body :deep(.el-input__wrapper.is-focus) {
-  border-color: #d4af37;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 0 0 4px rgba(212, 175, 55, 0.15);
+  border-color: #111827;
+  box-shadow: 0 0 0 2px rgba(17, 24, 39, 0.08);
 }
 
 .port-card-body :deep(.el-input-number) {
@@ -258,14 +267,36 @@ const updatePorts = () => {
 
 .add-port-section .el-button {
   border-radius: 8px;
-  font-weight: 500;
-  background: #d4af37;
-  border: none;
-  color: #1a1a1a;
+  font-weight: 700;
+  background: #111827;
+  border: 1px solid #111827;
+  color: #ffffff;
+  box-shadow: none;
 }
 
 .add-port-section .el-button:hover {
-  background: #c9a227;
-  box-shadow: 0 4px 12px rgba(212, 175, 55, 0.4);
+  background: #374151;
+  border-color: #374151;
+  color: #ffffff;
+  box-shadow: none;
+}
+
+.port-card-header :deep(.el-button--danger),
+.port-card-header :deep(.el-button--danger.is-link) {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid #fecdd3;
+  border-radius: 8px;
+  background: #fff1f2;
+  color: #dc2626;
+}
+
+.port-card-header :deep(.el-button--danger:hover),
+.port-card-header :deep(.el-button--danger.is-link:hover) {
+  border-color: #fca5a5;
+  background: #fee2e2;
+  color: #b91c1c;
 }
 </style>

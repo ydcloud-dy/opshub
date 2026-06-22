@@ -38,6 +38,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/remotecommand"
 
+	arthasresources "github.com/ydcloud-dy/opshub/plugins/kubernetes/resources/arthas"
 	"github.com/ydcloud-dy/opshub/plugins/kubernetes/service"
 )
 
@@ -45,6 +46,29 @@ import (
 type ArthasHandler struct {
 	clusterService *service.ClusterService
 	db             *gorm.DB
+}
+
+type commandBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *commandBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *commandBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+func (b *commandBuffer) Len() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Len()
 }
 
 // NewArthasHandler 创建Arthas处理器
@@ -57,7 +81,9 @@ func NewArthasHandler(clusterService *service.ClusterService, db *gorm.DB) *Arth
 
 func arthasBootEnsureScript() string {
 	return `
-ARTHAS_BOOT="/tmp/arthas-boot.jar"
+ARTHAS_HOME="/tmp/arthas-bin"
+ARTHAS_BOOT="$ARTHAS_HOME/arthas-boot.jar"
+ARTHAS_LEGACY_BOOT="/tmp/arthas-boot.jar"
 ARTHAS_URL="https://arthas.aliyun.com/arthas-boot.jar"
 ARTHAS_LOCK="/tmp/opshub-arthas-download.lock"
 
@@ -70,10 +96,18 @@ ensure_arthas_boot() {
     if [ -s "$ARTHAS_BOOT" ]; then
         return 0
     fi
+    if [ -s "$ARTHAS_LEGACY_BOOT" ]; then
+        ARTHAS_BOOT="$ARTHAS_LEGACY_BOOT"
+        return 0
+    fi
 
     lock_wait=0
     while ! mkdir "$ARTHAS_LOCK" 2>/dev/null; do
         if [ -s "$ARTHAS_BOOT" ]; then
+            return 0
+        fi
+        if [ -s "$ARTHAS_LEGACY_BOOT" ]; then
+            ARTHAS_BOOT="$ARTHAS_LEGACY_BOOT"
             return 0
         fi
         lock_wait=$((lock_wait + 1))
@@ -90,17 +124,22 @@ ensure_arthas_boot() {
         release_arthas_lock
         return 0
     fi
+    if [ -s "$ARTHAS_LEGACY_BOOT" ]; then
+        ARTHAS_BOOT="$ARTHAS_LEGACY_BOOT"
+        release_arthas_lock
+        return 0
+    fi
 
     echo "[INFO] Downloading arthas-boot.jar..."
-    tmp_file="${ARTHAS_BOOT}.tmp.$$"
+    tmp_file="${ARTHAS_LEGACY_BOOT}.tmp.$$"
     rm -f "$tmp_file"
 
     if command -v curl >/dev/null 2>&1; then
-        curl -fSL -o "$tmp_file" "$ARTHAS_URL" 2>/dev/null || true
+        curl -fSL --connect-timeout 10 --max-time 60 -o "$tmp_file" "$ARTHAS_URL" 2>/dev/null || true
     fi
 
     if [ ! -s "$tmp_file" ] && command -v wget >/dev/null 2>&1; then
-        wget -q -O "$tmp_file" "$ARTHAS_URL" 2>/dev/null || true
+        wget -q -T 60 -t 1 -O "$tmp_file" "$ARTHAS_URL" 2>/dev/null || true
     fi
 
     if [ ! -s "$tmp_file" ]; then
@@ -110,8 +149,9 @@ ensure_arthas_boot() {
         return 1
     fi
 
-    mv "$tmp_file" "$ARTHAS_BOOT"
-    chmod 644 "$ARTHAS_BOOT" 2>/dev/null || true
+    mv "$tmp_file" "$ARTHAS_LEGACY_BOOT"
+    chmod 644 "$ARTHAS_LEGACY_BOOT" 2>/dev/null || true
+    ARTHAS_BOOT="$ARTHAS_LEGACY_BOOT"
     release_arthas_lock
     return 0
 }
@@ -122,38 +162,98 @@ ensure_arthas_boot || exit 1
 
 func arthasJavaEnsureScript() string {
 	return `
-find_jdk() {
-    JAVA_PATHS="/usr/lib/jvm /opt/java /opt/jdk /usr/java /opt /Library/Java/JavaVirtualMachines"
+resolve_java_path() {
+    java_path="$1"
+    if [ -z "$java_path" ]; then
+        return 1
+    fi
+    if command -v readlink >/dev/null 2>&1; then
+        resolved="$(readlink -f "$java_path" 2>/dev/null || readlink "$java_path" 2>/dev/null || true)"
+        if [ -n "$resolved" ]; then
+            echo "$resolved"
+            return 0
+        fi
+    fi
+    echo "$java_path"
+    return 0
+}
 
+find_runnable_java() {
+    if [ -n "$TARGET_PID" ] && [ -e "/proc/$TARGET_PID/exe" ]; then
+        proc_java="$(resolve_java_path "/proc/$TARGET_PID/exe")"
+        if [ -n "$proc_java" ] && [ -x "$proc_java" ]; then
+            echo "$proc_java"
+            return 0
+        fi
+    fi
+
+    if [ -n "$JAVA_HOME" ] && [ -x "$JAVA_HOME/bin/java" ]; then
+        resolve_java_path "$JAVA_HOME/bin/java"
+        return 0
+    fi
+
+    if command -v java >/dev/null 2>&1; then
+        resolve_java_path "$(command -v java)"
+        return 0
+    fi
+
+    for java_path in /usr/bin/java /usr/local/bin/java /opt/java/openjdk/bin/java /opt/jdk/bin/java; do
+        if [ -x "$java_path" ]; then
+            resolve_java_path "$java_path"
+            return 0
+        fi
+    done
+
+    JAVA_PATHS="/usr/lib/jvm /opt/java /opt/jdk /usr/java /opt"
     for base in $JAVA_PATHS; do
         if [ -d "$base" ]; then
             for java_bin in $(find "$base" -name "java" -type f 2>/dev/null | grep -E "/bin/java$" | head -10); do
-                java_home=$(dirname $(dirname "$java_bin"))
-                if [ -f "$java_home/lib/tools.jar" ] || [ -d "$java_home/jmods" ]; then
-                    echo "$java_bin"
+                if [ -x "$java_bin" ]; then
+                    resolve_java_path "$java_bin"
                     return 0
                 fi
             done
         fi
     done
 
-    if [ -n "$JAVA_HOME" ]; then
-        if [ -f "$JAVA_HOME/lib/tools.jar" ] || [ -d "$JAVA_HOME/jmods" ]; then
-            echo "$JAVA_HOME/bin/java"
-            return 0
-        fi
-    fi
-
     return 1
 }
 
-JAVA_BIN=$(find_jdk)
+derive_java_home() {
+    java_bin="$1"
+    java_dir="$(dirname "$java_bin" 2>/dev/null || true)"
+    java_home="$(dirname "$java_dir" 2>/dev/null || true)"
+    if [ -n "$java_home" ] && [ -x "$java_home/bin/java" ]; then
+        echo "$java_home"
+        return 0
+    fi
+    return 1
+}
+
+JAVA_BIN=$(find_runnable_java)
 if [ -z "$JAVA_BIN" ]; then
-    echo "[ERROR] 未找到 JDK 环境，Arthas 需要完整的 JDK"
+    echo "[ERROR] 未找到可执行 java，无法启动 Arthas"
+    if [ -n "$TARGET_PID" ]; then
+        echo "[ERROR] 目标进程 PID: $TARGET_PID"
+        echo "[HINT] 请确认容器内 /proc/$TARGET_PID/exe 可访问，或者 PATH/JAVA_HOME 中存在 java 命令"
+    fi
     exit 1
 fi
 
+if [ -z "$JAVA_HOME" ]; then
+    JAVA_HOME="$(derive_java_home "$JAVA_BIN" 2>/dev/null || true)"
+    if [ -n "$JAVA_HOME" ]; then
+        export JAVA_HOME
+    fi
+fi
+
 echo "[INFO] Using Java: $JAVA_BIN"
+if [ -n "$JAVA_HOME" ]; then
+    echo "[INFO] JAVA_HOME: $JAVA_HOME"
+fi
+if [ -n "$JAVA_HOME" ] && [ ! -f "$JAVA_HOME/lib/tools.jar" ] && [ ! -d "$JAVA_HOME/jmods" ]; then
+    echo "[WARN] 当前 Java Home 未发现 tools.jar/jmods，将继续尝试 Arthas attach"
+fi
 `
 }
 
@@ -161,9 +261,18 @@ func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'"
 }
 
+const (
+	bundledArthasBootPath = "/tmp/arthas-bin/arthas-boot.jar"
+	legacyArthasBootPath  = "/tmp/arthas-boot.jar"
+)
+
 func summarizeArthasError(detail string) string {
 	lowerDetail := strings.ToLower(detail)
 	switch {
+	case strings.Contains(lowerDetail, "缺少 tar") || strings.Contains(lowerDetail, "missing tar"):
+		return "目标容器缺少 tar 命令，无法注入内置 Arthas 包"
+	case strings.Contains(lowerDetail, "failed to download arthas"):
+		return "目标容器无法下载 Arthas，请检查容器出网或使用内置包注入"
 	case strings.Contains(lowerDetail, "connection refused") || strings.Contains(lowerDetail, "connect to telnet server error"):
 		return "Arthas telnet 连接失败，已尝试复用/切换端口，请查看诊断详情"
 	case strings.Contains(lowerDetail, "unable to attach") || strings.Contains(lowerDetail, "attach not supported"):
@@ -172,8 +281,12 @@ func summarizeArthasError(detail string) string {
 		return "目标 Java 进程不存在，请重新选择进程"
 	case strings.Contains(lowerDetail, "permission denied"):
 		return "权限不足，无法注入 Arthas 到目标进程"
-	case strings.Contains(lowerDetail, "未找到 jdk") || strings.Contains(lowerDetail, "jdk"):
-		return "容器中未找到完整 JDK，无法使用 Arthas"
+	case strings.Contains(lowerDetail, "未找到 jdk") ||
+		strings.Contains(lowerDetail, "需要完整的 jdk") ||
+		strings.Contains(lowerDetail, "tools.jar"):
+		return "容器中缺少 Arthas attach 需要的 JDK 工具，请查看诊断详情"
+	case strings.Contains(lowerDetail, "未找到可执行 java"):
+		return "容器中未找到可执行 java，无法启动 Arthas"
 	default:
 		return "执行 Arthas 命令失败，请查看诊断详情"
 	}
@@ -421,8 +534,11 @@ func (h *ArthasHandler) ExecuteArthasCommand(c *gin.Context) {
 	// 构建Arthas命令
 	arthasCmd := h.buildArthasCommand(req.ProcessID, req.Command)
 
-	// 执行命令
-	output, err := h.execCommand(c.Request.Context(), req.ClusterID, currentUserID.(uint), req.Namespace, req.Pod, req.Container, arthasCmd)
+	// 执行命令。连接验证类命令不能无限跟随浏览器请求等待，否则页面会停在“正在验证”。
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 45*time.Second)
+	defer cancel()
+
+	output, err := h.execCommand(ctx, req.ClusterID, currentUserID.(uint), req.Namespace, req.Pod, req.Container, arthasCmd)
 	if err != nil {
 		detail := err.Error()
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -450,59 +566,12 @@ TARGET_PID=%s
 COMMAND=%s
 echo "[INFO] Executing Arthas command on process $TARGET_PID: $COMMAND"
 
-# 查找可用的 JDK（需要有 tools.jar 或 jdk.attach 模块）
-find_jdk() {
-    # 常见的 Java 安装路径
-    JAVA_PATHS="/usr/lib/jvm /opt/java /opt/jdk /usr/java /opt /Library/Java/JavaVirtualMachines"
-
-    for base in $JAVA_PATHS; do
-        if [ -d "$base" ]; then
-            # 查找所有 java 可执行文件
-            for java_bin in $(find "$base" -name "java" -type f 2>/dev/null | grep -E "/bin/java$" | head -10); do
-                java_home=$(dirname $(dirname "$java_bin"))
-
-                # 检查是否有 tools.jar (Java 8) 或 jmods 目录 (Java 9+)
-                if [ -f "$java_home/lib/tools.jar" ]; then
-                    echo "[DEBUG] Found JDK with tools.jar: $java_home" >&2
-                    echo "$java_bin"
-                    return 0
-                fi
-                if [ -d "$java_home/jmods" ]; then
-                    echo "[DEBUG] Found JDK with jmods: $java_home" >&2
-                    echo "$java_bin"
-                    return 0
-                fi
-            done
-        fi
-    done
-
-    # 如果没找到，尝试使用 JAVA_HOME
-    if [ -n "$JAVA_HOME" ]; then
-        if [ -f "$JAVA_HOME/lib/tools.jar" ] || [ -d "$JAVA_HOME/jmods" ]; then
-            echo "$JAVA_HOME/bin/java"
-            return 0
-        fi
-    fi
-
-    # 没有找到 JDK
-    return 1
-}
-
-# 查找 JDK
-JAVA_BIN=$(find_jdk)
-if [ -z "$JAVA_BIN" ]; then
-    echo "[ERROR] 未找到 JDK 环境"
-    echo "[ERROR] Arthas 需要完整的 JDK（不是 JRE）才能运行"
-    echo "[ERROR] 当前 Java 环境: $(java -version 2>&1 | head -1)"
-    echo ""
-    echo "[HINT] 解决方案:"
-    echo "  1. 修改容器基础镜像，使用 JDK 而不是 JRE"
-    echo "     例如: eclipse-temurin:17-jdk 或 openjdk:17-jdk"
-    echo "  2. 在 Dockerfile 中安装完整的 JDK"
+if [ -z "$TARGET_PID" ]; then
+    echo "[ERROR] 未指定 Java 进程 PID"
     exit 1
 fi
 
-echo "[INFO] Using Java: $JAVA_BIN"
+%s
 
 # 端口选择必须优先复用已启动的 Arthas agent；同一个 JVM 已 attach 后端口不会因为再次传参而改变。
 PORT_CACHE="/tmp/opshub-arthas-${TARGET_PID}.port"
@@ -524,10 +593,10 @@ if [ -s "$PORT_CACHE" ]; then
 fi
 
 add_port 3658
-add_port $((3658 + (TARGET_PID %% 100)))
+add_port $((3658 + (TARGET_PID %% 20)))
 
 port_offset=0
-while [ "$port_offset" -le 20 ]; do
+while [ "$port_offset" -le 8 ]; do
     add_port $((3658 + port_offset))
     port_offset=$((port_offset + 1))
 done
@@ -564,8 +633,8 @@ print_failure_context() {
     done
 }
 
-# 主执行逻辑
-MAX_ATTEMPTS_PER_PORT=4
+# 主执行逻辑。保持重试足够短，避免页面长时间卡在“正在验证”。
+MAX_ATTEMPTS_PER_PORT=3
 LAST_OUTPUT=""
 
 for PORT in $PORTS; do
@@ -573,7 +642,7 @@ for PORT in $PORTS; do
     while [ "$ATTEMPT" -le "$MAX_ATTEMPTS_PER_PORT" ]; do
         echo "[INFO] Attempt $ATTEMPT/$MAX_ATTEMPTS_PER_PORT on telnet port $PORT"
 
-        OUTPUT=$($JAVA_BIN -jar /tmp/arthas-boot.jar $TARGET_PID --telnet-port $PORT --http-port -1 -c "$COMMAND" 2>&1)
+        OUTPUT=$($JAVA_BIN -jar "$ARTHAS_BOOT" $TARGET_PID --telnet-port $PORT --http-port -1 -c "$COMMAND" 2>&1)
         STATUS=$?
         LAST_OUTPUT="$OUTPUT"
 
@@ -613,7 +682,7 @@ done
 
 print_failure_context
 exit 1
-`, arthasBootEnsureScript(), shellQuote(processID), shellQuote(command))
+`, arthasBootEnsureScript(), shellQuote(processID), shellQuote(command), arthasJavaEnsureScript())
 
 	return []string{"sh", "-c", script}
 }
@@ -1487,11 +1556,28 @@ func (h *ArthasHandler) execCommand(ctx context.Context, clusterID, userID uint,
 		return "", fmt.Errorf("创建executor失败: %w", err)
 	}
 
-	var stdout, stderr bytes.Buffer
-	err = executor.StreamWithContext(ctx, remotecommand.StreamOptions{
-		Stdout: &stdout,
-		Stderr: &stderr,
-	})
+	var stdout, stderr commandBuffer
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- executor.StreamWithContext(ctx, remotecommand.StreamOptions{
+			Stdout: &stdout,
+			Stderr: &stderr,
+		})
+	}()
+
+	var streamErr error
+	select {
+	case streamErr = <-errCh:
+	case <-ctx.Done():
+		output := stdout.String()
+		if stderr.Len() > 0 {
+			output += "\n--- stderr ---\n" + stderr.String()
+		}
+		if len(output) > 0 {
+			return "", fmt.Errorf("执行命令超时: %s\n输出: %s", ctx.Err().Error(), output)
+		}
+		return "", fmt.Errorf("执行命令超时: %w", ctx.Err())
+	}
 
 	// 即使命令返回非零退出码，也返回输出内容用于调试
 	output := stdout.String()
@@ -1499,15 +1585,138 @@ func (h *ArthasHandler) execCommand(ctx context.Context, clusterID, userID uint,
 		output += "\n--- stderr ---\n" + stderr.String()
 	}
 
-	if err != nil {
+	if streamErr != nil {
 		// 如果有输出，包含在错误信息中便于调试
 		if len(output) > 0 {
-			return "", fmt.Errorf("执行命令失败: %s\n输出: %s", err.Error(), output)
+			return "", fmt.Errorf("执行命令失败: %s\n输出: %s", streamErr.Error(), output)
 		}
-		return "", fmt.Errorf("执行命令失败: %w", err)
+		return "", fmt.Errorf("执行命令失败: %w", streamErr)
 	}
 
 	return output, nil
+}
+
+func (h *ArthasHandler) copyToPod(ctx context.Context, clusterID, userID uint, namespace, pod, container, targetPath string, data []byte) (string, error) {
+	if len(data) == 0 {
+		return "", fmt.Errorf("内置 Arthas 包为空")
+	}
+
+	restConfig, err := h.clusterService.GetRESTConfig(clusterID, userID)
+	if err != nil {
+		return "", fmt.Errorf("获取集群配置失败: %w", err)
+	}
+
+	serverURL, err := url.Parse(restConfig.Host)
+	if err != nil {
+		return "", fmt.Errorf("解析集群URL失败: %w", err)
+	}
+
+	query := url.Values{}
+	query.Set("container", container)
+	query.Set("stdin", "true")
+	query.Set("stdout", "true")
+	query.Set("stderr", "true")
+	query.Set("tty", "false")
+	query.Add("command", "sh")
+	query.Add("command", "-c")
+	query.Add("command", fmt.Sprintf("cat > %s", shellQuote(targetPath)))
+
+	execURL := &url.URL{
+		Scheme:   serverURL.Scheme,
+		Host:     serverURL.Host,
+		Path:     fmt.Sprintf("/api/v1/namespaces/%s/pods/%s/exec", namespace, pod),
+		RawQuery: query.Encode(),
+	}
+
+	executor, err := remotecommand.NewSPDYExecutor(restConfig, "POST", execURL)
+	if err != nil {
+		return "", fmt.Errorf("创建executor失败: %w", err)
+	}
+
+	reader := bytes.NewReader(data)
+	var stdout, stderr bytes.Buffer
+	err = executor.StreamWithContext(ctx, remotecommand.StreamOptions{
+		Stdin:  reader,
+		Stdout: &stdout,
+		Stderr: &stderr,
+		Tty:    false,
+	})
+
+	output := stdout.String()
+	if stderr.Len() > 0 {
+		output += "\n--- stderr ---\n" + stderr.String()
+	}
+	if err != nil {
+		if output != "" {
+			return output, fmt.Errorf("复制文件到容器失败: %s\n输出: %s", err.Error(), output)
+		}
+		return output, fmt.Errorf("复制文件到容器失败: %w", err)
+	}
+
+	return output, nil
+}
+
+func (h *ArthasHandler) injectBundledArthas(ctx context.Context, clusterID, userID uint, namespace, pod, container string) (string, error) {
+	checkOutput, _ := h.execCommand(ctx, clusterID, userID, namespace, pod, container, []string{"sh", "-c", fmt.Sprintf("[ -s %s ] && echo ready || true", shellQuote(bundledArthasBootPath))})
+	if strings.Contains(checkOutput, "ready") {
+		return "[INFO] 内置 Arthas 已存在，跳过注入", nil
+	}
+
+	const tarPath = "/tmp/opshub-arthas-bin.tar"
+	steps := []string{}
+
+	prepareScript := `
+set -e
+if ! command -v tar >/dev/null 2>&1; then
+    echo "[ERROR] 目标容器缺少 tar 命令，无法解压内置 Arthas 包"
+    exit 1
+fi
+mkdir -p /tmp
+rm -rf /tmp/arthas-bin /tmp/opshub-arthas-bin.tar
+`
+	if out, err := h.execCommand(ctx, clusterID, userID, namespace, pod, container, []string{"sh", "-c", prepareScript}); err != nil {
+		return out, err
+	} else if strings.TrimSpace(out) != "" {
+		steps = append(steps, out)
+	}
+
+	if out, err := h.copyToPod(ctx, clusterID, userID, namespace, pod, container, tarPath, arthasresources.PackageTar()); err != nil {
+		return out, err
+	} else if strings.TrimSpace(out) != "" {
+		steps = append(steps, out)
+	}
+
+	extractScript := fmt.Sprintf(`
+set -e
+tar -xf %s -C /tmp
+test -s %s
+chmod 644 %s 2>/dev/null || true
+rm -f %s
+echo "[INFO] 已注入 OpsHub 内置 Arthas 包"
+`, shellQuote(tarPath), shellQuote(bundledArthasBootPath), shellQuote(bundledArthasBootPath), shellQuote(tarPath))
+	out, err := h.execCommand(ctx, clusterID, userID, namespace, pod, container, []string{"sh", "-c", extractScript})
+	if strings.TrimSpace(out) != "" {
+		steps = append(steps, out)
+	}
+	if err != nil {
+		return strings.Join(steps, "\n"), err
+	}
+
+	return strings.Join(steps, "\n"), nil
+}
+
+func (h *ArthasHandler) installArthasOnlineFallback(ctx context.Context, clusterID, userID uint, namespace, pod, container string) (string, error) {
+	script := arthasBootEnsureScript() + fmt.Sprintf(`
+if [ -s %s ]; then
+    ls -la %s
+elif [ -s %s ]; then
+    ls -la %s
+else
+    echo "[ERROR] Arthas 安装后仍未找到 arthas-boot.jar"
+    exit 1
+fi
+`, shellQuote(bundledArthasBootPath), shellQuote(bundledArthasBootPath), shellQuote(legacyArthasBootPath), shellQuote(legacyArthasBootPath))
+	return h.execCommand(ctx, clusterID, userID, namespace, pod, container, []string{"sh", "-c", script})
 }
 
 // ArthasWebSocket Arthas WebSocket连接（用于实时命令如trace, watch, monitor）
@@ -1628,10 +1837,10 @@ func (h *ArthasHandler) executeStreamingArthasCommand(ctx context.Context, conn 
 	script := fmt.Sprintf(`
 %s
 
-%s
-
 TARGET_PID=%s
 COMMAND=%s
+%s
+
 PORT_CACHE="/tmp/opshub-arthas-${TARGET_PID}.port"
 PORT="$(cat "$PORT_CACHE" 2>/dev/null || true)"
 if [ -z "$PORT" ]; then
@@ -1639,8 +1848,8 @@ if [ -z "$PORT" ]; then
 fi
 
 echo "[INFO] Streaming Arthas command on telnet port $PORT"
-$JAVA_BIN -jar /tmp/arthas-boot.jar $TARGET_PID --telnet-port $PORT --http-port -1 -c "$COMMAND"
-`, arthasBootEnsureScript(), arthasJavaEnsureScript(), shellQuote(processID), shellQuote(command))
+$JAVA_BIN -jar "$ARTHAS_BOOT" $TARGET_PID --telnet-port $PORT --http-port -1 -c "$COMMAND"
+`, arthasBootEnsureScript(), shellQuote(processID), shellQuote(command), arthasJavaEnsureScript())
 
 	query := url.Values{}
 	query.Set("container", container)
@@ -1836,35 +2045,7 @@ OUTPUT_FILE=%s
 
 echo "[INFO] Starting Arthas profiler on process $TARGET_PID with options: $PROFILER_OPTS"
 
-# 查找可用的 JDK
-find_jdk() {
-    JAVA_PATHS="/usr/lib/jvm /opt/java /opt/jdk /usr/java /opt /Library/Java/JavaVirtualMachines"
-    for base in $JAVA_PATHS; do
-        if [ -d "$base" ]; then
-            for java_bin in $(find "$base" -name "java" -type f 2>/dev/null | grep -E "/bin/java$" | head -10); do
-                java_home=$(dirname $(dirname "$java_bin"))
-                if [ -f "$java_home/lib/tools.jar" ] || [ -d "$java_home/jmods" ]; then
-                    echo "$java_bin"
-                    return 0
-                fi
-            done
-        fi
-    done
-    if [ -n "$JAVA_HOME" ]; then
-        if [ -f "$JAVA_HOME/lib/tools.jar" ] || [ -d "$JAVA_HOME/jmods" ]; then
-            echo "$JAVA_HOME/bin/java"
-            return 0
-        fi
-    fi
-    return 1
-}
-
-JAVA_BIN=$(find_jdk)
-if [ -z "$JAVA_BIN" ]; then
-    echo "[ERROR] 未找到 JDK 环境，Arthas 需要完整的 JDK"
-    exit 1
-fi
-echo "[INFO] Using Java: $JAVA_BIN"
+%s
 
 # 删除旧的输出文件
 rm -f "$OUTPUT_FILE" 2>/dev/null
@@ -1887,7 +2068,7 @@ execute_profiler() {
         echo "[INFO] Executing profiler command (attempt $retry_count/$max_retries) on port $port..."
 
         PROFILER_CMD="profiler start $PROFILER_OPTS"
-        OUTPUT=$($JAVA_BIN -jar /tmp/arthas-boot.jar $TARGET_PID --telnet-port $port --http-port -1 -c "$PROFILER_CMD" 2>&1)
+        OUTPUT=$($JAVA_BIN -jar "$ARTHAS_BOOT" $TARGET_PID --telnet-port $port --http-port -1 -c "$PROFILER_CMD" 2>&1)
 
         # 检查是否是端口冲突
         if echo "$OUTPUT" | grep -qE "telnet port.*is used|process detection timeout|unexpected process"; then
@@ -1901,7 +2082,7 @@ execute_profiler() {
         if echo "$OUTPUT" | grep -q "Attach process.*success" && echo "$OUTPUT" | grep -qE "Connection refused|Connect.*error"; then
             echo "[INFO] Agent attached, waiting for command channel..."
             sleep 2
-            OUTPUT=$($JAVA_BIN -jar /tmp/arthas-boot.jar $TARGET_PID --telnet-port $port --http-port -1 -c "$PROFILER_CMD" 2>&1)
+            OUTPUT=$($JAVA_BIN -jar "$ARTHAS_BOOT" $TARGET_PID --telnet-port $port --http-port -1 -c "$PROFILER_CMD" 2>&1)
         fi
 
         echo "[INFO] Profiler command output:"
@@ -1919,7 +2100,7 @@ execute_profiler() {
 
         # 尝试使用 profiler stop 获取结果
         echo "[INFO] Output file not found, trying profiler stop..."
-        STOP_OUTPUT=$($JAVA_BIN -jar /tmp/arthas-boot.jar $TARGET_PID --telnet-port $port --http-port -1 -c "profiler stop -f $OUTPUT_FILE" 2>&1)
+        STOP_OUTPUT=$($JAVA_BIN -jar "$ARTHAS_BOOT" $TARGET_PID --telnet-port $port --http-port -1 -c "profiler stop -f $OUTPUT_FILE" 2>&1)
         echo "$STOP_OUTPUT"
 
         if [ -f "$OUTPUT_FILE" ]; then
@@ -1944,11 +2125,11 @@ fi
 
 echo "[ERROR] Failed to generate flame graph"
 echo "[HINT] 可能的原因:"
-echo "  1. 容器中没有完整的 JDK 环境"
+echo "  1. 当前 Java 运行环境不支持 Arthas attach/profiler"
 echo "  2. Arthas telnet 服务启动失败"
 echo "  3. 目标进程不支持 profiler"
 exit 1
-`, arthasBootEnsureScript(), shellQuote(processID), shellQuote(profilerOpts), shellQuote(outputFile))
+`, arthasBootEnsureScript(), shellQuote(processID), shellQuote(profilerOpts), shellQuote(outputFile), arthasJavaEnsureScript())
 
 	return []string{"sh", "-c", script}
 }
@@ -1959,6 +2140,7 @@ func (h *ArthasHandler) CheckArthasInstalled(c *gin.Context) {
 	namespace := c.Query("namespace")
 	pod := c.Query("pod")
 	container := c.Query("container")
+	processID := c.Query("processId")
 
 	if clusterIDStr == "" || namespace == "" || pod == "" || container == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -1986,12 +2168,41 @@ func (h *ArthasHandler) CheckArthasInstalled(c *gin.Context) {
 		return
 	}
 
-	// 检查Java是否存在 - 尝试多种方式检测
-	// 方式1: 直接运行 java -version
-	// 方式2: 检查 JAVA_HOME
-	// 方式3: 检查常见路径
-	// 方式4: 检查是否有 Java 进程在运行
-	javaCheckScript := `
+	javaCheckScript := fmt.Sprintf(`
+TARGET_PID=%s
+
+is_java_text() {
+    echo "$1" | grep -qiE "java|openjdk|jdk|jre|\\.jar|spring|arthas"
+}
+
+if [ -n "$TARGET_PID" ] && [ -d "/proc/$TARGET_PID" ]; then
+    PROC_EXE=""
+    if command -v readlink >/dev/null 2>&1; then
+        PROC_EXE="$(readlink -f "/proc/$TARGET_PID/exe" 2>/dev/null || readlink "/proc/$TARGET_PID/exe" 2>/dev/null || true)"
+    fi
+
+    PROC_CMDLINE=""
+    if [ -r "/proc/$TARGET_PID/cmdline" ]; then
+        PROC_CMDLINE="$(tr '\000' ' ' < "/proc/$TARGET_PID/cmdline" 2>/dev/null || true)"
+    fi
+
+    PROC_COMM=""
+    if [ -r "/proc/$TARGET_PID/comm" ]; then
+        PROC_COMM="$(cat "/proc/$TARGET_PID/comm" 2>/dev/null || true)"
+    fi
+
+    if is_java_text "$PROC_EXE $PROC_CMDLINE $PROC_COMM"; then
+        echo "Java process detected via /proc/$TARGET_PID"
+        if [ -n "$PROC_EXE" ]; then
+            echo "java: $PROC_EXE"
+        fi
+        if [ -n "$PROC_CMDLINE" ]; then
+            echo "cmdline: $PROC_CMDLINE"
+        fi
+        exit 0
+    fi
+fi
+
 # 方式1: 尝试 java -version
 if java -version 2>&1 | head -3 | grep -qiE "java version|openjdk version|runtime environment"; then
     java -version 2>&1 | head -3
@@ -2031,14 +2242,15 @@ if [ -n "$java_bin" ] && [ -x "$java_bin" ]; then
 fi
 
 exit 1
-`
+`, shellQuote(processID))
 	output, err := h.execCommand(c.Request.Context(), uint(clusterID), currentUserID.(uint), namespace, pod, container, []string{"sh", "-c", javaCheckScript})
 
 	// 检查输出是否包含 Java 版本信息或 Java 进程检测结果
 	hasJava := err == nil && (strings.Contains(strings.ToLower(output), "java version") ||
 		strings.Contains(strings.ToLower(output), "openjdk version") ||
 		strings.Contains(strings.ToLower(output), "runtime environment") ||
-		strings.Contains(strings.ToLower(output), "java process detected"))
+		strings.Contains(strings.ToLower(output), "java process detected") ||
+		strings.Contains(strings.ToLower(output), ".jar"))
 
 	javaVersion := ""
 	if hasJava {
@@ -2046,7 +2258,7 @@ exit 1
 	}
 
 	// 检查Arthas是否已缓存到Pod临时目录
-	arthasOutput, _ := h.execCommand(c.Request.Context(), uint(clusterID), currentUserID.(uint), namespace, pod, container, []string{"sh", "-c", "[ -s /tmp/arthas-boot.jar ] && echo cached || true"})
+	arthasOutput, _ := h.execCommand(c.Request.Context(), uint(clusterID), currentUserID.(uint), namespace, pod, container, []string{"sh", "-c", fmt.Sprintf("[ -s %s ] || [ -s %s ] && echo cached || true", shellQuote(bundledArthasBootPath), shellQuote(legacyArthasBootPath))})
 	hasArthas := strings.Contains(arthasOutput, "cached")
 
 	c.JSON(http.StatusOK, gin.H{
@@ -2086,23 +2298,23 @@ func (h *ArthasHandler) InstallArthas(c *gin.Context) {
 		return
 	}
 
-	// 下载Arthas。Pod重启后 /tmp 会清空；已有缓存时直接复用，不重复下载。
-	script := arthasBootEnsureScript() + `
-ls -la /tmp/arthas-boot.jar
-`
-
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 120*time.Second)
 	defer cancel()
 
-	output, err := h.execCommand(ctx, req.ClusterID, currentUserID.(uint), req.Namespace, req.Pod, req.Container, []string{"sh", "-c", script})
+	output, err := h.injectBundledArthas(ctx, req.ClusterID, currentUserID.(uint), req.Namespace, req.Pod, req.Container)
 	if err != nil {
-		detail := err.Error()
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    500,
-			"message": summarizeArthasError(detail),
-			"data":    gin.H{"detail": detail},
-		})
-		return
+		bundledErr := err
+		fallbackOutput, fallbackErr := h.installArthasOnlineFallback(ctx, req.ClusterID, currentUserID.(uint), req.Namespace, req.Pod, req.Container)
+		output = strings.TrimSpace(output + "\n" + fallbackOutput)
+		if fallbackErr != nil {
+			detail := fmt.Sprintf("内置包注入失败: %v\n在线安装失败: %v\n%s", bundledErr, fallbackErr, output)
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"code":    500,
+				"message": summarizeArthasError(detail),
+				"data":    gin.H{"detail": detail},
+			})
+			return
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{

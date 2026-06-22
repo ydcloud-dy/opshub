@@ -1011,23 +1011,23 @@ defineExpose({
 
 .yaml-dialog :deep(.el-dialog__body) {
   padding: 20px;
-  background: #f7faff;
+  background: #111111;
 }
 
 .yaml-editor-wrapper {
-  border: 1px solid #d7e2f2;
+  border: 1px solid #d4af37;
   border-radius: 16px;
-  background: #ffffff;
+  background: #000000;
 }
 
 .yaml-line-numbers {
-  background: #f8fbff;
-  color: #98a2b3;
-  border-right: 1px solid #e6ebf2;
+  background: #0d0d0d;
+  color: #666666;
+  border-right: 1px solid #333333;
 }
 
 .yaml-textarea {
-  background: #ffffff;
-  color: #1f2937;
+  background: #000000;
+  color: #d4af37;
 }
 </style>

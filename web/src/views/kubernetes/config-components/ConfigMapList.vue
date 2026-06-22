@@ -169,7 +169,7 @@
               <div class="data-section">
                 <div class="section-header">
                   <span class="section-title">Data</span>
-                  <el-button size="small" type="primary" @click="addDataRow">
+                  <el-button size="small" type="primary" class="configmap-add-btn" @click="addDataRow">
                     <el-icon><Plus /></el-icon> 添加数据
                   </el-button>
                 </div>
@@ -198,7 +198,7 @@
               <div class="binarydata-section">
                 <div class="section-header">
                   <span class="section-title">BinaryData</span>
-                  <el-button size="small" type="primary" @click="addBinaryDataRow">
+                  <el-button size="small" type="primary" class="configmap-add-btn" @click="addBinaryDataRow">
                     <el-icon><Plus /></el-icon> 添加二进制数据
                   </el-button>
                 </div>
@@ -1153,7 +1153,7 @@ defineExpose({
 
 /* ConfigMap 创建/编辑弹窗美化 */
 .configmap-editor-dialog {
-  --cfg-primary: #2563eb;
+  --cfg-primary: #111827;
   --cfg-border: #e6ebf2;
   --cfg-muted: #667085;
   --cfg-ink: #111827;
@@ -1260,9 +1260,9 @@ defineExpose({
   margin-bottom: 8px;
   padding: 5px 10px;
   border-radius: 999px;
-  background: #eff6ff;
+  background: #f3f4f6;
   color: var(--cfg-primary);
-  border: 1px solid #bfdbfe;
+  border: 1px solid #d1d5db;
   font-size: 12px;
   font-weight: 900;
 }
@@ -1289,10 +1289,10 @@ defineExpose({
 
 .configmap-hero-badges span {
   padding: 8px 10px;
-  border: 1px solid #dbeafe;
+  border: 1px solid #d1d5db;
   border-radius: 999px;
   background: #ffffff;
-  color: #1d4ed8;
+  color: #111827;
   font-size: 12px;
   font-weight: 900;
 }
@@ -1321,7 +1321,7 @@ defineExpose({
 .configmap-form :deep(.el-textarea__inner:hover),
 .configmap-form :deep(.el-textarea__inner:focus) {
   border-color: var(--cfg-primary);
-  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+  box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.08);
 }
 
 .form-tabs {
@@ -1377,11 +1377,42 @@ defineExpose({
 
 .section-header .el-button,
 .metadata-header .el-button {
-  border-radius: 999px;
+  border-radius: 10px;
   background: var(--cfg-primary);
   border-color: var(--cfg-primary);
   color: #ffffff;
   font-weight: 800;
+}
+
+.section-header .el-button:hover,
+.metadata-header .el-button:hover {
+  background: #374151;
+  border-color: #374151;
+  color: #ffffff;
+}
+
+.configmap-editor-dialog :deep(.configmap-add-btn.el-button--primary),
+.configmap-editor-dialog :deep(.configmap-add-btn.el-button--primary.is-plain),
+.configmap-form :deep(.configmap-add-btn.el-button--primary) {
+  background: #111827 !important;
+  border-color: #111827 !important;
+  color: #ffffff !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+}
+
+.configmap-editor-dialog :deep(.configmap-add-btn.el-button--primary:hover),
+.configmap-editor-dialog :deep(.configmap-add-btn.el-button--primary:focus),
+.configmap-form :deep(.configmap-add-btn.el-button--primary:hover),
+.configmap-form :deep(.configmap-add-btn.el-button--primary:focus) {
+  background: #374151 !important;
+  border-color: #374151 !important;
+  color: #ffffff !important;
+}
+
+.configmap-editor-dialog :deep(.configmap-add-btn.el-button--primary span),
+.configmap-form :deep(.configmap-add-btn.el-button--primary span) {
+  color: #ffffff !important;
 }
 
 .form-table {
@@ -1431,24 +1462,24 @@ defineExpose({
 }
 
 .yaml-dialog :deep(.el-dialog__body) {
-  background: #f7faff;
+  background: #111111;
 }
 
 .yaml-editor-wrapper {
-  border-color: #d7e2f2;
+  border-color: #d4af37;
   border-radius: 16px;
-  background: #ffffff;
+  background: #000000;
 }
 
 .yaml-line-numbers {
-  background: #f8fbff;
-  color: #98a2b3;
-  border-right-color: #e6ebf2;
+  background: #0d0d0d;
+  color: #666666;
+  border-right-color: #333333;
 }
 
 .yaml-textarea {
-  background: #ffffff;
-  color: #1f2937;
+  background: #000000;
+  color: #d4af37;
 }
 
 @media (max-width: 960px) {

@@ -39,17 +39,21 @@
                       <template v-if="row.editing">
                         <el-button type="success" link size="small" @click="saveEnvEdit(row, $index)">
                           <el-icon><Select /></el-icon>
+                          保存
                         </el-button>
                         <el-button type="info" link size="small" @click="cancelEnvEdit(row, $index)">
                           <el-icon><Close /></el-icon>
+                          取消
                         </el-button>
                       </template>
                       <template v-else>
                         <el-button type="primary" link size="small" @click="editEnv(row, $index)">
                           <el-icon><Edit /></el-icon>
+                          编辑
                         </el-button>
                         <el-button type="danger" link size="small" @click="removeEnv('normal', $index)">
                           <el-icon><Delete /></el-icon>
+                          删除
                         </el-button>
                       </template>
                     </div>
@@ -94,9 +98,11 @@
                     <div class="action-buttons">
                       <el-button type="primary" link size="small" @click="editConfigMapEnv(row, $index)">
                         <el-icon><Edit /></el-icon>
+                        编辑
                       </el-button>
                       <el-button type="danger" link size="small" @click="removeEnv('configmap', $index)">
                         <el-icon><Delete /></el-icon>
+                        删除
                       </el-button>
                     </div>
                   </template>
@@ -140,9 +146,11 @@
                     <div class="action-buttons">
                       <el-button type="primary" link size="small" @click="editSecretEnv(row, $index)">
                         <el-icon><Edit /></el-icon>
+                        编辑
                       </el-button>
                       <el-button type="danger" link size="small" @click="removeEnv('secret', $index)">
                         <el-icon><Delete /></el-icon>
+                        删除
                       </el-button>
                     </div>
                   </template>
@@ -546,6 +554,7 @@ const updateEnvs = () => {
 .env-config-content {
   padding: 0;
   background: #fff;
+  color: #111827;
 }
 
 .env-tabs-wrapper {
@@ -556,6 +565,54 @@ const updateEnvs = () => {
   width: 100%;
 }
 
+.env-type-tabs :deep(.el-tabs__header) {
+  height: auto;
+  min-height: 44px;
+  margin: 0 0 14px;
+  padding: 6px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #f9fafb;
+}
+
+.env-type-tabs :deep(.el-tabs__nav-wrap::after) {
+  display: none;
+}
+
+.env-type-tabs :deep(.el-tabs__nav) {
+  display: flex;
+  gap: 6px;
+  height: auto;
+  border: none;
+}
+
+.env-type-tabs :deep(.el-tabs__item) {
+  height: 32px;
+  line-height: 32px;
+  padding: 0 14px !important;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: #6b7280;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.env-type-tabs :deep(.el-tabs__item:hover) {
+  background: #ffffff;
+  color: #111827;
+}
+
+.env-type-tabs :deep(.el-tabs__item.is-active) {
+  border-color: #d1d5db;
+  background: #ffffff;
+  color: #111827;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+}
+
+.env-type-tabs :deep(.el-tabs__active-bar) {
+  display: none;
+}
+
 .env-section {
   width: 100%;
 }
@@ -564,9 +621,9 @@ const updateEnvs = () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 20px;
-  background: #d4af37;
-  border: 1px solid #d4af37;
+  padding: 12px 16px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
   border-radius: 12px 12px 0 0;
   margin-bottom: 0;
 }
@@ -575,42 +632,48 @@ const updateEnvs = () => {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 16px;
-  font-weight: 600;
-  color: #1a1a1a;
+  font-size: 15px;
+  font-weight: 800;
+  color: #111827;
 }
 
 .env-header-title .el-icon {
   font-size: 18px;
-  color: #d4af37;
+  color: #111827;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  background: #ffffff;
-  border-radius: 6px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  width: 30px;
+  height: 30px;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: none;
 }
 
 .env-header .el-button {
-  background: #ffffff;
-  border: 1px solid #d4af37;
-  color: #d4af37;
-  font-weight: 500;
+  height: 32px;
+  padding: 0 14px;
+  background: #111827;
+  border: 1px solid #111827;
+  border-radius: 8px;
+  color: #ffffff;
+  font-weight: 700;
+  box-shadow: none;
 }
 
 .env-header .el-button:hover {
-  background: #fafafa;
-  border-color: #c9a227;
-  box-shadow: 0 2px 8px rgba(212, 175, 55, 0.3);
+  background: #374151;
+  border-color: #374151;
+  color: #ffffff;
+  box-shadow: none;
 }
 
 .env-table-wrapper {
-  border: 1px solid #e8e8e8;
+  border: 1px solid #e5e7eb;
   border-top: none;
   border-radius: 0 0 12px 12px;
-  padding: 20px;
+  padding: 16px;
   background: #ffffff;
 }
 
@@ -620,14 +683,14 @@ const updateEnvs = () => {
 }
 
 .env-table :deep(.el-table__header-wrapper) {
-  background: linear-gradient(135deg, #fafafa 0%, #ffffff 100%);
+  background: #f9fafb;
 }
 
 .env-table :deep(.el-table__header th) {
-  background: transparent;
-  color: #333;
-  font-weight: 600;
-  border-bottom: 1px solid #e8e8e8;
+  background: #f9fafb;
+  color: #374151;
+  font-weight: 700;
+  border-bottom: 1px solid #e5e7eb;
 }
 
 .env-table :deep(.el-table__body tr) {
@@ -635,21 +698,21 @@ const updateEnvs = () => {
 }
 
 .env-table :deep(.el-table__body tr:hover) {
-  background: #fafafa;
+  background: #f9fafb;
 }
 
 .env-table :deep(.el-table__body td) {
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid #f3f4f6;
 }
 
 .env-name {
   font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
-  color: #1a1a1a;
+  color: #111827;
   font-weight: 600;
 }
 
 .env-value {
-  color: #666;
+  color: #4b5563;
   word-break: break-all;
 }
 
@@ -659,13 +722,13 @@ const updateEnvs = () => {
 }
 
 .env-resource {
-  color: #d4af37;
+  color: #111827;
   font-weight: 600;
 }
 
 .env-key {
   font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
-  color: #52c41a;
+  color: #047857;
   font-weight: 600;
 }
 
@@ -674,6 +737,66 @@ const updateEnvs = () => {
   align-items: center;
   justify-content: center;
   gap: 8px;
+}
+
+.action-buttons :deep(.el-button) {
+  width: auto;
+  min-width: 56px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  color: #374151;
+  box-shadow: none;
+}
+
+.action-buttons :deep(.el-button span) {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.action-buttons :deep(.el-button--primary),
+.action-buttons :deep(.el-button--primary.is-link) {
+  border-color: #d1d5db;
+  background: #f9fafb;
+  color: #111827;
+}
+
+.action-buttons :deep(.el-button--primary:hover),
+.action-buttons :deep(.el-button--primary.is-link:hover) {
+  border-color: #9ca3af;
+  background: #f3f4f6;
+  color: #111827;
+}
+
+.action-buttons :deep(.el-button--danger),
+.action-buttons :deep(.el-button--danger.is-link) {
+  border-color: #fecdd3;
+  background: #fff1f2;
+  color: #dc2626;
+}
+
+.action-buttons :deep(.el-button--danger:hover),
+.action-buttons :deep(.el-button--danger.is-link:hover) {
+  border-color: #fca5a5;
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.action-buttons :deep(.el-button--success),
+.action-buttons :deep(.el-button--success.is-link) {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+  color: #15803d;
+}
+
+.action-buttons :deep(.el-button--info),
+.action-buttons :deep(.el-button--info.is-link) {
+  border-color: #e5e7eb;
+  background: #f9fafb;
+  color: #4b5563;
 }
 
 :deep(.el-dialog__body) {
@@ -693,13 +816,13 @@ const updateEnvs = () => {
 }
 
 :deep(.el-input__wrapper:hover) {
-  border-color: #d4af37;
-  box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.1);
+  border-color: #9ca3af;
+  box-shadow: none;
 }
 
 :deep(.el-input__wrapper.is-focus) {
-  border-color: #d4af37;
-  box-shadow: 0 0 0 4px rgba(212, 175, 55, 0.15);
+  border-color: #111827;
+  box-shadow: 0 0 0 2px rgba(17, 24, 39, 0.08);
 }
 
 :deep(.el-tabs__content) {
@@ -712,11 +835,11 @@ const updateEnvs = () => {
 }
 
 :deep(.el-tabs__item.is-active) {
-  color: #d4af37;
+  color: #111827;
 }
 
 :deep(.el-tabs__active-bar) {
-  background: #d4af37;
+  background: #111827;
 }
 
 :deep(.el-empty) {

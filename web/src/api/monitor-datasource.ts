@@ -606,6 +606,7 @@ export const getMonitorAlertEvents = (params?: {
   severity?: string
   startDate?: string
   endDate?: string
+  sort?: 'started_at' | 'last_eval_at' | 'ended_at'
 }) => {
   return request.get('/api/v1/plugins/monitor/alert-events', { params })
 }

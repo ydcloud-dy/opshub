@@ -231,21 +231,40 @@ const emit = defineEmits<{
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  color: #111827;
 }
 
 .affinity-action-buttons {
   display: flex;
-  gap: 16px;
-  margin-bottom: 20px;
-  padding-bottom: 20px;
-  border-bottom: 1px solid #e4e7ed;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid #e5e7eb;
   flex-shrink: 0;
 }
 
-.affinity-config-container {
-  background: #f8f9fa;
-  border: 1px solid #e4e7ed;
+.affinity-action-buttons :deep(.el-button) {
+  height: 36px;
+  padding: 0 16px;
+  border: 1px solid #111827;
   border-radius: 8px;
+  background: #111827;
+  color: #ffffff;
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.affinity-action-buttons :deep(.el-button:hover) {
+  border-color: #374151;
+  background: #374151;
+  color: #ffffff;
+  box-shadow: none;
+}
+
+.affinity-config-container {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
   overflow: hidden;
   margin-bottom: 20px;
   flex: 1;
@@ -258,9 +277,9 @@ const emit = defineEmits<{
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 20px;
-  background: linear-gradient(to right, #f8f9fa, #ffffff);
-  border-bottom: 1px solid #e4e7ed;
+  padding: 14px 18px;
+  background: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
   flex-shrink: 0;
 }
 
@@ -271,32 +290,51 @@ const emit = defineEmits<{
 
 .config-header-actions {
   display: flex;
-  gap: 12px;
+  gap: 8px;
+}
+
+.config-header-actions :deep(.el-button--primary) {
+  border-color: #111827;
+  background: #111827;
+  color: #ffffff;
+  box-shadow: none;
+}
+
+.config-header-actions :deep(.el-button--primary:hover) {
+  border-color: #374151;
+  background: #374151;
+  color: #ffffff;
+}
+
+.config-header-actions :deep(.el-button--default) {
+  border-color: #d1d5db;
+  background: #ffffff;
+  color: #374151;
 }
 
 .config-container-body {
-  padding: 24px;
+  padding: 20px;
   flex: 1;
   overflow-y: auto;
 }
 
 .config-form-section {
-  margin-bottom: 24px;
-  padding-bottom: 24px;
-  border-bottom: 1px solid #e4e7ed;
+  margin-bottom: 18px;
+  padding: 18px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #ffffff;
 }
 
 .config-form-section:last-child {
-  border-bottom: none;
   margin-bottom: 0;
-  padding-bottom: 0;
 }
 
 .form-label {
   display: block;
   font-size: 14px;
-  font-weight: 500;
-  color: #303133;
+  font-weight: 700;
+  color: #111827;
   margin-bottom: 12px;
 }
 
@@ -308,21 +346,21 @@ const emit = defineEmits<{
 
 .affinity-radio-item {
   margin: 0 !important;
-  padding: 10px 20px;
-  border: 1px solid #e4e7ed;
-  border-radius: 6px;
+  padding: 10px 18px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
   background: #fff;
-  transition: all 0.3s;
+  transition: all 0.2s;
 }
 
 .affinity-radio-item:hover {
-  border-color: #409eff;
-  background: #ecf5ff;
+  border-color: #111827;
+  background: #f9fafb;
 }
 
 .affinity-radio-item.is-checked {
-  border-color: #409eff;
-  background: #ecf5ff;
+  border-color: #111827;
+  background: #f9fafb;
 }
 
 .full-width-input {
@@ -332,11 +370,11 @@ const emit = defineEmits<{
 .form-tip {
   margin-top: 8px;
   padding: 8px 12px;
-  background: #e7f3ff;
-  border-left: 3px solid #409eff;
+  background: #f9fafb;
+  border-left: 3px solid #111827;
   border-radius: 4px;
   font-size: 12px;
-  color: #606266;
+  color: #4b5563;
   line-height: 1.5;
 }
 
@@ -347,6 +385,23 @@ const emit = defineEmits<{
   margin-bottom: 16px;
 }
 
+.section-header :deep(.el-button--primary) {
+  height: 32px;
+  padding: 0 14px;
+  border-color: #111827;
+  border-radius: 8px;
+  background: #111827;
+  color: #ffffff;
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.section-header :deep(.el-button--primary:hover) {
+  border-color: #374151;
+  background: #374151;
+  color: #ffffff;
+}
+
 .expressions-list,
 .labels-list {
   display: flex;
@@ -355,16 +410,16 @@ const emit = defineEmits<{
 }
 
 .expression-config-row {
-  background: #f8f9fa;
-  padding: 20px;
-  border-radius: 8px;
-  border: 1px solid #e4e7ed;
-  transition: all 0.3s;
+  background: #f9fafb;
+  padding: 16px;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+  transition: all 0.2s;
 }
 
 .expression-config-row:hover {
-  border-color: #409eff;
-  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.1);
+  border-color: #d1d5db;
+  box-shadow: none;
 }
 
 .expression-config-grid {
@@ -382,15 +437,15 @@ const emit = defineEmits<{
 
 .config-grid-label {
   font-size: 13px;
-  font-weight: 500;
-  color: #606266;
+  font-weight: 700;
+  color: #4b5563;
 }
 
 .expression-config-actions {
   display: flex;
   justify-content: flex-end;
   padding-top: 12px;
-  border-top: 1px solid #e4e7ed;
+  border-top: 1px solid #e5e7eb;
 }
 
 .label-config-row {
@@ -398,9 +453,9 @@ const emit = defineEmits<{
   align-items: center;
   gap: 12px;
   padding: 12px 16px;
-  background: #f8f9fa;
-  border-radius: 6px;
-  border: 1px solid #e4e7ed;
+  background: #f9fafb;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
 }
 
 .label-config-grid {
@@ -428,35 +483,35 @@ const emit = defineEmits<{
   align-items: center;
   margin-bottom: 20px;
   padding-bottom: 16px;
-  border-bottom: 1px solid #e4e7ed;
+  border-bottom: 1px solid #e5e7eb;
 }
 
 .header-title {
   font-size: 16px;
-  font-weight: 600;
-  color: #303133;
+  font-weight: 800;
+  color: #111827;
 }
 
 .affinity-rule-card {
-  background: #f8f9fa;
-  border: 1px solid #e4e7ed;
-  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
   overflow: hidden;
-  transition: all 0.3s;
+  transition: all 0.2s;
 }
 
 .affinity-rule-card:hover {
-  border-color: #409eff;
-  box-shadow: 0 2px 12px rgba(64, 158, 255, 0.15);
+  border-color: #d1d5db;
+  box-shadow: none;
 }
 
 .affinity-rule-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 20px;
-  background: linear-gradient(to right, #f8f9fa, #ffffff);
-  border-bottom: 1px solid #e4e7ed;
+  padding: 14px 18px;
+  background: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
 }
 
 .rule-type-badge {
@@ -480,29 +535,29 @@ const emit = defineEmits<{
 
 .detail-label {
   font-size: 14px;
-  font-weight: 500;
-  color: #606266;
+  font-weight: 700;
+  color: #4b5563;
   min-width: 100px;
 }
 
 .detail-value {
   font-size: 14px;
-  color: #303133;
-  font-weight: 500;
+  color: #111827;
+  font-weight: 600;
 }
 
 .rule-expressions-section,
 .rule-labels-section {
   margin-top: 16px;
   padding-top: 16px;
-  border-top: 1px solid #e4e7ed;
+  border-top: 1px solid #e5e7eb;
 }
 
 .expressions-title,
 .labels-title {
   font-size: 13px;
-  font-weight: 500;
-  color: #606266;
+  font-weight: 700;
+  color: #4b5563;
   margin-bottom: 12px;
 }
 
@@ -512,24 +567,25 @@ const emit = defineEmits<{
   gap: 12px;
   padding: 8px 12px;
   background: #fff;
-  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
   margin-bottom: 8px;
   font-family: 'Monaco', 'Menlo', monospace;
   font-size: 13px;
 }
 
 .exp-key {
-  color: #303133;
-  font-weight: 500;
+  color: #111827;
+  font-weight: 700;
 }
 
 .exp-operator {
-  color: #409eff;
-  font-weight: 500;
+  color: #2563eb;
+  font-weight: 700;
 }
 
 .exp-values {
-  color: #606266;
+  color: #4b5563;
 }
 
 .rule-labels-list {
@@ -541,10 +597,50 @@ const emit = defineEmits<{
 .rule-label-item {
   padding: 4px 12px;
   background: #fff;
-  border: 1px solid #e4e7ed;
-  border-radius: 4px;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
   font-size: 12px;
-  color: #606266;
+  color: #4b5563;
   font-family: 'Monaco', 'Menlo', monospace;
+}
+
+.affinity-wrapper :deep(.el-button--danger) {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid #fecdd3;
+  border-radius: 8px;
+  background: #fff1f2;
+  color: #dc2626;
+  box-shadow: none;
+}
+
+.affinity-wrapper :deep(.el-button--danger span) {
+  display: none;
+}
+
+.affinity-wrapper :deep(.el-button--danger:hover) {
+  border-color: #fca5a5;
+  background: #fee2e2;
+  color: #b91c1c;
+  box-shadow: none;
+}
+
+.affinity-wrapper :deep(.el-input__wrapper),
+.affinity-wrapper :deep(.el-select .el-input__wrapper) {
+  border-color: #d1d5db;
+  box-shadow: none;
+}
+
+.affinity-wrapper :deep(.el-input__wrapper:hover),
+.affinity-wrapper :deep(.el-select .el-input__wrapper:hover) {
+  border-color: #9ca3af;
+}
+
+.affinity-wrapper :deep(.el-input__wrapper.is-focus),
+.affinity-wrapper :deep(.el-select .el-input__wrapper.is-focus) {
+  border-color: #111827;
+  box-shadow: 0 0 0 2px rgba(17, 24, 39, 0.08);
 }
 </style>

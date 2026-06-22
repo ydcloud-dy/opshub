@@ -41,7 +41,15 @@
           </el-table-column>
           <el-table-column label="操作" width="80" fixed="right">
             <template #default="{ $index }">
-              <el-button type="danger" link @click="emit('removeToleration', $index)" :icon="Delete" size="small">删除</el-button>
+              <el-button
+                type="danger"
+                link
+                @click="emit('removeToleration', $index)"
+                :icon="Delete"
+                size="small"
+                title="删除容忍"
+                aria-label="删除容忍"
+              />
             </template>
           </el-table-column>
         </el-table>
@@ -116,5 +124,43 @@ const emit = defineEmits<{
   display: flex;
   justify-content: flex-start;
   padding-top: 8px;
+}
+
+.tolerations-actions :deep(.el-button--primary) {
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid #111827;
+  border-radius: 8px;
+  background: #111827;
+  color: #ffffff;
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.tolerations-actions :deep(.el-button--primary:hover) {
+  border-color: #374151;
+  background: #374151;
+  color: #ffffff;
+  box-shadow: none;
+}
+
+.tolerations-table-wrapper :deep(.el-button--danger),
+.tolerations-table-wrapper :deep(.el-button--danger.is-link) {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid #fecdd3;
+  border-radius: 8px;
+  background: #fff1f2;
+  color: #dc2626;
+  box-shadow: none;
+}
+
+.tolerations-table-wrapper :deep(.el-button--danger:hover),
+.tolerations-table-wrapper :deep(.el-button--danger.is-link:hover) {
+  border-color: #fca5a5;
+  background: #fee2e2;
+  color: #b91c1c;
 }
 </style>

@@ -237,6 +237,19 @@ const getFaultCenterName = (id?: number) => {
   return faultCenters.value.find(item => item.id === id)?.name || '-'
 }
 
+const getEventTimeValue = (value?: string) => {
+  const date = value ? new Date(value) : undefined
+  return date && !Number.isNaN(date.getTime()) ? date.getTime() : 0
+}
+
+const sortEventsByStartedAtDesc = (events: MonitorAlertEvent[]) => {
+  return [...events].sort((a, b) => {
+    const diff = getEventTimeValue(b.startedAt) - getEventTimeValue(a.startedAt)
+    if (diff !== 0) return diff
+    return (b.id || 0) - (a.id || 0)
+  })
+}
+
 const formatDate = (date: Date) => {
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
@@ -320,9 +333,10 @@ const loadActiveEvents = async () => {
       page: 1,
       pageSize: 8,
       scope: 'active',
-      faultCenterId: selectedFaultCenterId.value
+      faultCenterId: selectedFaultCenterId.value,
+      sort: 'started_at'
     })
-    activeEvents.value = result?.list || []
+    activeEvents.value = sortEventsByStartedAtDesc(result?.list || [])
   } finally {
     activeLoading.value = false
   }
@@ -331,18 +345,20 @@ const loadActiveEvents = async () => {
 const loadAll = async () => {
   const start = new Date()
   start.setDate(start.getDate() - 6)
+  const startDate = formatDate(start)
+  const endDate = formatDate(new Date())
   const [sourceResult, ruleResult, centerResult, statsResult, eventResult] = await Promise.all([
     getMonitorDataSources(),
     getMonitorAlertRules(),
     getMonitorFaultCenters(),
     getMonitorAlertEventStats().catch(() => null),
-    getMonitorAlertEvents({ page: 1, pageSize: 200, startDate: formatDate(start), endDate: formatDate(new Date()) })
+    getMonitorAlertEvents({ page: 1, pageSize: 500, startDate, endDate, sort: 'started_at' })
   ])
   dataSources.value = sourceResult || []
   rules.value = ruleResult || []
   faultCenters.value = centerResult || []
   if (statsResult) stats.value = statsResult
-  recentEvents.value = eventResult?.list || []
+  recentEvents.value = sortEventsByStartedAtDesc(eventResult?.list || [])
   await loadActiveEvents()
   renderTrendChart()
 }

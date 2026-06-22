@@ -37,7 +37,7 @@ export function listJavaProcesses(params: Omit<ArthasBaseParams, 'processId'>) {
 }
 
 // 检查Arthas是否安装
-export function checkArthasInstalled(params: Omit<ArthasBaseParams, 'processId'>) {
+export function checkArthasInstalled(params: ArthasBaseParams) {
   return request({
     url: `${BASE_URL}/check`,
     method: 'get',
