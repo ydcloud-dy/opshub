@@ -21,7 +21,7 @@ backend:
 
   image:
     repository: docker.1ms.run/dyclouds/opshub-api
-    tag: v0.0.6
+    tag: v0.0.8
     pullPolicy: Always
 
   # 服务配置
@@ -84,7 +84,7 @@ frontend:
 
   image:
     repository: docker.1ms.run/dyclouds/opshub-web
-    tag: v0.0.6
+    tag: v0.0.8
     pullPolicy: Always
 
   # 服务配置
