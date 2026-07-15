@@ -1,6 +1,10 @@
 <template>
   <div class="revision-page">
+<<<<<<< HEAD
     <div class="section-head"><div><h2>发布记录</h2><p>每次发布都会保留不可变版本，可快速回滚到已验证配置</p></div><el-button :loading="loading" @click="load"><el-icon><Refresh /></el-icon>刷新</el-button></div>
+=======
+    <section class="section-head panel"><div><h3>发布记录</h3><p>每次发布都会保留不可变版本，可快速回滚到已验证配置</p></div><el-button :loading="loading" @click="load"><el-icon><Refresh /></el-icon>刷新</el-button></section>
+>>>>>>> feat: update log
     <section class="panel revision-table" v-loading="loading">
       <el-table :data="items" empty-text="暂无发布记录">
         <el-table-column prop="policyName" label="策略" min-width="210"><template #default="{ row }"><strong>{{ row.policyName || `策略 #${row.policyId}` }}</strong></template></el-table-column>
@@ -26,5 +30,9 @@ const rollback=async(row:LogPolicyRevision)=>{await ElMessageBox.confirm(`确认
 const formatTime=(value?:string)=>value?new Date(value).toLocaleString():'-';onMounted(load)
 </script>
 <style scoped>
+<<<<<<< HEAD
 .section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-bottom:16px}.section-head h2{margin:0;color:#101828;font-size:20px}.section-head p{margin:6px 0 0;color:#667085;font-size:13px}.revision-table{overflow:hidden}code{color:#475467;font:12px ui-monospace,SFMono-Regular,Menlo,monospace}
+=======
+.revision-page{display:flex;flex-direction:column;gap:12px}.section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin:0;padding:18px 20px}.section-head h3{margin:0;color:#111827;font-size:15px;font-weight:650}.section-head p{margin:6px 0 0;color:#667085;font-size:13px}.revision-table{overflow:hidden}code{color:#475467;font:12px ui-monospace,SFMono-Regular,Menlo,monospace}@media(max-width:760px){.section-head{align-items:flex-start;flex-direction:column}}
+>>>>>>> feat: update log
 </style>

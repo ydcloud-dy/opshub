@@ -66,8 +66,16 @@ type policyView struct {
 	UpdatedAt       time.Time             `json:"updatedAt"`
 	Payload         policyPayload         `json:"payload"`
 	TargetCount     int                   `json:"targetCount"`
+<<<<<<< HEAD
 	InstanceTotal   int64                 `json:"instanceTotal"`
 	InstanceApplied int64                 `json:"instanceApplied"`
+=======
+	TargetExpected  int                   `json:"targetExpected"`
+	InstanceTotal   int64                 `json:"instanceTotal"`
+	InstanceOnline  int64                 `json:"instanceOnline"`
+	InstanceApplied int64                 `json:"instanceApplied"`
+	InstancePending int64                 `json:"instancePending"`
+>>>>>>> feat: update log
 	ErrorInstances  int64                 `json:"errorInstances"`
 	TargetHosts     []policyTargetHost    `json:"targetHosts"`
 	TargetClusters  []policyTargetCluster `json:"targetClusters"`
@@ -579,7 +587,11 @@ func (h *Handler) buildPolicyView(c *gin.Context, policy logmodel.CollectionPoli
 	if err != nil {
 		return policyView{}, err
 	}
+<<<<<<< HEAD
 	var targetCount int
+=======
+	var targetCount, targetExpected int
+>>>>>>> feat: update log
 	var targetHosts []policyTargetHost
 	var targetClusters []policyTargetCluster
 	if policy.SourceMode == "kubernetes" {
@@ -589,6 +601,12 @@ func (h *Handler) buildPolicyView(c *gin.Context, policy logmodel.CollectionPoli
 		}
 		targetClusters = clustersToTargetView(clusters)
 		targetCount = len(targetClusters)
+<<<<<<< HEAD
+=======
+		for _, cluster := range targetClusters {
+			targetExpected += cluster.NodeCount
+		}
+>>>>>>> feat: update log
 	} else {
 		hosts, err := resolvePolicyHosts(h.db.WithContext(c.Request.Context()), policy.ID)
 		if err != nil {
@@ -596,6 +614,7 @@ func (h *Handler) buildPolicyView(c *gin.Context, policy logmodel.CollectionPoli
 		}
 		targetHosts = hostsToTargetView(hosts)
 		targetCount = len(targetHosts)
+<<<<<<< HEAD
 	}
 	var total, applied, failed int64
 	h.db.Model(&logmodel.CollectorAssignment{}).Where("policy_id = ?", policy.ID).Count(&total)
@@ -605,6 +624,28 @@ func (h *Handler) buildPolicyView(c *gin.Context, policy logmodel.CollectionPoli
 		ID: policy.ID, Status: policy.Status, Version: policy.Version, CreatedBy: policy.CreatedBy, UpdatedBy: policy.UpdatedBy,
 		CreatedAt: policy.CreatedAt, UpdatedAt: policy.UpdatedAt, Payload: payload,
 		TargetCount: targetCount, InstanceTotal: total, InstanceApplied: applied, ErrorInstances: failed,
+=======
+		targetExpected = len(targetHosts)
+	}
+	var total, online, applied, failed int64
+	activeAssignment := "policy_id = ? AND desired_state = ?"
+	h.db.Model(&logmodel.CollectorAssignment{}).Where(activeAssignment, policy.ID, "active").Count(&total)
+	h.db.Model(&logmodel.CollectorAssignment{}).Where(activeAssignment+" AND apply_status = ?", policy.ID, "active", "applied").Count(&applied)
+	h.db.Model(&logmodel.CollectorAssignment{}).Where(activeAssignment+" AND apply_status = ?", policy.ID, "active", "failed").Count(&failed)
+	h.db.Table("log_collector_assignments AS assignment").
+		Joins("JOIN log_collector_instances AS instance ON instance.instance_id = assignment.instance_id").
+		Where("assignment.policy_id = ? AND assignment.desired_state = ? AND instance.last_heartbeat_at >= ?", policy.ID, "active", time.Now().Add(-90*time.Second)).
+		Count(&online)
+	pending := total - applied - failed
+	if pending < 0 {
+		pending = 0
+	}
+	return policyView{
+		ID: policy.ID, Status: policy.Status, Version: policy.Version, CreatedBy: policy.CreatedBy, UpdatedBy: policy.UpdatedBy,
+		CreatedAt: policy.CreatedAt, UpdatedAt: policy.UpdatedAt, Payload: payload,
+		TargetCount: targetCount, TargetExpected: targetExpected,
+		InstanceTotal: total, InstanceOnline: online, InstanceApplied: applied, InstancePending: pending, ErrorInstances: failed,
+>>>>>>> feat: update log
 		TargetHosts: targetHosts, TargetClusters: targetClusters,
 	}, nil
 }
@@ -633,6 +674,11 @@ func (h *Handler) requirePolicyAdmin(c *gin.Context) bool {
 
 func (payload *policyPayload) normalize() {
 	payload.Name = strings.TrimSpace(payload.Name)
+<<<<<<< HEAD
+=======
+	payload.Environment = strings.TrimSpace(payload.Environment)
+	payload.Service = strings.TrimSpace(payload.Service)
+>>>>>>> feat: update log
 	payload.SourceMode = firstNonEmpty(strings.TrimSpace(payload.SourceMode), "host")
 	payload.ReadFrom = firstNonEmpty(strings.TrimSpace(payload.ReadFrom), "latest")
 	payload.Encoding = firstNonEmpty(strings.TrimSpace(payload.Encoding), "utf-8")
@@ -673,6 +719,15 @@ func validatePolicyPayload(payload policyPayload) error {
 	if payload.Name == "" {
 		return fmt.Errorf("策略名称不能为空")
 	}
+<<<<<<< HEAD
+=======
+	if payload.Environment == "" {
+		return fmt.Errorf("运行环境不能为空")
+	}
+	if payload.Service == "" {
+		return fmt.Errorf("服务名称不能为空")
+	}
+>>>>>>> feat: update log
 	if payload.SourceMode != "host" && payload.SourceMode != "kubernetes" {
 		return fmt.Errorf("不支持的采集模式 %s", payload.SourceMode)
 	}

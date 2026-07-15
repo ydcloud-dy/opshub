@@ -1,8 +1,14 @@
 <template>
   <div class="policy-page">
+<<<<<<< HEAD
     <div class="section-head">
       <div>
         <h2>采集策略</h2>
+=======
+    <section class="section-head panel">
+      <div>
+        <h3>采集策略</h3>
+>>>>>>> feat: update log
         <p>统一管理主机文件与 Kubernetes 容器日志，发布后采集实例将在 30 秒内自动应用</p>
       </div>
       <div class="section-actions">
@@ -17,7 +23,11 @@
         <el-button :loading="loading" @click="loadPolicies"><el-icon><Refresh /></el-icon>刷新</el-button>
         <el-button v-if="isAdmin" type="primary" class="primary-action" @click="openCreate"><el-icon><Plus /></el-icon>新建策略</el-button>
       </div>
+<<<<<<< HEAD
     </div>
+=======
+    </section>
+>>>>>>> feat: update log
 
     <section class="policy-table panel" v-loading="loading">
       <el-table :data="policies" empty-text="暂无采集策略">
@@ -33,6 +43,7 @@
         <el-table-column label="目标资产" width="130">
           <template #default="{ row }"><strong>{{ row.targetCount }}</strong> {{ row.payload.sourceMode === 'kubernetes' ? '个集群' : '台主机' }}</template>
         </el-table-column>
+<<<<<<< HEAD
         <el-table-column label="下发进度" min-width="180">
           <template #default="{ row }">
             <div class="rollout-cell">
@@ -43,6 +54,39 @@
               <el-tag v-if="row.errorInstances" size="small" type="danger">{{ row.errorInstances }} 失败</el-tag>
               <el-tag v-else-if="rolloutWaiting(row)" size="small" type="warning">等待采集器</el-tag>
             </div>
+=======
+        <el-table-column min-width="245">
+          <template #header>
+            <span class="column-heading">下发进度<el-tooltip content="Agent 每 30 秒拉取策略，成功切换配置并回报后计为已应用" placement="top"><el-icon><InfoFilled /></el-icon></el-tooltip></span>
+          </template>
+          <template #default="{ row }">
+            <el-popover trigger="hover" placement="bottom-start" :width="340">
+              <template #reference>
+                <div class="rollout-cell">
+                  <div class="rollout-line">
+                    <el-progress :percentage="rolloutPercent(row)" :stroke-width="7" :show-text="false" />
+                    <strong>{{ rolloutText(row) }}</strong>
+                    <el-tag v-if="row.errorInstances" size="small" type="danger">{{ row.errorInstances }} 失败</el-tag>
+                    <el-tag v-else-if="rolloutWaiting(row)" size="small" type="warning">等待确认</el-tag>
+                  </div>
+                  <small>{{ rolloutSubtext(row) }}</small>
+                </div>
+              </template>
+              <div class="rollout-detail">
+                <div class="rollout-detail-head"><strong>策略 v{{ row.version || 0 }} 下发状态</strong><el-tag size="small" :type="statusType(row.status)">{{ statusText(row.status) }}</el-tag></div>
+                <dl>
+                  <div><dt>{{ rolloutTargetLabel(row) }}</dt><dd>{{ rolloutExpected(row) }}</dd></div>
+                  <div><dt>已接入</dt><dd>{{ row.instanceTotal || 0 }}</dd></div>
+                  <div><dt>当前在线</dt><dd>{{ row.instanceOnline || 0 }}</dd></div>
+                  <div><dt>已应用</dt><dd class="success">{{ row.instanceApplied || 0 }}</dd></div>
+                  <div><dt>待确认</dt><dd class="warning">{{ rolloutPending(row) }}</dd></div>
+                  <div><dt>失败</dt><dd :class="{ danger: row.errorInstances }">{{ row.errorInstances || 0 }}</dd></div>
+                </dl>
+                <p>每个 Agent/Collector 拉取并成功应用当前版本后，进度增加 1；页面每 10 秒刷新一次。</p>
+                <el-button link type="primary" @click="openInstances">查看采集实例与失败原因</el-button>
+              </div>
+            </el-popover>
+>>>>>>> feat: update log
           </template>
         </el-table-column>
         <el-table-column label="日志路径" min-width="220" show-overflow-tooltip>
@@ -51,7 +95,11 @@
         <el-table-column label="更新时间" width="172"><template #default="{ row }">{{ formatTime(row.updatedAt) }}</template></el-table-column>
         <el-table-column label="操作" fixed="right" width="310">
           <template #default="{ row }">
+<<<<<<< HEAD
             <template v-if="isAdmin"><el-button link @click="openEdit(row)">编辑</el-button><el-button v-if="rolloutWaiting(row)" link type="primary" @click="openCollectorSetup(row)">接入采集器</el-button><el-button v-if="row.status !== 'published'" link type="primary" @click="publishExisting(row)">发布</el-button><el-button v-else link type="warning" @click="disableExisting(row)">停用</el-button><el-button v-if="row.version === 0" link type="danger" @click="removePolicy(row)">删除</el-button></template>
+=======
+            <template v-if="isAdmin"><el-button link @click="openEdit(row)">编辑</el-button><el-button v-if="needsCollectorSetup(row)" link type="primary" @click="openCollectorSetup(row)">接入采集器</el-button><el-button v-if="row.status !== 'published'" link type="primary" @click="publishExisting(row)">发布</el-button><el-button v-else link type="warning" @click="disableExisting(row)">停用</el-button><el-button v-if="row.version === 0" link type="danger" @click="removePolicy(row)">删除</el-button></template>
+>>>>>>> feat: update log
             <span v-else class="readonly-text">只读</span>
           </template>
         </el-table-column>
@@ -74,6 +122,7 @@
           <el-form-item label="策略名称" prop="name" :rules="[{ required: true, message: '请输入策略名称' }]">
             <el-input v-model="form.name" maxlength="120" placeholder="例如：生产环境 Nginx 日志" />
           </el-form-item>
+<<<<<<< HEAD
           <el-form-item label="运行环境"><el-input v-model="form.environment" placeholder="production" /></el-form-item>
           <el-form-item label="服务名称"><el-input v-model="form.service" placeholder="nginx / order-api" /></el-form-item>
           <el-form-item label="保留策略模板">
@@ -84,6 +133,33 @@
           <el-form-item label="默认保留天数"><el-input-number v-model="form.retention.defaultDays" :min="1" :max="3650" controls-position="right" /></el-form-item>
           <div class="retention-level-grid full">
             <label v-for="level in retentionLevels" :key="level"><span>{{ level }}</span><el-input-number v-model="form.retention.levelDays[level]" :min="1" :max="3650" controls-position="right" /></label>
+=======
+          <el-form-item label="运行环境" prop="environment" class="required-label" :rules="[{ required: true, message: '请选择运行环境' }]">
+            <el-select v-model="form.environment" filterable allow-create default-first-option placeholder="请选择或输入环境">
+              <el-option v-for="item in environmentOptions" :key="item.value" :label="`${item.label}（${item.value}）`" :value="item.value" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="服务名称" prop="service" class="required-label" :rules="[{ required: true, message: '请输入服务名称' }]">
+            <el-input v-model="form.service" maxlength="120" placeholder="例如：nginx、order-api" />
+          </el-form-item>
+          <div class="retention-config full">
+            <div class="retention-toolbar">
+              <el-form-item label="保留策略模板">
+                <el-select v-model="form.retentionPolicyId" clearable placeholder="自定义" @change="applyRetentionProfile">
+                  <el-option v-for="item in retentionProfiles" :key="item.id" :label="item.payload.name" :value="item.id" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="默认保留周期"><div class="days-control"><el-input-number v-model="form.retention.defaultDays" :min="1" :max="3650" controls-position="right" /><span>天</span></div></el-form-item>
+            </div>
+            <div class="retention-title"><strong>按日志级别保留</strong><el-tooltip content="识别到日志级别时使用对应天数；未识别级别时使用默认保留周期" placement="top"><el-icon><InfoFilled /></el-icon></el-tooltip></div>
+            <div class="retention-level-grid">
+              <label v-for="level in retentionLevelOptions" :key="level.value">
+                <span class="level-name" :class="`level-${level.value.toLowerCase()}`">{{ level.value }}</span>
+                <small>{{ level.label }}</small>
+                <div class="days-control"><el-input-number v-model="form.retention.levelDays[level.value]" :min="1" :max="3650" controls-position="right" /><span>天</span></div>
+              </label>
+            </div>
+>>>>>>> feat: update log
           </div>
           <el-form-item label="策略说明" class="full"><el-input v-model="form.description" type="textarea" :rows="3" maxlength="500" show-word-limit /></el-form-item>
         </div>
@@ -218,7 +294,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+<<<<<<< HEAD
 import { Plus, Refresh, Search } from '@element-plus/icons-vue'
+=======
+import { InfoFilled, Plus, Refresh, Search } from '@element-plus/icons-vue'
+>>>>>>> feat: update log
 import { useUserStore } from '@/stores/user'
 import {
   createLogCollectionPolicy, deleteLogCollectionPolicy, disableLogCollectionPolicy,
@@ -229,12 +309,20 @@ import {
 } from '@/api/logcenter'
 
 const props = defineProps<{ presetHostId?: number; presetClusterId?: number }>()
+<<<<<<< HEAD
+=======
+const emit = defineEmits<{ (event: 'open-instances'): void }>()
+>>>>>>> feat: update log
 const userStore = useUserStore()
 const isAdmin = computed(() => (userStore.userInfo?.roles || []).some((role: any) => role.code === 'admin'))
 
 const emptyForm = (): LogCollectionPolicyPayload => ({
   name: '', sourceMode: 'host', description: '', paths: [], excludePaths: [], readFrom: 'latest', encoding: 'utf-8',
+<<<<<<< HEAD
   environment: 'production', service: '', stream: 'stdout', maxLineBytes: 262144,
+=======
+  environment: 'prod', service: '', stream: 'stdout', maxLineBytes: 262144,
+>>>>>>> feat: update log
   parser: { type: 'raw', messageField: 'message', levelField: 'level', timestampField: 'timestamp' },
   multiline: { enabled: false, preset: 'java', maxLines: 500, maxBytes: 1048576, flushSeconds: 2 },
   redaction: { configured: true, enabled: true, useDefaultRules: true, sensitiveFields: ['password', 'token', 'authorization', 'cookie', 'secret'], rules: [] },
@@ -251,7 +339,26 @@ const keyword = ref('')
 const statusFilter = ref('')
 const policies = ref<LogCollectionPolicy[]>([])
 const retentionProfiles = ref<LogRetentionPolicy[]>([])
+<<<<<<< HEAD
 const retentionLevels = ['TRACE', 'DEBUG', 'INFO', 'WARN', 'ERROR', 'FATAL']
+=======
+const environmentOptions = [
+  { value: 'dev', label: '开发环境' },
+  { value: 'test', label: '测试环境' },
+  { value: 'sit', label: '集成测试环境' },
+  { value: 'uat', label: '用户验收环境' },
+  { value: 'staging', label: '预发布环境' },
+  { value: 'prod', label: '生产环境' },
+]
+const retentionLevelOptions = [
+  { value: 'TRACE', label: '链路跟踪' },
+  { value: 'DEBUG', label: '调试信息' },
+  { value: 'INFO', label: '运行信息' },
+  { value: 'WARN', label: '风险警告' },
+  { value: 'ERROR', label: '错误日志' },
+  { value: 'FATAL', label: '致命错误' },
+]
+>>>>>>> feat: update log
 const targetOptions = reactive<{ hosts: LogPolicyTargetHost[]; groups: LogPolicyTargetGroup[]; clusters: LogPolicyTargetCluster[] }>({ hosts: [], groups: [], clusters: [] })
 const kubernetesOptions = reactive<{ namespaces: string[]; workloads: LogKubernetesWorkloadOption[] }>({ namespaces: [], workloads: [] })
 const kubernetesOptionsLoading = ref(false)
@@ -477,6 +584,11 @@ const requestCollectorServerURL = async () => {
 }
 const nextStep = async () => {
   if (step.value === 0 && !form.name.trim()) return ElMessage.warning('请输入策略名称')
+<<<<<<< HEAD
+=======
+  if (step.value === 0 && !String(form.environment || '').trim()) return ElMessage.warning('请选择运行环境')
+  if (step.value === 0 && !String(form.service || '').trim()) return ElMessage.warning('请输入服务名称')
+>>>>>>> feat: update log
   if (step.value === 1 && form.sourceMode === 'host' && !selectedHostIds.value.length && !selectedGroupIds.value.length) return ElMessage.warning('至少选择一台主机或一个主机分组')
   if (step.value === 1 && form.sourceMode === 'kubernetes' && !selectedClusterId.value) return ElMessage.warning('请选择 Kubernetes 集群')
   if (step.value === 2 && !normalizedPaths.value.length) return ElMessage.warning('至少填写一个采集路径')
@@ -515,6 +627,7 @@ const removePolicy = async (row: LogCollectionPolicy) => { await ElMessageBox.co
 const lines = (value: string) => value.split(/\r?\n/).map(item => item.trim()).filter(Boolean)
 const assetPatterns = (value: string) => value.split(/[\r\n,;]+/).map(item => item.trim()).filter(Boolean)
 const workloadValue = (item: LogKubernetesWorkloadOption) => `${item.namespace}|${item.kind}|${item.name}`
+<<<<<<< HEAD
 const rolloutExpected = (row: LogCollectionPolicy) => row.payload.sourceMode === 'kubernetes'
   ? (row.targetClusters || []).reduce((total, cluster) => total + Number(cluster.nodeCount || 0), 0)
   : row.instanceTotal
@@ -528,6 +641,28 @@ const rolloutText = (row: LogCollectionPolicy) => {
   if (row.instanceTotal < expected) return `${row.instanceApplied}/${expected} 已应用 · ${row.instanceTotal} 已接入`
   return `${row.instanceApplied}/${rolloutTotal(row)} 节点已应用`
 }
+=======
+const rolloutExpected = (row: LogCollectionPolicy) => Number(row.targetExpected || (row.payload.sourceMode === 'kubernetes'
+  ? (row.targetClusters || []).reduce((total, cluster) => total + Number(cluster.nodeCount || 0), 0)
+  : (row.targetHosts || []).length))
+const rolloutTotal = (row: LogCollectionPolicy) => Math.max(row.instanceTotal, rolloutExpected(row))
+const rolloutPercent = (row: LogCollectionPolicy) => row.status === 'published' && rolloutTotal(row) ? Math.round(row.instanceApplied / rolloutTotal(row) * 100) : 0
+const rolloutPending = (row: LogCollectionPolicy) => row.status === 'published' ? Math.max(rolloutExpected(row) - row.instanceApplied - row.errorInstances, 0) : 0
+const rolloutWaiting = (row: LogCollectionPolicy) => row.status === 'published' && rolloutPending(row) > 0
+const needsCollectorSetup = (row: LogCollectionPolicy) => row.payload.sourceMode === 'kubernetes' && row.status === 'published' && row.instanceTotal === 0 && rolloutExpected(row) > 0
+const rolloutText = (row: LogCollectionPolicy) => {
+  if (row.status === 'draft') return '尚未下发'
+  if (row.status === 'disabled') return '已停止下发'
+  return `${row.instanceApplied}/${rolloutTotal(row)} 已应用`
+}
+const rolloutSubtext = (row: LogCollectionPolicy) => {
+  if (row.status === 'draft') return '发布策略后开始下发'
+  if (row.status === 'disabled') return '采集实例将移除该策略'
+  return `已接入 ${row.instanceTotal || 0} · 在线 ${row.instanceOnline || 0} · 待确认 ${rolloutPending(row)}`
+}
+const rolloutTargetLabel = (row: LogCollectionPolicy) => row.payload.sourceMode === 'kubernetes' ? '目标节点' : '目标主机'
+const openInstances = () => emit('open-instances')
+>>>>>>> feat: update log
 const statusText = (status: string) => ({ draft: '草稿', published: '已发布', disabled: '已停用' }[status] || status)
 const statusType = (status: string) => status === 'published' ? 'success' : status === 'disabled' ? 'info' : 'warning'
 const formatTime = (value?: string) => value ? new Date(value).toLocaleString() : '-'
@@ -550,6 +685,7 @@ onBeforeUnmount(() => policyRefreshTimer && clearInterval(policyRefreshTimer))
 </script>
 
 <style scoped>
+<<<<<<< HEAD
 .section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 16px; }
 .section-head h2 { margin: 0; color: #101828; font-size: 20px; }
 .section-head p { margin: 6px 0 0; color: #667085; font-size: 13px; }
@@ -559,6 +695,22 @@ onBeforeUnmount(() => policyRefreshTimer && clearInterval(policyRefreshTimer))
 .rollout-cell { display: flex; align-items: center; gap: 10px; min-width: 0; color: #667085; font-size: 12px; }
 .rollout-progress { display: grid; grid-template-columns: minmax(72px, 1fr) auto; align-items: center; gap: 8px; min-width: 150px; flex: 1; }
 .rollout-progress span { white-space: nowrap; }
+=======
+.policy-page { display: flex; flex-direction: column; gap: 12px; }
+.section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin: 0; padding: 18px 20px; }
+.section-head h3 { margin: 0; color: #111827; font-size: 15px; font-weight: 650; }
+.section-head p { margin: 6px 0 0; color: #667085; font-size: 13px; }
+.section-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.section-actions .el-input { width: 190px; }.section-actions .el-select { width: 126px; }
+.policy-table { overflow: hidden; }.policy-name strong,.policy-name small { display: block; }.policy-name strong { color: #111827; }.policy-name small { margin-top: 5px; color: #98a2b3; font-size: 12px; }
+.column-heading { display:inline-flex;align-items:center;gap:5px; }.column-heading .el-icon { color:#98a2b3;cursor:help;font-size:14px; }
+.rollout-cell { min-width:0;cursor:help;color:#667085;font-size:12px; }
+.rollout-line { display:flex;align-items:center;gap:8px;min-width:0; }.rollout-line :deep(.el-progress) { width:88px;flex:0 0 auto; }.rollout-line strong { color:#344054;font-size:12px;white-space:nowrap; }
+.rollout-cell>small { display:block;margin-top:6px;overflow:hidden;color:#98a2b3;text-overflow:ellipsis;white-space:nowrap; }
+.rollout-detail-head { display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:10px;border-bottom:1px solid #eef0f3; }.rollout-detail-head strong { color:#101828;font-size:13px; }
+.rollout-detail dl { display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0; }.rollout-detail dl div { padding:8px 9px;background:#f8fafc; }.rollout-detail dt { color:#98a2b3;font-size:11px; }.rollout-detail dd { margin:4px 0 0;color:#344054;font-size:15px;font-weight:700; }.rollout-detail dd.success { color:#15803d; }.rollout-detail dd.warning { color:#b45309; }.rollout-detail dd.danger { color:#dc2626; }
+.rollout-detail p { margin:0 0 4px;color:#667085;font-size:12px;line-height:1.55; }
+>>>>>>> feat: update log
 code { color: #344054; font: 12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; }
 .policy-steps { margin: 4px 0 24px; }.policy-form { min-height: 400px; }.form-stage { padding: 4px 8px; }.two-column { display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px; }.full,.wide { grid-column: 1/-1; }
 .target-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; }.target-grid .el-select { width: 100%; }.host-option { display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;}.host-option small { color:#98a2b3; }
@@ -570,10 +722,23 @@ code { color: #344054; font: 12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospac
 .collector-readiness-main strong,.collector-readiness-main small { display:block; }.collector-readiness-main strong { color:#1f2937;font-size:13px; }.collector-readiness-main small { margin-top:4px;color:#667085;font-size:12px;line-height:1.45; }
 .collector-readiness-metrics { display:flex;align-items:center;gap:16px;color:#667085;font-size:12px;white-space:nowrap; }.collector-readiness-metrics strong { color:#1f2937; }
 .field-tip { margin-top:6px;color:#98a2b3;font-size:12px; }.required-label :deep(.el-form-item__label)::before { content:'*'; margin-right:4px; color:#f04438; }
+<<<<<<< HEAD
 .retention-level-grid { display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px;padding:14px 16px;background:#f8fafc; }.retention-level-grid label { display:grid;grid-template-columns:52px 1fr;align-items:center;gap:8px;color:#667085;font-size:12px; }.retention-level-grid :deep(.el-input-number) { width:100%; }
+=======
+.retention-config { margin-bottom:18px;border:1px solid #e4e7ec;background:#fbfcfe; }
+.retention-toolbar { display:grid;grid-template-columns:1fr 1fr;gap:20px;padding:14px 16px 0;background:#fff; }.retention-toolbar :deep(.el-form-item) { margin-bottom:14px; }.retention-toolbar :deep(.el-select),.retention-toolbar :deep(.el-input-number) { width:100%; }
+.retention-title { display:flex;align-items:center;gap:6px;padding:12px 16px 10px;border-top:1px solid #eef0f3;color:#344054;font-size:13px; }.retention-title .el-icon { color:#98a2b3;cursor:help; }
+.retention-level-grid { display:grid;grid-template-columns:repeat(3,1fr);gap:1px;border-top:1px solid #eef0f3;background:#e8ecf1; }.retention-level-grid label { display:grid;grid-template-columns:62px minmax(62px,1fr) minmax(112px,1.25fr);align-items:center;gap:8px;min-width:0;padding:12px;background:#fff;color:#667085;font-size:12px; }.retention-level-grid label>small { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.level-name { display:inline-flex;align-items:center;justify-content:center;height:24px;border:1px solid transparent;font-size:11px;font-weight:700; }.level-trace { color:#475467;background:#f2f4f7;border-color:#e4e7ec; }.level-debug { color:#0369a1;background:#f0f9ff;border-color:#bae6fd; }.level-info { color:#047857;background:#ecfdf5;border-color:#a7f3d0; }.level-warn { color:#b45309;background:#fffbeb;border-color:#fde68a; }.level-error { color:#c2410c;background:#fff7ed;border-color:#fed7aa; }.level-fatal { color:#be123c;background:#fff1f2;border-color:#fecdd3; }
+.days-control { display:flex;align-items:center;gap:7px;min-width:0;color:#98a2b3; }.days-control :deep(.el-input-number) { width:100%;min-width:0; }
+>>>>>>> feat: update log
 .security-config { padding:16px;border:1px solid #eaecf0;border-radius:7px; }.security-head { display:flex;align-items:center;justify-content:space-between;gap:20px; }.security-head strong,.security-head span { display:block; }.security-head strong { color:#101828;font-size:14px; }.security-head span { margin-top:5px;color:#667085;font-size:12px; }.security-options { display:grid;grid-template-columns:1fr;gap:12px;margin-top:16px;padding-top:14px;border-top:1px solid #edf0f4; }.security-options .el-select { width:100%; }.redaction-rules { margin-top:14px; }.rules-head { display:flex;align-items:center;justify-content:space-between;color:#344054;font-size:12px; }.rule-row { display:grid;grid-template-columns:120px minmax(180px,1fr) 120px minmax(140px,.7fr) 44px;gap:8px;align-items:center;margin-top:8px; }
 .review-stage { display:grid;grid-template-columns:1fr 1fr;gap:14px; }.review-card { padding:16px;border:1px solid #eaecf0;border-radius:7px;background:#fff; }.review-card span,.review-card strong,.review-card small,.review-card code { display:block; }.review-card span { color:#98a2b3;font-size:12px; }.review-card strong { margin-top:8px;color:#101828;font-size:15px; }.review-card small { margin-top:5px;color:#667085; }.review-card code { margin-top:8px;padding:5px 8px;background:#f8fafc; }
 .dialog-footer { display:flex;align-items:center;width:100%;}.footer-spacer { flex:1; }
 .readonly-text { color:#98a2b3;font-size:12px; }
+<<<<<<< HEAD
 @media (max-width: 900px) { .section-head { flex-direction:column; }.section-actions { flex-wrap:wrap;width:100%; }.two-column,.target-grid,.review-stage { grid-template-columns:1fr; }.full,.wide { grid-column:auto; }.retention-level-grid { grid-template-columns:1fr 1fr; }.rule-row { grid-template-columns:1fr 1fr; }.rule-row .el-button { justify-self:end; }.collector-readiness { align-items:flex-start;flex-wrap:wrap; }.collector-readiness-metrics { order:3;width:100%; } }
+=======
+@media (max-width: 900px) { .section-head { flex-direction:column; }.section-actions { flex-wrap:wrap;width:100%; }.two-column,.target-grid,.review-stage,.retention-toolbar { grid-template-columns:1fr; }.full,.wide { grid-column:auto; }.retention-level-grid { grid-template-columns:1fr; }.rule-row { grid-template-columns:1fr 1fr; }.rule-row .el-button { justify-self:end; }.collector-readiness { align-items:flex-start;flex-wrap:wrap; }.collector-readiness-metrics { order:3;width:100%; } }
+>>>>>>> feat: update log
 </style>

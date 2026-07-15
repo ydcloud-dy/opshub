@@ -122,9 +122,15 @@
         <!-- 有权限时显示正常内容 -->
         <router-view v-else v-slot="{ Component, route }">
           <keep-alive>
+<<<<<<< HEAD
             <component :is="Component" v-if="route.path.startsWith('/aiops')" :key="route.name || route.path" />
           </keep-alive>
           <component :is="Component" v-if="!route.path.startsWith('/aiops')" />
+=======
+            <component :is="Component" v-if="route.path.startsWith('/aiops') || route.meta.keepAlive" :key="route.name || route.path" />
+          </keep-alive>
+          <component :is="Component" v-if="!route.path.startsWith('/aiops') && !route.meta.keepAlive" />
+>>>>>>> feat: update log
         </router-view>
       </el-main>
     </el-container>

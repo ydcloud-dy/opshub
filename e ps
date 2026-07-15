@@ -1,0 +1,5 @@
+a017721 (HEAD, origin/main, origin/HEAD, main) fix：修复容器管理「工作负载」批量删除不支持 CronJob 的问题
+7a53423 (tag: v0.0.8) feat：优化容器管理ui
+b6c4241 feat: 新增测试账号
+81a15e5 (tag: v0.0.7) 修复规则调度bug
+15296ca fix：修复规则调度逻辑

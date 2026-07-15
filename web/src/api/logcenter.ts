@@ -240,6 +240,24 @@ export interface LogIngestQueueStatus {
   lastError?: string
 }
 
+<<<<<<< HEAD
+=======
+export interface LogIngestReadinessCheck {
+  id: string
+  title: string
+  status: 'passed' | 'warning' | 'failed' | string
+  description: string
+  recommendation?: string
+}
+
+export interface LogIngestReadinessSummary {
+  passed: number
+  warnings: number
+  failed: number
+  total: number
+}
+
+>>>>>>> feat: update log
 export interface LogIngestStatus {
   mode: string
   gateway: LogIngestComponentStatus
@@ -256,6 +274,12 @@ export interface LogIngestStatus {
   }
   gatewayUrl: string
   writerUrl: string
+<<<<<<< HEAD
+=======
+  publicGatewayUrl: string
+  readiness: LogIngestReadinessCheck[]
+  readinessSummary: LogIngestReadinessSummary
+>>>>>>> feat: update log
   checkedAt: string
 }
 
@@ -453,8 +477,16 @@ export interface LogCollectionPolicy {
   updatedAt: string
   payload: LogCollectionPolicyPayload
   targetCount: number
+<<<<<<< HEAD
   instanceTotal: number
   instanceApplied: number
+=======
+  targetExpected: number
+  instanceTotal: number
+  instanceOnline: number
+  instanceApplied: number
+  instancePending: number
+>>>>>>> feat: update log
   errorInstances: number
 	targetHosts: LogPolicyTargetHost[]
 	targetClusters: LogPolicyTargetCluster[]

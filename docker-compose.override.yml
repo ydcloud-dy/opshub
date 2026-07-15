@@ -1,0 +1,24 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: opshub-api:dev
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    image: opshub-web:dev
+  log-writer:
+    build:
+      context: .
+      dockerfile: Dockerfile.log-writer
+    image: opshub-log-writer:dev
+  log-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.log-gateway
+    image: opshub-log-gateway:dev
+  db-init:
+    profiles:
+      - init

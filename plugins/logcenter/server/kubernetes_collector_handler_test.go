@@ -80,7 +80,11 @@ func TestKubernetesCollectorPodError(t *testing.T) {
 
 func TestValidateKubernetesPolicyPayload(t *testing.T) {
 	payload := policyPayload{
+<<<<<<< HEAD
 		Name: "production containers", SourceMode: "kubernetes", ReadFrom: "latest", MaxLineBytes: 262144,
+=======
+		Name: "production containers", SourceMode: "kubernetes", Environment: "prod", Service: "api", ReadFrom: "latest", MaxLineBytes: 262144,
+>>>>>>> feat: update log
 		Parser: parserConfigRaw(), Targets: []policyTargetInput{{TargetType: "cluster", TargetID: 7, Namespace: "production", LabelSelector: "app=api"}},
 	}
 	payload.normalize()
@@ -92,6 +96,24 @@ func TestValidateKubernetesPolicyPayload(t *testing.T) {
 	}
 }
 
+<<<<<<< HEAD
+=======
+func TestValidatePolicyPayloadRequiresLogIdentity(t *testing.T) {
+	payload := policyPayload{
+		Name: "host logs", SourceMode: "host", Paths: []string{"/var/log/app.log"},
+		Targets: []policyTargetInput{{TargetType: "host", TargetID: 1}},
+	}
+	payload.normalize()
+	if err := validatePolicyPayload(payload); err == nil || !strings.Contains(err.Error(), "运行环境") {
+		t.Fatalf("expected environment validation error, got %v", err)
+	}
+	payload.Environment = "test"
+	if err := validatePolicyPayload(payload); err == nil || !strings.Contains(err.Error(), "服务名称") {
+		t.Fatalf("expected service validation error, got %v", err)
+	}
+}
+
+>>>>>>> feat: update log
 func parserConfigRaw() logagent.ParserConfig {
 	return logagent.ParserConfig{Type: "raw"}
 }

@@ -1,6 +1,10 @@
 <template>
   <div class="instance-page">
+<<<<<<< HEAD
     <div class="section-head"><div><h2>采集实例</h2><p>查看每台主机 Agent 的在线状态、配置版本、吞吐和 WAL 积压</p></div><el-button :loading="loading" @click="load"><el-icon><Refresh /></el-icon>刷新</el-button></div>
+=======
+    <section class="section-head panel"><div><h3>采集实例</h3><p>查看每台主机 Agent 的在线状态、配置版本、吞吐和 WAL 积压</p></div><el-button :loading="loading" @click="load"><el-icon><Refresh /></el-icon>刷新</el-button></section>
+>>>>>>> feat: update log
     <section class="panel instance-table" v-loading="loading">
       <el-table :data="items" empty-text="暂无采集实例">
         <el-table-column label="实例" min-width="210"><template #default="{ row }"><div class="instance-name"><span class="status-dot" :class="row.status"></span><div><strong>{{ row.instance.hostname || row.instance.instanceId }}</strong><small>{{ row.instance.instanceId }}</small></div></div></template></el-table-column>
@@ -33,5 +37,9 @@ const formatTime = (value?:string) => value ? new Date(value).toLocaleString() :
 onMounted(async()=>{ await load(); timer=setInterval(load,15000) }); onBeforeUnmount(()=>timer&&clearInterval(timer))
 </script>
 <style scoped>
+<<<<<<< HEAD
 .section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-bottom:16px}.section-head h2{margin:0;color:#101828;font-size:20px}.section-head p{margin:6px 0 0;color:#667085;font-size:13px}.instance-table{overflow:hidden}.instance-name{display:flex;align-items:center;gap:10px}.instance-name strong,.instance-name small{display:block}.instance-name small{margin-top:4px;color:#98a2b3;font-size:11px}.status-dot{width:9px;height:9px;border-radius:50%;background:#ef4444;box-shadow:0 0 0 4px #fef2f2}.status-dot.online{background:#22c55e;box-shadow:0 0 0 4px #f0fdf4}.assignment-list{display:flex;flex-wrap:wrap;gap:5px}.error{color:#d92d20}
+=======
+.instance-page{display:flex;flex-direction:column;gap:12px}.section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin:0;padding:18px 20px}.section-head h3{margin:0;color:#111827;font-size:15px;font-weight:650}.section-head p{margin:6px 0 0;color:#667085;font-size:13px}.instance-table{overflow:hidden}.instance-name{display:flex;align-items:center;gap:10px}.instance-name strong,.instance-name small{display:block}.instance-name small{margin-top:4px;color:#98a2b3;font-size:11px}.status-dot{width:9px;height:9px;border-radius:50%;background:#ef4444;box-shadow:0 0 0 4px #fef2f2}.status-dot.online{background:#22c55e;box-shadow:0 0 0 4px #f0fdf4}.assignment-list{display:flex;flex-wrap:wrap;gap:5px}.error{color:#d92d20}@media(max-width:760px){.section-head{align-items:flex-start;flex-direction:column}}
+>>>>>>> feat: update log
 </style>

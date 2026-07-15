@@ -45,7 +45,11 @@
         </div>
         <div class="context-control time-context">
           <span class="control-label">时间范围</span>
+<<<<<<< HEAD
           <el-select v-model="quickRange" style="width: 112px" @change="applyQuickRange">
+=======
+          <el-select v-model="quickRange" class="quick-range-select" @change="applyQuickRange">
+>>>>>>> feat: update log
             <el-option label="最近 15 分钟" :value="15" />
             <el-option label="最近 1 小时" :value="60" />
             <el-option label="最近 6 小时" :value="360" />
@@ -338,7 +342,11 @@
 </template>
 
 <script setup lang="ts">
+<<<<<<< HEAD
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+=======
+import { computed, nextTick, onActivated, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+>>>>>>> feat: update log
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowDown, ArrowRight, Delete, Download, Filter, Plus, Refresh, Search, SwitchButton, VideoPlay } from '@element-plus/icons-vue'
@@ -799,6 +807,10 @@ const formatValue = (value: any) => typeof value === 'object' ? JSON.stringify(v
 
 watch(() => form.sort, () => items.value.length && !tailing.value && runQuery())
 onMounted(() => { loadInitialData(); window.addEventListener('resize', resizeChart) })
+<<<<<<< HEAD
+=======
+onActivated(() => nextTick(resizeChart))
+>>>>>>> feat: update log
 onBeforeUnmount(() => {
   queryController?.abort(); histogramController?.abort(); resourceController?.abort(); stopTail(true); clearExportTimer(); chart?.dispose(); window.removeEventListener('resize', resizeChart)
 })
@@ -812,7 +824,11 @@ const resizeChart = () => chart?.resize()
 .query-panel { padding: 0; overflow: hidden; }
 .query-context-row { justify-content: space-between; gap: 20px; min-height: 64px; padding: 13px 18px; border-bottom: 1px solid #edf0f4; background: #fbfcfe; }
 .control-label { flex: 0 0 auto; color: #667085; font-size: 12px; font-weight: 600; }
+<<<<<<< HEAD
 .storage-context { min-width: 0; }.storage-select { width: 250px; }.time-context { justify-content: flex-end; }.time-picker { width: 360px; }
+=======
+.storage-context { flex: 1 1 360px; min-width: 0; flex-wrap: wrap; }.storage-select { width: 250px; }.time-context { flex: 0 1 auto; justify-content: flex-end; flex-wrap: wrap; }.quick-range-select { width: 148px; }.time-picker { width: 380px; }
+>>>>>>> feat: update log
 .query-search-row { display: grid; grid-template-columns: minmax(300px, 1fr) 126px auto; gap: 10px; align-items: center; padding: 16px 18px; }
 .query-text-input :deep(.el-input__wrapper) { min-height: 38px; padding-left: 12px; }
 .query-text-input :deep(.el-input__prefix) { color: #667085; font-size: 16px; }
@@ -890,7 +906,11 @@ const resizeChart = () => chart?.resize()
 .export-progress dt { color: #667085; }.export-progress dd { color: #1f2937; overflow-wrap: anywhere; }
 @media (max-width: 900px) {
   .query-context-row { align-items: flex-start; flex-direction: column; }
+<<<<<<< HEAD
   .time-context { justify-content: flex-start; flex-wrap: wrap; }
+=======
+  .time-context { justify-content: flex-start; width: 100%; }
+>>>>>>> feat: update log
   .query-search-row { grid-template-columns: minmax(0, 1fr) 126px; }
   .query-search-row .primary-action { grid-column: 1 / -1; }
   .condition-row { grid-template-columns: 1fr 120px; }
@@ -902,7 +922,11 @@ const resizeChart = () => chart?.resize()
 @media (max-width: 640px) {
   .head-actions { flex-wrap: wrap; }
   .context-control { align-items: flex-start; flex-wrap: wrap; width: 100%; }
+<<<<<<< HEAD
   .storage-select, .time-picker { width: 100%; }
+=======
+  .storage-select, .quick-range-select, .time-picker { width: 100%; }
+>>>>>>> feat: update log
   .query-search-row { grid-template-columns: 1fr; }
   .query-search-row .primary-action { grid-column: auto; }
   .page-size-select { width: 100%; }

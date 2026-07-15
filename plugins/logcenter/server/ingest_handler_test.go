@@ -6,6 +6,10 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+<<<<<<< HEAD
+=======
+	"time"
+>>>>>>> feat: update log
 
 	"github.com/gin-gonic/gin"
 	"github.com/ydcloud-dy/opshub/internal/loggingest"
@@ -36,6 +40,59 @@ func TestResolveIngestTestTokenDoesNotDefaultForRemoteGateway(t *testing.T) {
 	}
 }
 
+<<<<<<< HEAD
+=======
+func TestBuildIngestReadinessReportsHealthyKafkaPipeline(t *testing.T) {
+	t.Setenv("OPSHUB_LOG_AGENT_INGEST_TOKEN", "random-ingest-token")
+	t.Setenv("OPSHUB_LOGCENTER_ENCRYPTION_KEY", "random-encryption-key")
+	t.Setenv("OPSHUB_LOG_AGENT_IMAGE", "registry.example.com/opshub-log-agent:v0.0.9")
+	initializedAt := time.Now()
+	component := ingestComponentResult{ComponentStatus: loggingest.ComponentStatus{Status: "healthy"}, Reachable: true}
+	checks := buildIngestReadiness(
+		component,
+		component,
+		ingestQueueResult{Enabled: true, Status: "healthy", Reachable: true},
+		ingestStorageResult{ID: 1, Status: "healthy", Reachable: true, InitializedAt: &initializedAt},
+		"https://opshub.example.com",
+	)
+	summary := summarizeIngestReadiness(checks)
+	if summary.Passed != summary.Total || summary.Warnings != 0 || summary.Failed != 0 {
+		t.Fatalf("unexpected readiness summary: %+v", summary)
+	}
+}
+
+func TestBuildIngestReadinessExplainsProductionWarnings(t *testing.T) {
+	t.Setenv("OPSHUB_LOG_AGENT_INGEST_TOKEN", "opshub-log-ingest-token-change-in-production")
+	t.Setenv("OPSHUB_LOGCENTER_ENCRYPTION_KEY", "opshub-logcenter-encryption-key-change-in-production")
+	t.Setenv("OPSHUB_LOG_AGENT_IMAGE", "registry.example.com/opshub-log-agent:latest")
+	initializedAt := time.Now()
+	component := ingestComponentResult{ComponentStatus: loggingest.ComponentStatus{Status: "healthy"}, Reachable: true}
+	checks := buildIngestReadiness(
+		component,
+		component,
+		ingestQueueResult{Status: "bypassed", Reachable: true},
+		ingestStorageResult{ID: 1, Status: "healthy", Reachable: true, InitializedAt: &initializedAt},
+		"http://localhost:19880",
+	)
+	summary := summarizeIngestReadiness(checks)
+	if summary.Warnings != 3 || summary.Failed != 1 {
+		t.Fatalf("unexpected readiness summary: %+v", summary)
+	}
+	if check := readinessCheckByID(checks, "public-gateway"); check.Status != "failed" {
+		t.Fatalf("public gateway check = %+v", check)
+	}
+}
+
+func readinessCheckByID(checks []ingestReadinessCheck, id string) ingestReadinessCheck {
+	for _, check := range checks {
+		if check.ID == id {
+			return check
+		}
+	}
+	return ingestReadinessCheck{}
+}
+
+>>>>>>> feat: update log
 func TestAgentGatewayURLUsesReachableFallbackForLoopbackHost(t *testing.T) {
 	if gatewayURL := agentGatewayURLForHost("http", "localhost:9876", "http://192.168.31.190:9880"); gatewayURL != "http://192.168.31.190:9880" {
 		t.Fatalf("gateway URL = %q", gatewayURL)
