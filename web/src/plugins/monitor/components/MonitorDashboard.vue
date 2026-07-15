@@ -145,6 +145,7 @@ import {
   Warning
 } from '@element-plus/icons-vue'
 import {
+  getMonitorAlertEventTrend,
   getMonitorAlertEventStats,
   getMonitorAlertEvents,
   getMonitorAlertRules,
@@ -152,6 +153,7 @@ import {
   getMonitorFaultCenters,
   type MonitorAlertEvent,
   type MonitorAlertEventStats,
+  type MonitorAlertEventTrendPoint,
   type MonitorAlertRule,
   type MonitorDataSource,
   type MonitorFaultCenter
@@ -161,7 +163,7 @@ const rules = ref<MonitorAlertRule[]>([])
 const dataSources = ref<MonitorDataSource[]>([])
 const faultCenters = ref<MonitorFaultCenter[]>([])
 const activeEvents = ref<MonitorAlertEvent[]>([])
-const recentEvents = ref<MonitorAlertEvent[]>([])
+const trendData = ref<MonitorAlertEventTrendPoint[]>([])
 const activeLoading = ref(false)
 const selectedFaultCenterId = ref<number>()
 const trendChartRef = ref<HTMLElement>()
@@ -181,10 +183,6 @@ const stats = ref<MonitorAlertEventStats>({
 const enabledRuleCount = computed(() => rules.value.filter(item => item.enabled).length)
 const normalSourceCount = computed(() => dataSources.value.filter(item => item.status === 'normal').length)
 const activeFaultCenterCount = computed(() => new Set(activeEvents.value.map(item => item.faultCenterId).filter(Boolean)).size)
-const todayEventCount = computed(() => {
-  const today = formatDate(new Date())
-  return recentEvents.value.filter(item => String(item.startedAt || '').startsWith(today)).length
-})
 
 const todayText = computed(() => {
   const date = now.value
@@ -200,9 +198,9 @@ const clockText = computed(() => {
 
 const severityDistribution = computed(() => {
   const counts = { P0: 0, P1: 0, P2: 0 }
-  recentEvents.value.forEach(event => {
-    const key = normalizeSeverity(event.severity)
-    counts[key] += 1
+  trendData.value.forEach(item => {
+    const key = normalizeSeverity(item.severity)
+    counts[key] += Number(item.count || 0)
   })
   const max = Math.max(1, ...Object.values(counts))
   return Object.entries(counts).map(([name, value]) => ({ name, value, percent: Math.round(value / max * 100) }))
@@ -281,11 +279,11 @@ const renderTrendChart = async () => {
     P1: days.map(() => 0),
     P2: days.map(() => 0)
   }
-  recentEvents.value.forEach(event => {
-    const day = String(event.startedAt || '').slice(0, 10)
+  trendData.value.forEach(item => {
+    const day = String(item.date || '').slice(0, 10)
     const index = days.indexOf(day)
     if (index < 0) return
-    seriesData[normalizeSeverity(event.severity)][index] += 1
+    seriesData[normalizeSeverity(item.severity)][index] += Number(item.count || 0)
   })
   trendChart.setOption({
     color: ['#ef4444', '#f59e0b', '#22c55e'],
@@ -347,18 +345,18 @@ const loadAll = async () => {
   start.setDate(start.getDate() - 6)
   const startDate = formatDate(start)
   const endDate = formatDate(new Date())
-  const [sourceResult, ruleResult, centerResult, statsResult, eventResult] = await Promise.all([
+  const [sourceResult, ruleResult, centerResult, statsResult, trendResult] = await Promise.all([
     getMonitorDataSources(),
     getMonitorAlertRules(),
     getMonitorFaultCenters(),
     getMonitorAlertEventStats().catch(() => null),
-    getMonitorAlertEvents({ page: 1, pageSize: 500, startDate, endDate, sort: 'started_at' })
+    getMonitorAlertEventTrend({ startDate, endDate })
   ])
   dataSources.value = sourceResult || []
   rules.value = ruleResult || []
   faultCenters.value = centerResult || []
   if (statsResult) stats.value = statsResult
-  recentEvents.value = sortEventsByStartedAtDesc(eventResult?.list || [])
+  trendData.value = trendResult || []
   await loadActiveEvents()
   renderTrendChart()
 }

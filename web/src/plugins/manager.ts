@@ -64,6 +64,9 @@ class PluginManagerImpl {
       if (plugin.getRoutes) {
         const routes = plugin.getRoutes()
         routes.forEach(route => {
+          if (route.name && router.hasRoute(route.name)) {
+            return
+          }
           router.addRoute('Layout', route)
         })
       }
@@ -79,6 +82,9 @@ class PluginManagerImpl {
       if (plugin.getRoutes) {
         const routes = plugin.getRoutes()
         routes.forEach(route => {
+          if (route.name && router.hasRoute(route.name)) {
+            return
+          }
           router.addRoute('Layout', route)
         })
       }

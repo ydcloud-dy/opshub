@@ -1,0 +1,233 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#050505"/>
+      <stop offset="58%" stop-color="#0d0d0d"/>
+      <stop offset="100%" stop-color="#151515"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f7d85f"/>
+      <stop offset="100%" stop-color="#c79b19"/>
+    </linearGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#000000" flood-opacity="0.45"/>
+    </filter>
+    <filter id="goldGlow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="0" stdDeviation="9" flood-color="#d7b733" flood-opacity="0.45"/>
+    </filter>
+    <marker id="arrowGold" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#d9b937"/>
+    </marker>
+    <marker id="arrowMuted" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#7b8495"/>
+    </marker>
+    <style>
+      .title { font-family: Inter, "PingFang SC", "Microsoft YaHei", Arial, sans-serif; font-size: 48px; font-weight: 800; fill: #f5d34a; letter-spacing: 0; }
+      .subtitle { font-family: Inter, "PingFang SC", "Microsoft YaHei", Arial, sans-serif; font-size: 20px; font-weight: 500; fill: #a9adb7; letter-spacing: 0; }
+      .layer-title { font-family: Inter, "PingFang SC", "Microsoft YaHei", Arial, sans-serif; font-size: 24px; font-weight: 800; fill: #f4d44e; letter-spacing: 0; }
+      .box-title { font-family: Inter, "PingFang SC", "Microsoft YaHei", Arial, sans-serif; font-size: 21px; font-weight: 800; fill: #f8fafc; letter-spacing: 0; }
+      .box-sub { font-family: Inter, "PingFang SC", "Microsoft YaHei", Arial, sans-serif; font-size: 15px; font-weight: 500; fill: #b8beca; letter-spacing: 0; }
+      .chip { font-family: Inter, "PingFang SC", "Microsoft YaHei", Arial, sans-serif; font-size: 14px; font-weight: 700; fill: #1c1603; letter-spacing: 0; }
+      .small { font-family: Inter, "PingFang SC", "Microsoft YaHei", Arial, sans-serif; font-size: 13px; font-weight: 600; fill: #969daa; letter-spacing: 0; }
+      .label { font-family: Inter, "PingFang SC", "Microsoft YaHei", Arial, sans-serif; font-size: 14px; font-weight: 700; fill: #d9b937; letter-spacing: 0; }
+      .panel { fill: #101114; stroke: #2a2d34; stroke-width: 1.5; rx: 24; filter: url(#softShadow); }
+      .module { fill: #181a1f; stroke: #353944; stroke-width: 1.4; rx: 18; }
+      .module-gold { fill: #17150b; stroke: #d9b937; stroke-width: 1.8; rx: 18; filter: url(#goldGlow); }
+      .data { fill: #121722; stroke: #394151; stroke-width: 1.4; rx: 18; }
+      .external { fill: #141414; stroke: #3a3a3a; stroke-width: 1.4; rx: 18; }
+      .lineGold { stroke: #d9b937; stroke-width: 3; fill: none; marker-end: url(#arrowGold); }
+      .lineMuted { stroke: #7b8495; stroke-width: 2.2; fill: none; marker-end: url(#arrowMuted); stroke-dasharray: 8 8; }
+      .linePlain { stroke: #7b8495; stroke-width: 2.2; fill: none; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="1000" fill="url(#bg)"/>
+  <circle cx="1320" cy="145" r="240" fill="#d9b937" opacity="0.06"/>
+  <circle cx="250" cy="860" r="300" fill="#d9b937" opacity="0.04"/>
+
+  <g transform="translate(80 58)">
+    <rect x="0" y="0" width="72" height="72" rx="18" fill="#111" stroke="#d9b937" stroke-width="4"/>
+    <rect x="21" y="20" width="30" height="10" rx="2" fill="#d9b937"/>
+    <rect x="21" y="42" width="30" height="10" rx="2" fill="#d9b937"/>
+    <text x="94" y="35" class="title">OpsHub 系统架构图</text>
+    <text x="96" y="66" class="subtitle">企业级一站式运维管理平台 · Go + Vue3 · 插件化架构 · 监控告警闭环</text>
+  </g>
+
+  <g transform="translate(80 160)">
+    <rect class="panel" x="0" y="0" width="1440" height="105"/>
+    <text x="32" y="42" class="layer-title">访问层</text>
+    <g transform="translate(180 24)">
+      <rect class="module" x="0" y="0" width="220" height="58"/>
+      <text x="24" y="25" class="box-title">浏览器 / 管理员</text>
+      <text x="24" y="47" class="box-sub">Web Console</text>
+    </g>
+    <g transform="translate(430 24)">
+      <rect class="module" x="0" y="0" width="220" height="58"/>
+      <text x="24" y="25" class="box-title">DevOps / SRE</text>
+      <text x="24" y="47" class="box-sub">运维、值班、审计</text>
+    </g>
+    <g transform="translate(680 24)">
+      <rect class="module" x="0" y="0" width="220" height="58"/>
+      <text x="24" y="25" class="box-title">Webhook / API</text>
+      <text x="24" y="47" class="box-sub">外部系统集成</text>
+    </g>
+    <g transform="translate(1040 24)">
+      <rect class="module-gold" x="0" y="0" width="280" height="58"/>
+      <text x="24" y="25" class="box-title">HTTPS / 域名入口</text>
+      <text x="24" y="47" class="box-sub">Nginx / Ingress / TLS</text>
+    </g>
+  </g>
+
+  <path class="lineGold" d="M 800 265 C 800 300 800 300 800 332"/>
+
+  <g transform="translate(80 330)">
+    <rect class="panel" x="0" y="0" width="1440" height="145"/>
+    <text x="32" y="47" class="layer-title">前端与网关层</text>
+    <g transform="translate(220 28)">
+      <rect class="module-gold" x="0" y="0" width="285" height="86"/>
+      <text x="26" y="32" class="box-title">OpsHub Web</text>
+      <text x="26" y="58" class="box-sub">Vue3 · Element Plus · TypeScript</text>
+    </g>
+    <g transform="translate(555 28)">
+      <rect class="module" x="0" y="0" width="250" height="86"/>
+      <text x="26" y="32" class="box-title">静态资源服务</text>
+      <text x="26" y="58" class="box-sub">Nginx · SPA 路由</text>
+    </g>
+    <g transform="translate(855 28)">
+      <rect class="module" x="0" y="0" width="250" height="86"/>
+      <text x="26" y="32" class="box-title">API 反向代理</text>
+      <text x="26" y="58" class="box-sub">REST · WebSocket · SSE</text>
+    </g>
+    <g transform="translate(1155 28)">
+      <rect class="module" x="0" y="0" width="210" height="86"/>
+      <text x="26" y="32" class="box-title">终端通道</text>
+      <text x="26" y="58" class="box-sub">Web SSH · Xterm</text>
+    </g>
+  </g>
+
+  <path class="lineGold" d="M 800 475 C 800 510 800 510 800 540"/>
+
+  <g transform="translate(80 540)">
+    <rect class="panel" x="0" y="0" width="1440" height="225"/>
+    <text x="32" y="48" class="layer-title">后端核心层</text>
+    <g transform="translate(185 28)">
+      <rect class="module-gold" x="0" y="0" width="245" height="84"/>
+      <text x="24" y="31" class="box-title">OpsHub API</text>
+      <text x="24" y="56" class="box-sub">Go · Gin · Gorm</text>
+    </g>
+    <g transform="translate(470 28)">
+      <rect class="module" x="0" y="0" width="235" height="84"/>
+      <text x="24" y="31" class="box-title">认证与权限</text>
+      <text x="24" y="56" class="box-sub">JWT · RBAC · MFA · LDAP</text>
+    </g>
+    <g transform="translate(745 28)">
+      <rect class="module" x="0" y="0" width="235" height="84"/>
+      <text x="24" y="31" class="box-title">任务调度</text>
+      <text x="24" y="56" class="box-sub">定时任务 · 执行历史</text>
+    </g>
+    <g transform="translate(1020 28)">
+      <rect class="module" x="0" y="0" width="235" height="84"/>
+      <text x="24" y="31" class="box-title">审计与日志</text>
+      <text x="24" y="56" class="box-sub">登录 · 操作 · 终端审计</text>
+    </g>
+
+    <g transform="translate(150 132)">
+      <rect class="module" x="0" y="0" width="180" height="58"/>
+      <text x="22" y="35" class="box-title">资产管理</text>
+    </g>
+    <g transform="translate(360 132)">
+      <rect class="module" x="0" y="0" width="180" height="58"/>
+      <text x="22" y="35" class="box-title">容器管理</text>
+    </g>
+    <g transform="translate(570 132)">
+      <rect class="module-gold" x="0" y="0" width="180" height="58"/>
+      <text x="22" y="35" class="box-title">监控中心</text>
+    </g>
+    <g transform="translate(780 132)">
+      <rect class="module" x="0" y="0" width="180" height="58"/>
+      <text x="22" y="35" class="box-title">终端审计</text>
+    </g>
+    <g transform="translate(990 132)">
+      <rect class="module" x="0" y="0" width="180" height="58"/>
+      <text x="22" y="35" class="box-title">SSL 证书</text>
+    </g>
+    <g transform="translate(1200 132)">
+      <rect class="module" x="0" y="0" width="180" height="58"/>
+      <text x="22" y="35" class="box-title">插件管理</text>
+    </g>
+  </g>
+
+  <path class="lineGold" d="M 800 765 C 800 792 800 792 800 818"/>
+  <path class="lineMuted" d="M 650 765 C 520 795 365 790 300 818"/>
+  <path class="lineMuted" d="M 950 765 C 1080 795 1230 790 1300 818"/>
+
+  <g transform="translate(80 820)">
+    <rect class="panel" x="0" y="0" width="470" height="125"/>
+    <text x="30" y="42" class="layer-title">基础存储</text>
+    <g transform="translate(35 60)">
+      <rect class="data" x="0" y="0" width="120" height="44"/>
+      <text x="28" y="29" class="box-sub">MySQL</text>
+    </g>
+    <g transform="translate(180 60)">
+      <rect class="data" x="0" y="0" width="120" height="44"/>
+      <text x="34" y="29" class="box-sub">Redis</text>
+    </g>
+    <g transform="translate(325 60)">
+      <rect class="data" x="0" y="0" width="110" height="44"/>
+      <text x="22" y="29" class="box-sub">文件存储</text>
+    </g>
+  </g>
+
+  <g transform="translate(595 820)">
+    <rect class="panel" x="0" y="0" width="410" height="125"/>
+    <text x="30" y="42" class="layer-title">外部系统</text>
+    <g transform="translate(28 60)">
+      <rect class="external" x="0" y="0" width="110" height="44"/>
+      <text x="24" y="29" class="box-sub">K8s API</text>
+    </g>
+    <g transform="translate(150 60)">
+      <rect class="external" x="0" y="0" width="110" height="44"/>
+      <text x="26" y="29" class="box-sub">SSH 主机</text>
+    </g>
+    <g transform="translate(272 60)">
+      <rect class="external" x="0" y="0" width="110" height="44"/>
+      <text x="22" y="29" class="box-sub">ACME/DNS</text>
+    </g>
+  </g>
+
+  <g transform="translate(1050 820)">
+    <rect class="panel" x="0" y="0" width="470" height="125"/>
+    <text x="30" y="42" class="layer-title">监控与通知生态</text>
+    <g transform="translate(28 60)">
+      <rect class="external" x="0" y="0" width="105" height="44"/>
+      <text x="16" y="29" class="box-sub">Prometheus</text>
+    </g>
+    <g transform="translate(145 60)">
+      <rect class="external" x="0" y="0" width="80" height="44"/>
+      <text x="27" y="29" class="box-sub">Loki</text>
+    </g>
+    <g transform="translate(237 60)">
+      <rect class="external" x="0" y="0" width="70" height="44"/>
+      <text x="25" y="29" class="box-sub">ES</text>
+    </g>
+    <g transform="translate(320 60)">
+      <rect class="external" x="0" y="0" width="120" height="44"/>
+      <text x="15" y="29" class="box-sub">飞书/钉钉/企微</text>
+    </g>
+  </g>
+
+  <g transform="translate(1145 305)">
+    <rect x="0" y="0" width="330" height="164" rx="22" fill="#0c0d10" stroke="#3b3212" stroke-width="1.4"/>
+    <text x="24" y="38" class="layer-title">监控告警闭环</text>
+    <text x="24" y="72" class="small">1. 数据源查询与规则评估</text>
+    <text x="24" y="101" class="small">2. 活跃/历史告警进入故障中心</text>
+    <text x="24" y="130" class="small">3. 值班、升级、静默与聚合降噪</text>
+  </g>
+
+  <g transform="translate(1130 505)">
+    <rect x="0" y="0" width="345" height="42" rx="21" fill="url(#gold)"/>
+    <text x="32" y="27" class="chip">核心链路：用户入口 → OpsHub API → 插件模块 → 数据源/资源/通知</text>
+  </g>
+
+  <text x="80" y="980" class="small">OpsHub Architecture · Assets · Kubernetes · Monitoring · Terminal Audit · SSL · Tasks · Plugins</text>
+</svg>

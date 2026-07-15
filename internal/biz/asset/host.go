@@ -82,6 +82,7 @@ type HostRequest struct {
 	IP              string `json:"ip" binding:"required,ip"`
 	Port            int    `json:"port" binding:"required,min=1,max=65535"`
 	CredentialID    uint   `json:"credentialId"`
+	SSHPassword     string `json:"sshPassword,omitempty"`
 	Tags            string `json:"tags"`
 	Description     string `json:"description"`
 }

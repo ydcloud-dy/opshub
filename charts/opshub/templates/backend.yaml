@@ -104,10 +104,68 @@ spec:
               {{- else }}
               value: {{ .Values.externalRedis.db | quote }}
               {{- end }}
+            - name: OPSHUB_LOGCENTER_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "opshub.fullname" . }}-secrets
+                  key: logcenter-encryption-key
+            - name: OPSHUB_LOGCENTER_CLICKHOUSE_ENDPOINT
+              value: {{ include "opshub.clickhouse.endpoint" . | quote }}
+            - name: OPSHUB_LOGCENTER_CLICKHOUSE_DATABASE
+              value: {{ include "opshub.clickhouse.database" . | quote }}
+            - name: OPSHUB_LOGCENTER_CLICKHOUSE_USERNAME
+              value: {{ include "opshub.clickhouse.username" . | quote }}
+            - name: OPSHUB_LOGCENTER_CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "opshub.fullname" . }}-secrets
+                  key: clickhouse-password
+            {{- if .Values.logCenter.ingest.enabled }}
+            - name: OPSHUB_LOG_GATEWAY_STATUS_URL
+              value: {{ printf "http://%s-log-gateway:%v" (include "opshub.fullname" .) .Values.logCenter.ingest.gateway.service.port | quote }}
+            - name: OPSHUB_LOG_WRITER_STATUS_URL
+              value: {{ printf "http://%s-log-writer:%v" (include "opshub.fullname" .) .Values.logCenter.ingest.writer.servicePort | quote }}
+            - name: OPSHUB_LOG_QUEUE_MODE
+              value: {{ .Values.logCenter.ingest.queue.mode | lower | quote }}
+            - name: OPSHUB_LOG_INGEST_TEST_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "opshub.fullname" . }}-secrets
+                  key: log-ingest-token
+            - name: OPSHUB_LOG_AGENT_INGEST_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "opshub.fullname" . }}-secrets
+                  key: log-ingest-token
+            - name: OPSHUB_LOG_GATEWAY_PUBLIC_URL
+              value: {{ .Values.logCenter.ingest.gateway.publicURL | default (include "opshub.frontend.url" .) | quote }}
+            - name: OPSHUB_LOG_AGENT_IMAGE
+              value: {{ .Values.logCenter.kubernetesCollector.image | quote }}
+            {{- end }}
+            - name: OPSHUB_LOG_TAIL_MAX_CONNECTIONS
+              value: {{ .Values.logCenter.tail.maxConnections | quote }}
+            - name: OPSHUB_LOG_TAIL_POLL_MILLISECONDS
+              value: {{ .Values.logCenter.tail.pollMilliseconds | quote }}
+            - name: OPSHUB_LOG_TAIL_MAX_MINUTES
+              value: {{ .Values.logCenter.tail.maxMinutes | quote }}
+            - name: OPSHUB_LOG_EXPORT_DIR
+              value: "/app/data/log-exports"
+            - name: OPSHUB_LOG_EXPORT_MAX_ROWS
+              value: {{ .Values.logCenter.export.maxRows | quote }}
+            - name: OPSHUB_LOG_EXPORT_WORKERS
+              value: {{ .Values.logCenter.export.workers | quote }}
+            - name: OPSHUB_LOG_EXPORT_QUEUE_CAPACITY
+              value: {{ .Values.logCenter.export.queueCapacity | quote }}
+            - name: OPSHUB_LOG_EXPORT_RETENTION_HOURS
+              value: {{ .Values.logCenter.export.retentionHours | quote }}
+            - name: OPSHUB_LOG_EXPORT_TIMEOUT_MINUTES
+              value: {{ .Values.logCenter.export.timeoutMinutes | quote }}
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
-          {{- if .Values.backend.terminalRecordings.persistence.enabled }}
           volumeMounts:
+            - name: log-exports
+              mountPath: /app/data/log-exports
+          {{- if .Values.backend.terminalRecordings.persistence.enabled }}
             - name: terminal-recordings
               mountPath: /app/data/terminal-recordings
           {{- end }}
@@ -141,8 +199,15 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- if .Values.backend.terminalRecordings.persistence.enabled }}
       volumes:
+        - name: log-exports
+          {{- if .Values.logCenter.export.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "opshub.fullname" . }}-log-exports
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- if .Values.backend.terminalRecordings.persistence.enabled }}
         - name: terminal-recordings
           persistentVolumeClaim:
             claimName: {{ include "opshub.fullname" . }}-terminal-recordings

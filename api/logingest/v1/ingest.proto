@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package opshub.logingest.v1;
+
+option go_package = "github.com/ydcloud-dy/opshub/api/logingest/v1;logingestv1";
+
+service LogIngestService {
+  rpc Stream(stream LogBatch) returns (stream IngestAck);
+}
+
+message LogBatch {
+  string batch_id = 1;
+  string agent_id = 2;
+  uint64 policy_id = 3;
+  uint64 policy_version = 4;
+  uint64 sequence_start = 5;
+  uint64 sequence_end = 6;
+  string source_type = 7;
+  string asset_type = 8;
+  uint64 asset_id = 9;
+  uint64 host_id = 10;
+  uint64 cluster_id = 11;
+  string environment = 12;
+  string service = 13;
+  string namespace = 14;
+  string workload_kind = 15;
+  string workload_name = 16;
+  string pod_name = 17;
+  string pod_uid = 18;
+  string container_name = 19;
+  string container_image = 20;
+  string node_name = 21;
+  string file_path = 22;
+  string stream = 23;
+  repeated LogRecord records = 24;
+}
+
+message LogRecord {
+  uint64 sequence = 1;
+  int64 timestamp_unix_nano = 2;
+  int64 observed_timestamp_unix_nano = 3;
+  string body = 4;
+  string severity_text = 5;
+  int32 severity_number = 6;
+  map<string, string> attributes = 7;
+  map<string, string> resource_attributes = 8;
+  string trace_id = 9;
+  string span_id = 10;
+  int32 retention_days = 11;
+}
+
+message IngestAck {
+  string batch_id = 1;
+  int32 accepted_records = 2;
+  uint64 accepted_sequence = 3;
+  int32 retry_after_ms = 4;
+  bool duplicate = 5;
+  string error_code = 6;
+  string error_message = 7;
+}

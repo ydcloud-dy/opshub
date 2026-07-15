@@ -213,6 +213,164 @@ externalRedis:
   password: ""
   db: 0
 
+# ==================== ClickHouse 日志存储 ====================
+clickhouse:
+  # 是否部署 OpsHub 内置 ClickHouse；设为 false 后可在日志库页面配置外部 ClickHouse
+  enabled: true
+  image:
+    repository: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/clickhouse/clickhouse-server
+    tag: "24.8"
+    pullPolicy: IfNotPresent
+  auth:
+    username: opshub
+    password: "OpsHub@ClickHouse"
+    database: opshub_logs
+  persistence:
+    enabled: true
+    size: 50Gi
+    storageClass: ""
+    accessModes:
+      - ReadWriteOnce
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "2Gi"
+      cpu: "2000m"
+  nodeSelector: {}
+  tolerations: []
+
+externalClickHouse:
+  endpoint: ""
+  username: default
+  password: ""
+  database: opshub_logs
+
+logCenter:
+  # 用于加密 ClickHouse 等日志中心凭据，生产环境必须修改
+  encryptionKey: "opshub-logcenter-encryption-key-change-in-production"
+  ingest:
+    enabled: true
+    ingestToken: "opshub-log-ingest-token-change-in-production"
+    writerToken: "opshub-log-writer-token-change-in-production"
+    queue:
+      # direct 适合演示/小规模；生产环境使用 kafka
+      mode: direct
+      # 使用外部 Kafka 时填写多个 bootstrap 地址；内置 Redpanda 启用时可留空
+      brokers: []
+      topic: opshub.logs.v1
+      deadletterTopic: opshub.logs.deadletter.v1
+      consumerGroup: opshub-log-writer
+      partitions: 12
+      replicationFactor: 1
+      autoCreateTopics: true
+      retentionHours: 72
+      maxPollRecords: 500
+      fetchMaxMB: 64
+      tls:
+        enabled: false
+        skipVerify: false
+      sasl:
+        mechanism: ""
+        username: ""
+        password: ""
+      redpanda:
+        enabled: false
+        replicaCount: 1
+        image:
+          repository: docker.redpanda.com/redpandadata/redpanda
+          tag: v24.3.18
+          pullPolicy: IfNotPresent
+        smp: 1
+        memory: 1G
+        persistence:
+          enabled: true
+          size: 20Gi
+          storageClass: ""
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+        podDisruptionBudget:
+          enabled: true
+          minAvailable: 1
+    gateway:
+      replicaCount: 2
+      image:
+        repository: docker.1ms.run/dyclouds/opshub-log-gateway
+        tag: v0.0.8
+        pullPolicy: Always
+      # Agent 可访问地址；留空时自动使用 server.frontendURL 或 Ingress 域名
+      publicURL: ""
+      service:
+        type: ClusterIP
+        port: 9880
+        grpcPort: 9882
+      ratePerSecond: 5000
+      burstRecords: 10000
+      globalRatePerSecond: 50000
+      globalBurstRecords: 100000
+      maxInflight: 256
+      podDisruptionBudget:
+        enabled: true
+        minAvailable: 1
+      resources:
+        requests:
+          memory: "128Mi"
+          cpu: "100m"
+        limits:
+          memory: "256Mi"
+          cpu: "500m"
+    writer:
+      replicaCount: 2
+      image:
+        repository: docker.1ms.run/dyclouds/opshub-log-writer
+        tag: v0.0.8
+        pullPolicy: Always
+      servicePort: 9881
+      queueCapacity: 2048
+      workers: 4
+      maxRetries: 3
+      podDisruptionBudget:
+        enabled: true
+        minAvailable: 1
+      deadletter:
+        persistence:
+          enabled: false
+          size: 5Gi
+          storageClass: ""
+      resources:
+        requests:
+          memory: "256Mi"
+          cpu: "200m"
+        limits:
+          memory: "1Gi"
+          cpu: "1000m"
+  kubernetesCollector:
+    # Kubernetes 节点日志采集器使用独立镜像，版本应与当前控制面兼容
+    image: docker.1ms.run/dyclouds/opshub-log-agent:v0.0.8
+  tail:
+    maxConnections: 50
+    pollMilliseconds: 1000
+    maxMinutes: 60
+  export:
+    maxRows: 1000000
+    workers: 2
+    queueCapacity: 100
+    retentionHours: 24
+    timeoutMinutes: 120
+    persistence:
+      # 后端多副本时建议启用，并使用支持 ReadWriteMany 的存储类
+      enabled: false
+      size: 20Gi
+      storageClass: ""
+      accessModes:
+        - ReadWriteMany
+
 # ==================== 服务器配置 ====================
 server:
   # 运行模式: debug / release
@@ -241,6 +399,7 @@ ingress:
     nginx.ingress.kubernetes.io/proxy-body-size: "100m"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
     # WebSocket 支持
     nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
   # 主机配置

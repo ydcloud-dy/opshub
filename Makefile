@@ -1,16 +1,19 @@
-.PHONY: all build agent-binaries agent-gateway agent-gateway-binaries run clean deps swagger test fmt lint help
+.PHONY: all build agent-binaries agent-gateway agent-gateway-binaries log-agent log-gateway log-writer log-services run clean deps swagger test fmt lint help
 
 # 变量定义
 APP_NAME=opshub
 AGENT_NAME=opshub-agent
 AGENT_GATEWAY_NAME=opshub-agent-gateway
+LOG_GATEWAY_NAME=opshub-log-gateway
+LOG_WRITER_NAME=opshub-log-writer
+LOG_AGENT_NAME=opshub-log-agent
 BUILD_DIR=bin
 AGENT_BUILD_DIR=data/agent-binaries
 CONFIG_FILE=config/config.yaml
 GOCACHE_DIR=$(CURDIR)/.gocache
 GO_FILES=$(shell find . -name '*.go' -type f)
 LDFLAGS=-ldflags "-X main.Version=1.0.0 -X main.GitCommit=$(shell git rev-parse --short HEAD 2>/dev/null || echo 'unknown') -X main.BuildTime=$(shell date -u '+%Y-%m-%d_%H:%M:%S')"
-AGENT_LDFLAGS=-ldflags "-X main.version=0.1.0"
+AGENT_LDFLAGS=-ldflags "-X main.version=0.3.0"
 
 # 默认目标
 all: swagger build
@@ -46,6 +49,27 @@ agent-gateway-binaries:
 	@GOCACHE=$(GOCACHE_DIR) GOOS=linux GOARCH=amd64 go build -o $(BUILD_DIR)/$(AGENT_GATEWAY_NAME)-linux-amd64 ./cmd/opshub-agent-gateway
 	@GOCACHE=$(GOCACHE_DIR) GOOS=linux GOARCH=arm64 go build -o $(BUILD_DIR)/$(AGENT_GATEWAY_NAME)-linux-arm64 ./cmd/opshub-agent-gateway
 	@echo "Agent Gateway Linux 二进制已生成到: $(BUILD_DIR)"
+
+# 编译日志数据面服务
+log-agent:
+	@echo "编译 OpsHub Log Agent..."
+	@mkdir -p $(BUILD_DIR)
+	@GOOS=linux go build $(AGENT_LDFLAGS) -o $(BUILD_DIR)/$(LOG_AGENT_NAME) ./cmd/opshub-agent
+	@echo "Log Agent 已生成: $(BUILD_DIR)/$(LOG_AGENT_NAME)"
+
+log-gateway:
+	@echo "编译 OpsHub Log Gateway..."
+	@mkdir -p $(BUILD_DIR)
+	@go build -o $(BUILD_DIR)/$(LOG_GATEWAY_NAME) ./cmd/opshub-log-gateway
+	@echo "Log Gateway 已生成: $(BUILD_DIR)/$(LOG_GATEWAY_NAME)"
+
+log-writer:
+	@echo "编译 OpsHub Log Writer..."
+	@mkdir -p $(BUILD_DIR)
+	@go build -o $(BUILD_DIR)/$(LOG_WRITER_NAME) ./cmd/opshub-log-writer
+	@echo "Log Writer 已生成: $(BUILD_DIR)/$(LOG_WRITER_NAME)"
+
+log-services: log-agent log-gateway log-writer
 
 # 运行服务
 run:
@@ -96,6 +120,10 @@ help:
 	@echo "  make agent-binaries - 编译 Linux Agent 二进制"
 	@echo "  make agent-gateway - 编译 Agent Gateway"
 	@echo "  make agent-gateway-binaries - 编译 Linux Agent Gateway 二进制"
+	@echo "  make log-gateway - 编译独立 Log Gateway 服务"
+	@echo "  make log-writer - 编译独立 Log Writer 服务"
+	@echo "  make log-agent - 编译 Kubernetes Log Agent"
+	@echo "  make log-services - 编译全部日志数据面服务"
 	@echo "  make run       - 运行服务"
 	@echo "  make clean     - 清理编译文件和日志"
 	@echo "  make deps      - 安装依赖"

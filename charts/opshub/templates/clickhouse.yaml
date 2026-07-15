@@ -1,0 +1,118 @@
+{{- if .Values.clickhouse.enabled }}
+{{- if .Values.clickhouse.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "opshub.fullname" . }}-clickhouse-pvc
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "opshub.clickhouse.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    {{- toYaml .Values.clickhouse.persistence.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.clickhouse.persistence.size }}
+  {{- if or .Values.clickhouse.persistence.storageClass .Values.global.storageClass }}
+  storageClassName: {{ .Values.clickhouse.persistence.storageClass | default .Values.global.storageClass }}
+  {{- end }}
+---
+{{- end }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "opshub.fullname" . }}-clickhouse
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "opshub.clickhouse.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "opshub.fullname" . }}-clickhouse
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "opshub.clickhouse.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "opshub.clickhouse.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: clickhouse
+          image: "{{ .Values.clickhouse.image.repository }}:{{ .Values.clickhouse.image.tag }}"
+          imagePullPolicy: {{ .Values.clickhouse.image.pullPolicy | default .Values.global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8123
+            - name: native
+              containerPort: 9000
+          env:
+            - name: CLICKHOUSE_DB
+              value: {{ .Values.clickhouse.auth.database | quote }}
+            - name: CLICKHOUSE_USER
+              value: {{ .Values.clickhouse.auth.username | quote }}
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "opshub.fullname" . }}-secrets
+                  key: clickhouse-password
+            - name: CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT
+              value: "1"
+            - name: TZ
+              value: "UTC"
+          {{- if .Values.clickhouse.persistence.enabled }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/clickhouse
+          {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.clickhouse.resources | nindent 12 }}
+      {{- if .Values.clickhouse.persistence.enabled }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "opshub.fullname" . }}-clickhouse-pvc
+      {{- end }}
+      {{- with .Values.clickhouse.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.clickhouse.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "opshub.fullname" . }}-clickhouse
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "opshub.clickhouse.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8123
+      targetPort: http
+    - name: native
+      port: 9000
+      targetPort: native
+  selector:
+    {{- include "opshub.clickhouse.selectorLabels" . | nindent 4 }}
+{{- end }}

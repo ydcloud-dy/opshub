@@ -356,6 +356,11 @@
                   <path fill="#14b8a6" d="M36 34a13 13 0 0 1-25-5h19a6 6 0 0 0 6 5Z" />
                   <path fill="#111827" d="M11 21h26a4 4 0 0 1 0 8H11a14 14 0 0 1 0-8Z" />
                 </svg>
+                <svg v-else-if="item.value === 'opshub_logs'" viewBox="0 0 48 48" aria-hidden="true">
+                  <rect x="7" y="7" width="34" height="34" rx="8" fill="#111827" />
+                  <path d="M15 17h18M15 24h18M15 31h11" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" />
+                  <circle cx="34" cy="31" r="4" fill="#22c55e" stroke="#111827" stroke-width="2" />
+                </svg>
               </span>
               <span class="source-type-copy">
                 <strong>{{ item.label }}</strong>
@@ -365,7 +370,15 @@
             </div>
           </div>
           <el-form-item label="数据源" prop="dataSourceIds" class="source-select">
-            <el-select v-model="form.dataSourceIds" multiple filterable placeholder="可选择多个同类型数据源，当前评估优先使用第一个" style="width: 100%" @change="handleSourceChange">
+            <el-select
+              v-model="form.dataSourceIds"
+              multiple
+              filterable
+              :multiple-limit="form.dataSourceType === 'opshub_logs' ? 1 : 0"
+              :placeholder="form.dataSourceType === 'opshub_logs' ? '请选择内置日志存储' : '可选择多个同类型数据源，当前评估优先使用第一个'"
+              style="width: 100%"
+              @change="handleSourceChange"
+            >
               <el-option v-for="item in filteredDataSourcesForForm" :key="item.id" :label="item.name" :value="item.id" />
             </el-select>
           </el-form-item>
@@ -406,11 +419,118 @@
               </el-button>
             </div>
           </el-form-item>
-          <el-form-item v-else label="查询模式">
+          <el-form-item v-else-if="form.dataSourceType !== 'opshub_logs'" label="查询模式">
             <el-segmented v-model="form.queryMode" :options="queryModeOptions" />
           </el-form-item>
-          <el-form-item :label="form.dataSourceType === 'elasticsearch' ? '查询 DSL' : '查询语句'" prop="query">
-            <div class="query-editor">
+          <el-form-item :label="form.dataSourceType === 'opshub_logs' ? '日志告警条件' : form.dataSourceType === 'elasticsearch' ? '查询 DSL' : '查询语句'" prop="query">
+            <div v-if="form.dataSourceType === 'opshub_logs'" class="opshub-log-builder">
+              <div class="opshub-log-builder-head">
+                <div>
+                  <strong>内置日志查询</strong>
+                  <span>按日志窗口聚合命中数量或速率，查询范围自动继承当前用户的主机和 Kubernetes 权限。</span>
+                </div>
+                <el-tag effect="plain" type="success">结构化条件</el-tag>
+              </div>
+
+              <div class="opshub-log-form-grid opshub-log-form-grid-primary">
+                <label class="opshub-log-field opshub-log-field-wide">
+                  <span>关键字</span>
+                  <el-input v-model="opshubLogQuery.keyword" clearable placeholder="如 ERROR、Exception；* 表示全部日志" />
+                </label>
+                <label class="opshub-log-field">
+                  <span>统计窗口</span>
+                  <div class="opshub-log-number">
+                    <el-input-number v-model="opshubLogQuery.windowSeconds" :min="10" :max="604800" :step="10" controls-position="right" />
+                    <em>秒</em>
+                  </div>
+                </label>
+                <label class="opshub-log-field">
+                  <span>聚合方式</span>
+                  <el-segmented v-model="opshubLogQuery.aggregation" :options="opshubAggregationOptions" />
+                </label>
+                <label class="opshub-log-field">
+                  <span>通知样例</span>
+                  <div class="opshub-log-number">
+                    <el-input-number v-model="opshubLogQuery.sampleLimit" :min="1" :max="20" controls-position="right" />
+                    <em>条</em>
+                  </div>
+                </label>
+              </div>
+
+              <div class="opshub-log-subsection">
+                <div class="opshub-log-subsection-title">
+                  <strong>资源范围</strong>
+                  <span>不选择表示查询当前账号有权访问的全部资源</span>
+                </div>
+                <div class="opshub-log-form-grid">
+                  <label class="opshub-log-field">
+                    <span>主机</span>
+                    <el-select v-model="opshubLogQuery.scope.hostIds" multiple filterable collapse-tags collapse-tags-tooltip placeholder="全部主机">
+                      <el-option v-for="item in logAlertHosts" :key="item.id" :label="`${item.name} (${item.ip})`" :value="item.id" />
+                    </el-select>
+                  </label>
+                  <label class="opshub-log-field">
+                    <span>Kubernetes 集群</span>
+                    <el-select v-model="opshubLogQuery.scope.clusterIds" multiple filterable collapse-tags collapse-tags-tooltip placeholder="全部集群">
+                      <el-option v-for="item in logAlertClusters" :key="item.id" :label="item.alias || item.name" :value="item.id" />
+                    </el-select>
+                  </label>
+                  <label v-for="item in opshubScopeTextFields" :key="item.key" class="opshub-log-field">
+                    <span>{{ item.label }}</span>
+                    <el-select v-model="opshubLogQuery.scope[item.key]" multiple filterable allow-create default-first-option collapse-tags collapse-tags-tooltip :placeholder="item.placeholder" />
+                  </label>
+                </div>
+              </div>
+
+              <div class="opshub-log-subsection">
+                <div class="opshub-log-subsection-title">
+                  <strong>分组维度</strong>
+                  <span>每个分组独立产生告警事件；留空时统计为一条事件</span>
+                </div>
+                <el-select v-model="opshubLogQuery.groupBy" multiple filterable collapse-tags collapse-tags-tooltip placeholder="不分组" class="opshub-log-full-select">
+                  <el-option v-for="item in opshubGroupByOptions" :key="item.value" :label="item.label" :value="item.value" />
+                </el-select>
+              </div>
+
+              <div class="opshub-log-subsection">
+                <div class="opshub-log-subsection-title">
+                  <strong>精确筛选</strong>
+                  <el-button link type="primary" @click="addOpsHubLogFilter">
+                    <el-icon><Plus /></el-icon>
+                    添加条件
+                  </el-button>
+                </div>
+                <div v-if="opshubLogQuery.filters.length" class="opshub-log-filter-list">
+                  <div v-for="(filter, index) in opshubLogQuery.filters" :key="filter.id" class="opshub-log-filter-row">
+                    <el-select v-model="filter.field" filterable placeholder="字段">
+                      <el-option v-for="item in opshubFilterFieldOptions" :key="item.value" :label="item.label" :value="item.value" />
+                    </el-select>
+                    <el-select v-model="filter.operator" placeholder="条件">
+                      <el-option v-for="item in opshubFilterOperatorOptions" :key="item.value" :label="item.label" :value="item.value" />
+                    </el-select>
+                    <el-input v-model="filter.value" :placeholder="filter.operator === 'in' ? '多个值用逗号分隔' : '筛选值'" />
+                    <el-button link class="action-btn action-delete" @click="removeOpsHubLogFilter(index)">
+                      <el-icon><Delete /></el-icon>
+                    </el-button>
+                  </div>
+                </div>
+                <div v-else class="opshub-log-filter-empty">暂无精确筛选条件</div>
+              </div>
+
+              <div class="query-tools">
+                <div class="query-source-hint">
+                  <el-tag v-if="getFormPrimarySource()" :type="getTypeTag(getFormPrimarySource()?.type)" effect="light">
+                    {{ getTypeName(getFormPrimarySource()?.type) }}
+                  </el-tag>
+                  <span>{{ getFormPrimarySource()?.name || '请选择内置日志存储后预览' }}</span>
+                </div>
+                <el-button class="preview-query-btn" :loading="previewLoading" @click="handlePreviewQuery">
+                  <el-icon><DataAnalysis /></el-icon>
+                  数据预览
+                </el-button>
+              </div>
+            </div>
+            <div v-else class="query-editor">
               <div v-if="form.dataSourceType === 'elasticsearch'" class="es-dsl-helper">
                 <div class="es-dsl-helper-head">
                   <span>常用 ES 告警模板</span>
@@ -1009,6 +1129,11 @@ import {
   type MonitorQuerySuggestion,
   type MonitorRuleGroup
 } from '@/api/monitor-datasource'
+import {
+  getInternalLogAssets,
+  type LogPolicyTargetCluster,
+  type LogPolicyTargetHost
+} from '@/api/logcenter'
 
 type ConditionOperator = 'gt' | 'gte' | 'lt' | 'lte' | 'eq' | 'neq'
 type SeverityValue = 'p0' | 'p1' | 'p2'
@@ -1150,6 +1275,57 @@ interface ElasticsearchDslTemplate {
   build: () => string
 }
 
+type OpsHubLogScopeTextKey = 'environments' | 'services' | 'namespaces' | 'workloads' | 'pods' | 'containers'
+
+interface OpsHubLogFilterRow {
+  id: number
+  field: string
+  operator: 'eq' | 'neq' | 'contains' | 'not_contains' | 'in'
+  value: string
+}
+
+interface OpsHubLogQueryForm {
+  version: 1
+  storageId: number
+  windowSeconds: number
+  keyword: string
+  scope: {
+    hostIds: number[]
+    clusterIds: number[]
+    environments: string[]
+    services: string[]
+    namespaces: string[]
+    workloads: string[]
+    pods: string[]
+    containers: string[]
+  }
+  filters: OpsHubLogFilterRow[]
+  groupBy: string[]
+  aggregation: 'count' | 'rate'
+  sampleLimit: number
+}
+
+const createDefaultOpsHubLogQuery = (): OpsHubLogQueryForm => ({
+  version: 1,
+  storageId: 0,
+  windowSeconds: 300,
+  keyword: '*',
+  scope: {
+    hostIds: [],
+    clusterIds: [],
+    environments: [],
+    services: [],
+    namespaces: [],
+    workloads: [],
+    pods: [],
+    containers: []
+  },
+  filters: [],
+  groupBy: ['service', 'namespace'],
+  aggregation: 'count',
+  sampleLimit: 5
+})
+
 interface EvaluationResult {
   ruleId: number
   ruleName: string
@@ -1244,10 +1420,11 @@ const fallbackLabelKeysBySource: Record<string, string[]> = {
   prometheus: ['instance', 'job'],
   victoriametrics: ['instance', 'job'],
   loki: ['pod', 'app', 'namespace', 'container', 'instance'],
-  elasticsearch: ['index', 'service', 'host', 'level']
+  elasticsearch: ['index', 'service', 'host', 'level'],
+  opshub_logs: ['service', 'environment', 'namespace', 'podName', 'containerName', 'hostId', 'clusterId', 'level']
 }
 
-const logDataSourceTypes: DataSourceType[] = ['loki']
+const logDataSourceTypes: DataSourceType[] = ['loki', 'opshub_logs']
 const lokiMatchedLogsPendingText = '系统会根据上方日志查询自动拉取最近命中日志；如果暂未返回，会先显示当前模板预览。'
 const lokiMatchedLogsEmptyText = '当前查询窗口内未查询到命中日志；请确认 Loki 中对应时间范围有匹配日志，或放宽 LogQL / 时间范围。'
 const maxLokiPreviewLookbackSeconds = 7 * 24 * 60 * 60
@@ -1301,6 +1478,8 @@ const ruleData = ref<RuleRow[]>([])
 const selectedRuleRows = ref<RuleRow[]>([])
 const eventData = ref<MonitorAlertEvent[]>([])
 const dataSources = ref<MonitorDataSource[]>([])
+const logAlertHosts = ref<LogPolicyTargetHost[]>([])
+const logAlertClusters = ref<LogPolicyTargetCluster[]>([])
 const faultCenters = ref<MonitorFaultCenter[]>([])
 const ruleGroups = ref<MonitorRuleGroup[]>([])
 const stats = ref<MonitorAlertEventStats>({
@@ -1372,6 +1551,9 @@ const form = reactive<RuleForm>({
   callbackQueries: []
 })
 
+const opshubLogQuery = reactive<OpsHubLogQueryForm>(createDefaultOpsHubLogQuery())
+let opshubLogFilterSequence = 0
+
 const rules: FormRules = {
   name: [{ required: true, message: '请输入规则名称', trigger: 'blur' }],
   ruleGroupId: [{ required: true, message: '请选择规则组', trigger: 'change' }],
@@ -1386,11 +1568,65 @@ const queryModeOptions = [
   { label: '范围查询', value: 'range' }
 ]
 
+const opshubAggregationOptions = [
+  { label: '命中条数', value: 'count' },
+  { label: '每秒速率', value: 'rate' }
+]
+
+const opshubScopeTextFields: Array<{ key: OpsHubLogScopeTextKey; label: string; placeholder: string }> = [
+  { key: 'environments', label: '环境', placeholder: '全部环境，可直接输入' },
+  { key: 'services', label: '服务', placeholder: '全部服务，可直接输入' },
+  { key: 'namespaces', label: '命名空间', placeholder: '全部命名空间，可直接输入' },
+  { key: 'workloads', label: '工作负载', placeholder: '全部工作负载，可直接输入' },
+  { key: 'pods', label: 'Pod', placeholder: '全部 Pod，可直接输入' },
+  { key: 'containers', label: '容器', placeholder: '全部容器，可直接输入' }
+]
+
+const opshubGroupByOptions = [
+  { label: '服务', value: 'service' },
+  { label: '环境', value: 'environment' },
+  { label: '日志级别', value: 'level' },
+  { label: '主机', value: 'hostId' },
+  { label: 'Kubernetes 集群', value: 'clusterId' },
+  { label: '命名空间', value: 'namespace' },
+  { label: '工作负载', value: 'workloadName' },
+  { label: 'Pod', value: 'podName' },
+  { label: '容器', value: 'containerName' },
+  { label: '节点', value: 'nodeName' }
+]
+
+const opshubFilterFieldOptions = [
+  { label: '日志正文', value: 'body' },
+  { label: '日志级别', value: 'level' },
+  { label: '来源类型', value: 'sourceType' },
+  { label: '资产类型', value: 'assetType' },
+  { label: '主机 ID', value: 'hostId' },
+  { label: '集群 ID', value: 'clusterId' },
+  { label: '环境', value: 'environment' },
+  { label: '服务', value: 'service' },
+  { label: '命名空间', value: 'namespace' },
+  { label: '工作负载', value: 'workloadName' },
+  { label: 'Pod', value: 'podName' },
+  { label: '容器', value: 'containerName' },
+  { label: '节点', value: 'nodeName' },
+  { label: '文件路径', value: 'filePath' },
+  { label: 'Trace ID', value: 'traceId' }
+]
+
+const opshubFilterOperatorOptions = [
+  { label: '等于', value: 'eq' },
+  { label: '不等于', value: 'neq' },
+  { label: '包含', value: 'contains' },
+  { label: '不包含', value: 'not_contains' },
+  { label: '属于任一值', value: 'in' }
+]
+
 const sourceTypeOptions: Array<{ label: string; value: DataSourceType; desc: string }> = [
   { label: 'Prometheus', value: 'prometheus', desc: '指标查询 PromQL' },
   { label: 'VictoriaMetrics', value: 'victoriametrics', desc: '兼容 PromQL' },
   { label: 'Loki', value: 'loki', desc: '日志查询 LogQL' },
-  { label: 'Elasticsearch', value: 'elasticsearch', desc: '日志 DSL / 聚合' }
+  { label: 'Elasticsearch', value: 'elasticsearch', desc: '日志 DSL / 聚合' },
+  { label: 'OpsHub 日志', value: 'opshub_logs', desc: '内置日志存储与结构化告警' }
 ]
 
 const elasticsearchDslTemplates: ElasticsearchDslTemplate[] = [
@@ -1603,11 +1839,23 @@ const loadStats = async () => {
   }
 }
 
+const loadLogAlertAssets = async () => {
+  try {
+    const assets = await getInternalLogAssets()
+    logAlertHosts.value = assets?.hosts || []
+    logAlertClusters.value = assets?.clusters || []
+  } catch {
+    logAlertHosts.value = []
+    logAlertClusters.value = []
+  }
+}
+
 const loadMeta = async () => {
   const [sources, centers, groups] = await Promise.all([
-    getMonitorDataSources(),
+    getMonitorDataSources({ includeInternal: true }),
     getMonitorFaultCenters(),
-    getMonitorRuleGroups()
+    getMonitorRuleGroups(),
+    loadLogAlertAssets()
   ])
   dataSources.value = sources || []
   faultCenters.value = centers || []
@@ -1801,6 +2049,120 @@ const handleExport = async (selectedOnly: boolean) => {
   ElMessage.success('导出成功')
 }
 
+const uniqueStrings = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return []
+  return Array.from(new Set(value.map(item => String(item ?? '').trim()).filter(Boolean)))
+}
+
+const uniquePositiveNumbers = (value: unknown): number[] => {
+  if (!Array.isArray(value)) return []
+  return Array.from(new Set(value.map(item => Number(item)).filter(item => Number.isInteger(item) && item > 0)))
+}
+
+const getOpsHubLogStorageId = (source = getFormPrimarySource()) => {
+  if (!source || source.type !== 'opshub_logs') return 0
+  const match = String(source.url || '').match(/\/(\d+)\/?$/)
+  return match ? Number(match[1]) : 0
+}
+
+const serializeOpsHubLogQuery = () => {
+  const filters = opshubLogQuery.filters
+    .filter(item => item.field.trim() && item.value.trim())
+    .map(item => ({
+      field: item.field.trim(),
+      operator: item.operator,
+      value: item.operator === 'in'
+        ? uniqueStrings(item.value.split(','))
+        : item.value.trim()
+    }))
+  return JSON.stringify({
+    version: 1,
+    storageId: getOpsHubLogStorageId() || Number(opshubLogQuery.storageId || 0),
+    windowSeconds: Math.min(604800, Math.max(10, Number(opshubLogQuery.windowSeconds || 300))),
+    keyword: opshubLogQuery.keyword.trim() || '*',
+    scope: {
+      hostIds: uniquePositiveNumbers(opshubLogQuery.scope.hostIds),
+      clusterIds: uniquePositiveNumbers(opshubLogQuery.scope.clusterIds),
+      environments: uniqueStrings(opshubLogQuery.scope.environments),
+      services: uniqueStrings(opshubLogQuery.scope.services),
+      namespaces: uniqueStrings(opshubLogQuery.scope.namespaces),
+      workloads: uniqueStrings(opshubLogQuery.scope.workloads),
+      pods: uniqueStrings(opshubLogQuery.scope.pods),
+      containers: uniqueStrings(opshubLogQuery.scope.containers)
+    },
+    filters,
+    groupBy: uniqueStrings(opshubLogQuery.groupBy),
+    aggregation: opshubLogQuery.aggregation === 'rate' ? 'rate' : 'count',
+    sampleLimit: Math.min(20, Math.max(1, Number(opshubLogQuery.sampleLimit || 5)))
+  }, null, 2)
+}
+
+const syncOpsHubLogQuery = () => {
+  if (form.dataSourceType === 'opshub_logs') {
+    form.query = serializeOpsHubLogQuery()
+  }
+}
+
+const resetOpsHubLogQuery = () => {
+  Object.assign(opshubLogQuery, createDefaultOpsHubLogQuery())
+  syncOpsHubLogQuery()
+}
+
+const loadOpsHubLogQuery = (raw?: string) => {
+  const defaults = createDefaultOpsHubLogQuery()
+  let parsed: any = {}
+  try {
+    parsed = JSON.parse(String(raw || '{}'))
+  } catch {
+    parsed = {}
+  }
+  const supportedOperators = new Set(opshubFilterOperatorOptions.map(item => item.value))
+  const supportedGroupBy = new Set(opshubGroupByOptions.map(item => item.value))
+  const scope = parsed?.scope || {}
+  const filters = Array.isArray(parsed?.filters)
+    ? parsed.filters.map((item: any) => ({
+        id: ++opshubLogFilterSequence,
+        field: String(item?.field || ''),
+        operator: supportedOperators.has(String(item?.operator || 'eq')) ? item.operator : 'eq',
+        value: Array.isArray(item?.value) ? item.value.join(', ') : String(item?.value ?? '')
+      }))
+    : []
+  Object.assign(opshubLogQuery, {
+    version: 1,
+    storageId: Number(parsed?.storageId || getOpsHubLogStorageId() || 0),
+    windowSeconds: Number(parsed?.windowSeconds || defaults.windowSeconds),
+    keyword: String(parsed?.keyword || defaults.keyword),
+    scope: {
+      hostIds: uniquePositiveNumbers(scope.hostIds),
+      clusterIds: uniquePositiveNumbers(scope.clusterIds),
+      environments: uniqueStrings(scope.environments),
+      services: uniqueStrings(scope.services),
+      namespaces: uniqueStrings(scope.namespaces),
+      workloads: uniqueStrings(scope.workloads),
+      pods: uniqueStrings(scope.pods),
+      containers: uniqueStrings(scope.containers)
+    },
+    filters,
+    groupBy: uniqueStrings(parsed?.groupBy).filter(item => supportedGroupBy.has(item)),
+    aggregation: parsed?.aggregation === 'rate' ? 'rate' : 'count',
+    sampleLimit: Number(parsed?.sampleLimit || defaults.sampleLimit)
+  })
+  syncOpsHubLogQuery()
+}
+
+const addOpsHubLogFilter = () => {
+  opshubLogQuery.filters.push({
+    id: ++opshubLogFilterSequence,
+    field: 'level',
+    operator: 'eq',
+    value: ''
+  })
+}
+
+const removeOpsHubLogFilter = (index: number) => {
+  opshubLogQuery.filters.splice(index, 1)
+}
+
 const handleAdd = () => {
   resetForm()
   drawerTitle.value = '新增规则'
@@ -1833,6 +2195,9 @@ const handleEdit = (row: MonitorAlertRule) => {
     detailTemplate: resolveRuleDetailTemplate(row),
     callbackQueries: parseCallbackQueryRows(row.callbackQueries)
   })
+  if (form.dataSourceType === 'opshub_logs') {
+    loadOpsHubLogQuery(row.query)
+  }
   drawerVisible.value = true
   nextTick(() => scheduleDetailAutoPreview(0))
 }
@@ -1848,7 +2213,11 @@ const selectSourceType = (type: DataSourceType) => {
   form.dataSourceIds = []
   form.index = ''
   form.queryMode = type === 'elasticsearch' ? 'instant' : 'instant'
-  form.query = getQueryPlaceholder(type)
+  if (type === 'opshub_logs') {
+    resetOpsHubLogQuery()
+  } else {
+    form.query = getQueryPlaceholder(type)
+  }
   suggestions.value = []
   suggestionVisible.value = false
   esIndexOptions.value = []
@@ -1857,6 +2226,13 @@ const selectSourceType = (type: DataSourceType) => {
 const handleSourceChange = async () => {
   const source = getFormPrimarySource()
   if (!source) return
+  if (source.type === 'opshub_logs') {
+    form.dataSourceIds = form.dataSourceIds.slice(0, 1)
+    opshubLogQuery.storageId = getOpsHubLogStorageId(source)
+    form.queryMode = 'instant'
+    syncOpsHubLogQuery()
+    return
+  }
   form.query = form.query || getQueryPlaceholder(source.type)
   if (source.type === 'elasticsearch') {
     form.queryMode = 'instant'
@@ -2423,6 +2799,7 @@ const stringifyCallbackQueryRows = (rows: CallbackQueryRow[]) => {
 }
 
 const buildPayload = (): MonitorAlertRule => {
+  syncOpsHubLogQuery()
   const primary = form.severityRules[0] || { severity: 'p1', condition: 'gt', threshold: 0, forSeconds: 60 }
   return {
     id: form.id,
@@ -2666,6 +3043,7 @@ const resetForm = () => {
   form.annotations = []
   form.detailTemplate = ''
   form.callbackQueries = []
+  resetOpsHubLogQuery()
   clearRuntimePreviewContext()
   formRef.value?.clearValidate()
 }
@@ -3316,7 +3694,8 @@ const getTypeName = (type?: string) => {
     prometheus: 'Prometheus',
     victoriametrics: 'VictoriaMetrics',
     loki: 'Loki',
-    elasticsearch: 'Elasticsearch'
+    elasticsearch: 'Elasticsearch',
+    opshub_logs: 'OpsHub 日志'
   }
   return type ? map[type] || type : '-'
 }
@@ -3328,7 +3707,8 @@ const getTypeTag = (type?: string) => {
     prometheus: 'success',
     victoriametrics: 'primary',
     loki: 'warning',
-    elasticsearch: 'danger'
+    elasticsearch: 'danger',
+    opshub_logs: 'success'
   }
   return type ? map[type] || 'info' : 'info'
 }
@@ -3485,12 +3865,15 @@ const buildElasticsearchLatestDocsDsl = () => stringifyDsl({
 const getQueryPlaceholder = (type?: DataSourceType) => {
   if (type === 'loki') return 'sum(count_over_time({job=~".+"}[5m]))'
   if (type === 'elasticsearch') return buildElasticsearchKeywordCountDsl()
+  if (type === 'opshub_logs') return JSON.stringify(createDefaultOpsHubLogQuery(), null, 2)
   return 'up == 0'
 }
 
 watch(() => route.query.ruleId, () => {
   openRuleFromRoute()
 })
+
+watch(opshubLogQuery, syncOpsHubLogQuery, { deep: true })
 
 onMounted(loadAll)
 onBeforeUnmount(() => {
@@ -4186,7 +4569,7 @@ onBeforeUnmount(() => {
 
 .source-type-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(130px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 12px;
 }
 
@@ -4269,11 +4652,175 @@ onBeforeUnmount(() => {
   margin-top: 16px;
 }
 
+.opshub-log-builder {
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid #d7dce5;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.opshub-log-builder-head,
+.opshub-log-subsection {
+  padding: 16px;
+}
+
+.opshub-log-builder-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid #e8ebf0;
+  background: #f8fafc;
+}
+
+.opshub-log-builder-head > div,
+.opshub-log-subsection-title {
+  min-width: 0;
+}
+
+.opshub-log-builder-head strong,
+.opshub-log-subsection-title strong {
+  display: block;
+  color: #111827;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.opshub-log-builder-head span,
+.opshub-log-subsection-title span {
+  display: block;
+  margin-top: 4px;
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.opshub-log-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.opshub-log-form-grid-primary {
+  grid-template-columns: minmax(260px, 2fr) repeat(3, minmax(150px, 1fr));
+  padding: 16px;
+}
+
+.opshub-log-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.opshub-log-field > span {
+  color: #344054;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.opshub-log-field :deep(.el-select),
+.opshub-log-field :deep(.el-input),
+.opshub-log-field :deep(.el-input-number),
+.opshub-log-full-select {
+  width: 100%;
+}
+
+.opshub-log-number {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  align-items: center;
+  gap: 6px;
+}
+
+.opshub-log-number em {
+  color: #667085;
+  font-size: 12px;
+  font-style: normal;
+  text-align: center;
+}
+
+.opshub-log-subsection {
+  border-top: 1px solid #eef0f4;
+}
+
+.opshub-log-subsection-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.opshub-log-subsection-title > span {
+  margin-top: 0;
+  text-align: right;
+}
+
+.opshub-log-filter-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.opshub-log-filter-row {
+  display: grid;
+  grid-template-columns: minmax(150px, .8fr) minmax(130px, .65fr) minmax(220px, 1.5fr) 36px;
+  gap: 8px;
+  align-items: center;
+}
+
+.opshub-log-filter-empty {
+  display: flex;
+  min-height: 54px;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed #d7dce5;
+  border-radius: 6px;
+  color: #98a2b3;
+  font-size: 13px;
+}
+
+.opshub-log-builder > .query-tools {
+  margin: 0;
+  padding: 14px 16px;
+  border-top: 1px solid #e8ebf0;
+  background: #f8fafc;
+}
+
 .es-index-select-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
   width: 100%;
+}
+
+@media (max-width: 1100px) {
+  .opshub-log-form-grid-primary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .opshub-log-field-wide {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 760px) {
+  .opshub-log-form-grid,
+  .opshub-log-form-grid-primary,
+  .opshub-log-filter-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .opshub-log-subsection-title {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .opshub-log-subsection-title > span {
+    text-align: left;
+  }
 }
 
 .es-index-option {

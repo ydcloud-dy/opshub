@@ -157,6 +157,9 @@ type notificationCallbackImage struct {
 func (h *DataSourceHandler) ListDataSources(c *gin.Context) {
 	var dataSources []model.DataSource
 	query := h.db.Model(&model.DataSource{})
+	if c.Query("includeInternal") != "true" {
+		query = query.Where("type <> ?", opsHubLogDataSourceType)
+	}
 
 	if dsType := strings.TrimSpace(c.Query("type")); dsType != "" {
 		query = query.Where("type = ?", dsType)
@@ -235,6 +238,10 @@ func (h *DataSourceHandler) CreateDataSource(c *gin.Context) {
 	}
 
 	normalizeDataSource(&req)
+	if req.Type == opsHubLogDataSourceType {
+		c.JSON(http.StatusBadRequest, gin.H{"code": http.StatusBadRequest, "message": "OpsHub 内置日志数据源由日志中心自动维护"})
+		return
+	}
 	if err := validateDataSource(&req); err != nil {
 		c.JSON(400, gin.H{"code": 400, "message": err.Error()})
 		return
@@ -257,6 +264,10 @@ func (h *DataSourceHandler) UpdateDataSource(c *gin.Context) {
 	var dataSource model.DataSource
 	if err := h.db.First(&dataSource, id).Error; err != nil {
 		c.JSON(404, gin.H{"code": 404, "message": "数据源不存在"})
+		return
+	}
+	if dataSource.Type == opsHubLogDataSourceType {
+		c.JSON(http.StatusBadRequest, gin.H{"code": http.StatusBadRequest, "message": "OpsHub 内置日志数据源请在日志库中管理"})
 		return
 	}
 
@@ -307,7 +318,16 @@ func (h *DataSourceHandler) DeleteDataSource(c *gin.Context) {
 		return
 	}
 
-	if err := h.db.Delete(&model.DataSource{}, id).Error; err != nil {
+	var datasource model.DataSource
+	if err := h.db.First(&datasource, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": http.StatusNotFound, "message": "数据源不存在"})
+		return
+	}
+	if datasource.Type == opsHubLogDataSourceType {
+		c.JSON(http.StatusBadRequest, gin.H{"code": http.StatusBadRequest, "message": "OpsHub 内置日志数据源不能在监控中心删除"})
+		return
+	}
+	if err := h.db.Delete(&datasource).Error; err != nil {
 		c.JSON(500, gin.H{"code": 500, "message": "删除数据源失败", "error": err.Error()})
 		return
 	}
@@ -589,7 +609,7 @@ func validateDataSource(ds *model.DataSource) error {
 		return fmt.Errorf("数据源地址格式不正确")
 	}
 	switch ds.Type {
-	case "prometheus", "victoriametrics", "loki", "elasticsearch":
+	case "prometheus", "victoriametrics", "loki", "elasticsearch", "opensearch":
 	default:
 		return fmt.Errorf("不支持的数据源类型: %s", ds.Type)
 	}
@@ -658,8 +678,11 @@ func (h *DataSourceHandler) testDataSource(ctx context.Context, ds *model.DataSo
 		}
 		_, _, err = h.doDataSourceRequest(ctx, ds, http.MethodGet, "/loki/api/v1/labels", nil, nil)
 		return err
-	case "elasticsearch":
+	case "elasticsearch", "opensearch":
 		_, _, err := h.doDataSourceRequest(ctx, ds, http.MethodGet, "/_cluster/health", nil, nil)
+		return err
+	case opsHubLogDataSourceType:
+		_, _, err := h.queryOpsHubLogs(ctx, ds, dataSourceQueryRequest{Query: `{"version":1,"windowSeconds":60,"keyword":"*","aggregation":"count","sampleLimit":1}`})
 		return err
 	default:
 		return fmt.Errorf("不支持的数据源类型: %s", ds.Type)
@@ -749,6 +772,10 @@ func dataSourceDisplayName(dsType string) string {
 		return "Loki"
 	case "elasticsearch":
 		return "Elasticsearch"
+	case "opensearch":
+		return "OpenSearch"
+	case opsHubLogDataSourceType:
+		return "OpsHub 内置日志"
 	default:
 		return dsType
 	}
@@ -791,7 +818,7 @@ func (h *DataSourceHandler) queryDataSource(ctx context.Context, ds *model.DataS
 			params["direction"] = "backward"
 		}
 		return h.doDataSourceRequest(ctx, ds, http.MethodGet, path, params, nil)
-	case "elasticsearch":
+	case "elasticsearch", "opensearch":
 		body := strings.TrimSpace(req.Query)
 		if body == "" {
 			body = `{"size":0}`
@@ -801,6 +828,8 @@ func (h *DataSourceHandler) queryDataSource(ctx context.Context, ds *model.DataS
 			path = "/" + index + "/_search"
 		}
 		return h.doDataSourceRequest(ctx, ds, http.MethodPost, path, nil, []byte(body))
+	case opsHubLogDataSourceType:
+		return h.queryOpsHubLogs(ctx, ds, req)
 	default:
 		return nil, 0, fmt.Errorf("不支持的数据源类型: %s", ds.Type)
 	}
@@ -1479,7 +1508,7 @@ func buildWatchAlertRuleExport(rule model.AlertRule) watchAlertRuleExport {
 	switch strings.ToLower(strings.TrimSpace(rule.DataSourceType)) {
 	case "loki":
 		config.LogQL = rule.Query
-	case "elasticsearch":
+	case "elasticsearch", "opensearch":
 		config.Query = rule.Query
 		config.Index = rule.Index
 	default:
@@ -1505,7 +1534,7 @@ func buildWatchAlertRuleExport(rule model.AlertRule) watchAlertRuleExport {
 		exported.VictoriaMetricsConfig = config
 	case "loki":
 		exported.LokiConfig = config
-	case "elasticsearch":
+	case "elasticsearch", "opensearch":
 		exported.ElasticSearchConfig = config
 	default:
 		exported.PrometheusConfig = config
@@ -1519,7 +1548,7 @@ func watchAlertDatasourceType(value string) string {
 		return "VictoriaMetrics"
 	case "loki":
 		return "Loki"
-	case "elasticsearch":
+	case "elasticsearch", "opensearch":
 		return "Elasticsearch"
 	default:
 		return "Prometheus"
@@ -1970,7 +1999,7 @@ func normalizeWatchAlertDatasourceType(value string) string {
 		return "victoriametrics"
 	case "loki":
 		return "loki"
-	case "elasticsearch", "elastic-search", "es":
+	case "elasticsearch", "elastic-search", "opensearch", "open-search", "os", "es":
 		return "elasticsearch"
 	default:
 		return ""
@@ -3039,6 +3068,98 @@ func (h *DataSourceHandler) GetAlertEventStats(c *gin.Context) {
 	h.db.Model(&model.AlertEvent{}).Where("state IN ? AND ended_at IS NULL", activeAlertEventStates()).Count(&stats.UnresolvedEvents)
 
 	c.JSON(200, gin.H{"code": 0, "message": "success", "data": stats})
+}
+
+func (h *DataSourceHandler) GetAlertEventTrend(c *gin.Context) {
+	now := time.Now().In(time.Local)
+	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local).AddDate(0, 0, -6)
+	end := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, int(time.Second-time.Nanosecond), time.Local)
+
+	if startDate := strings.TrimSpace(c.Query("startDate")); startDate != "" {
+		parsed, err := parseAlertEventDate(startDate, false)
+		if err != nil {
+			c.JSON(400, gin.H{"code": 400, "message": "开始时间格式不正确"})
+			return
+		}
+		start = parsed
+	}
+	if endDate := strings.TrimSpace(c.Query("endDate")); endDate != "" {
+		parsed, err := parseAlertEventDate(endDate, true)
+		if err != nil {
+			c.JSON(400, gin.H{"code": 400, "message": "结束时间格式不正确"})
+			return
+		}
+		end = parsed
+	}
+	if start.After(end) {
+		c.JSON(400, gin.H{"code": 400, "message": "开始时间不能晚于结束时间"})
+		return
+	}
+
+	type trendRow struct {
+		Date     string `json:"date"`
+		Severity string `json:"severity"`
+		Count    int64  `json:"count"`
+	}
+
+	dateExpr := alertEventTrendDateExpr(h.db)
+	var rows []trendRow
+	query := h.db.Model(&model.AlertEvent{}).
+		Select(fmt.Sprintf("%s AS date, severity, COUNT(*) AS count", dateExpr)).
+		Where("started_at >= ? AND started_at <= ?", start, end)
+
+	if ruleID := strings.TrimSpace(c.Query("ruleId")); ruleID != "" {
+		query = query.Where("rule_id = ?", ruleID)
+	}
+	if ruleGroupID := strings.TrimSpace(c.Query("ruleGroupId")); ruleGroupID != "" {
+		query = query.Where("rule_group_id = ?", ruleGroupID)
+	}
+	if faultCenterID := strings.TrimSpace(c.Query("faultCenterId")); faultCenterID != "" {
+		query = query.Where("fault_center_id = ?", faultCenterID)
+	}
+	if dataSourceType := strings.TrimSpace(c.Query("dataSourceType")); dataSourceType != "" {
+		query = query.Where("data_source_type = ?", dataSourceType)
+	}
+	if state := strings.TrimSpace(c.Query("state")); state != "" {
+		query = query.Where("state IN ?", alertEventStateValues(state))
+	}
+	if severity := strings.TrimSpace(c.Query("severity")); severity != "" {
+		query = query.Where("severity IN ?", alertSeverityValues(severity))
+	}
+
+	if err := query.Group(fmt.Sprintf("%s, severity", dateExpr)).
+		Order("date ASC").
+		Scan(&rows).Error; err != nil {
+		c.JSON(500, gin.H{"code": 500, "message": "获取告警趋势失败", "error": err.Error()})
+		return
+	}
+
+	points := make([]trendRow, 0, len(rows))
+	for _, row := range rows {
+		points = append(points, trendRow{
+			Date:     strings.TrimSpace(row.Date),
+			Severity: normalizeSeverityLevel(row.Severity),
+			Count:    row.Count,
+		})
+	}
+
+	c.JSON(200, gin.H{"code": 0, "message": "success", "data": points})
+}
+
+func alertEventTrendDateExpr(db *gorm.DB) string {
+	if db == nil || db.Dialector == nil {
+		return "DATE(started_at)"
+	}
+	switch db.Dialector.Name() {
+	case "mysql":
+		return "DATE_FORMAT(started_at, '%Y-%m-%d')"
+	case "sqlite":
+		return "strftime('%Y-%m-%d', started_at)"
+	case "postgres":
+		return "TO_CHAR(started_at, 'YYYY-MM-DD')"
+	default:
+		return "DATE(started_at)"
+	}
 }
 
 func (h *DataSourceHandler) normalizeAlertRule(rule *model.AlertRule) error {
@@ -4317,7 +4438,9 @@ func extractRuleEvaluationSamples(dsType string, raw interface{}) ([]ruleEvaluat
 	switch dsType {
 	case "prometheus", "victoriametrics", "loki":
 		return extractPromLikeSamples(raw)
-	case "elasticsearch":
+	case opsHubLogDataSourceType:
+		return extractOpsHubLogSamples(raw)
+	case "elasticsearch", "opensearch":
 		value, err := extractElasticsearchValue(raw)
 		if err != nil {
 			return nil, err
@@ -4332,7 +4455,13 @@ func extractRuleNumericValue(dsType string, raw interface{}) (float64, error) {
 	switch dsType {
 	case "prometheus", "victoriametrics", "loki":
 		return extractPromLikeValue(raw)
-	case "elasticsearch":
+	case opsHubLogDataSourceType:
+		samples, err := extractOpsHubLogSamples(raw)
+		if err != nil || len(samples) == 0 {
+			return 0, err
+		}
+		return samples[0].Value, nil
+	case "elasticsearch", "opensearch":
 		return extractElasticsearchValue(raw)
 	default:
 		return 0, fmt.Errorf("不支持的数据源类型: %s", dsType)
@@ -4343,7 +4472,13 @@ func extractRuleResultLabels(dsType string, raw interface{}) map[string]string {
 	switch dsType {
 	case "prometheus", "victoriametrics", "loki":
 		return extractPromLikeLabels(raw)
-	case "elasticsearch":
+	case opsHubLogDataSourceType:
+		samples, _ := extractOpsHubLogSamples(raw)
+		if len(samples) > 0 {
+			return samples[0].Labels
+		}
+		return map[string]string{}
+	case "elasticsearch", "opensearch":
 		return extractElasticsearchLabels(raw)
 	default:
 		return map[string]string{}
@@ -6121,7 +6256,7 @@ func notificationObjectIDsForFaultCenter(center model.FaultCenter, payload ruleN
 
 func callbackResultValueText(dsType string, raw interface{}) string {
 	switch dsType {
-	case "prometheus", "victoriametrics", "loki", "elasticsearch":
+	case "prometheus", "victoriametrics", "loki", "elasticsearch", "opensearch":
 		if value, err := extractRuleNumericValue(dsType, raw); err == nil {
 			return formatRuleValue(value)
 		}
@@ -6920,6 +7055,11 @@ func formatCallbackDetailText(items []notificationCallbackItem, eventURL string)
 }
 
 func buildNoticeEventURL(payload ruleNotificationPayload) string {
+	if payload.DataSourceType == opsHubLogDataSourceType {
+		if logURL := buildOpsHubLogNoticeURL(payload); logURL != "" {
+			return logURL
+		}
+	}
 	path := fmt.Sprintf("/monitor/fault-centers/%d?tab=%s&query=%s", payload.FaultCenterID, noticeEventTab(payload), url.QueryEscape(payload.RuleName))
 	if payload.EventID > 0 && !payload.Aggregated {
 		path += fmt.Sprintf("&eventId=%d", payload.EventID)

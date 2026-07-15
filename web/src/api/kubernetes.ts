@@ -241,6 +241,22 @@ export interface DeploymentInfo {
   labels: Record<string, string>
 }
 
+export interface WorkloadInfo {
+  name: string
+  namespace: string
+  type: 'Deployment' | 'StatefulSet' | 'DaemonSet' | 'Job' | 'CronJob' | 'Pod'
+  status?: string
+  ready?: string
+  replicas?: number
+  available?: number
+  age?: string
+  labels?: Record<string, string>
+}
+
+export interface WorkloadDetailResponse {
+  items?: any[]
+}
+
 export interface ClusterStats {
   nodeCount: number
   workloadCount: number
@@ -379,6 +395,39 @@ export function getDeployments(clusterId: number, namespace?: string) {
     url: '/api/v1/plugins/kubernetes/resources/deployments',
     method: 'get',
     params: { clusterId, namespace }
+  })
+}
+
+/**
+ * 获取统一工作负载列表
+ */
+export function getWorkloads(clusterId: number, namespace?: string, type?: string) {
+  return request<WorkloadInfo[]>({
+    url: '/api/v1/plugins/kubernetes/resources/workloads',
+    method: 'get',
+    params: { clusterId, namespace, type }
+  })
+}
+
+/**
+ * 获取工作负载详情
+ */
+export function getWorkloadDetail(clusterId: number, namespace: string, name: string, type: string) {
+  return request<WorkloadDetailResponse>({
+    url: `/api/v1/plugins/kubernetes/resources/workloads/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}`,
+    method: 'get',
+    params: { clusterId, type }
+  })
+}
+
+/**
+ * 获取工作负载关联 Pod
+ */
+export function getWorkloadPods(clusterId: number, namespace: string, name: string, type: string) {
+  return request<WorkloadDetailResponse>({
+    url: `/api/v1/plugins/kubernetes/resources/workloads/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/pods`,
+    method: 'get',
+    params: { clusterId, type }
   })
 }
 

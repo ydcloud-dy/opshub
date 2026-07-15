@@ -159,6 +159,7 @@ func RegisterRoutes(router *gin.RouterGroup, db *gorm.DB) {
 		{
 			events.GET("", dataSourceHandler.ListAlertEvents)
 			events.GET("/stats", dataSourceHandler.GetAlertEventStats)
+			events.GET("/trend", dataSourceHandler.GetAlertEventTrend)
 			events.POST("/batch-ack", dataSourceHandler.BatchAcknowledgeAlertEvents)
 			events.POST("/batch-delete", dataSourceHandler.BatchDeleteAlertEvents)
 			events.GET("/:id", dataSourceHandler.GetAlertEvent)

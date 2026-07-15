@@ -15,7 +15,10 @@ import (
 	"time"
 )
 
-const agentBinaryDir = "data/agent-binaries"
+const (
+	agentBinaryDir     = "data/agent-binaries"
+	agentBinaryVersion = "0.3.0"
+)
 
 var agentBinaryBuildMu sync.Mutex
 
@@ -60,7 +63,7 @@ func ensureAgentBinary(filename string) (string, error) {
 	}
 
 	outPath := filepath.Join(outDir, filename)
-	cmd := exec.Command("go", "build", "-ldflags", "-X main.version=0.1.0", "-o", outPath, "./cmd/opshub-agent")
+	cmd := exec.Command("go", "build", "-ldflags", "-X main.version="+agentBinaryVersion, "-o", outPath, "./cmd/opshub-agent")
 	cmd.Dir = sourceRoot
 	cmd.Env = withBuildEnv(os.Environ(), map[string]string{
 		"GOOS":    "linux",
@@ -132,13 +135,38 @@ func probeAgentBinaryURL(client *http.Client, binaryURL string) error {
 }
 
 func findExistingAgentBinary(filename string) (string, bool) {
+	sourceRoot, _ := findAgentSourceRoot()
+	latestSourceTime := latestAgentSourceModTime(sourceRoot)
 	for _, baseDir := range agentBinaryBaseDirs() {
 		candidate := filepath.Join(baseDir, agentBinaryDir, filename)
 		if info, err := os.Stat(candidate); err == nil && !info.IsDir() && info.Size() > 0 {
+			if !latestSourceTime.IsZero() && info.ModTime().Before(latestSourceTime) {
+				continue
+			}
 			return candidate, true
 		}
 	}
 	return "", false
+}
+
+func latestAgentSourceModTime(sourceRoot string) time.Time {
+	if sourceRoot == "" {
+		return time.Time{}
+	}
+	latest := time.Time{}
+	for _, relative := range []string{"cmd/opshub-agent", "internal/logagent"} {
+		root := filepath.Join(sourceRoot, relative)
+		_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+			if err != nil || entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") {
+				return nil
+			}
+			if info, infoErr := entry.Info(); infoErr == nil && info.ModTime().After(latest) {
+				latest = info.ModTime()
+			}
+			return nil
+		})
+	}
+	return latest
 }
 
 func agentBinaryBaseDirs() []string {

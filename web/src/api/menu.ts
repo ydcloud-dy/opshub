@@ -2,12 +2,12 @@ import request from '@/utils/request'
 
 // 获取菜单树
 export const getMenuTree = () => {
-  return request.get('/api/v1/menus/tree')
+  return request.get<any, any[]>('/api/v1/menus/tree')
 }
 
 // 获取当前用户的菜单树
 export const getUserMenu = () => {
-  return request.get('/api/v1/menus/user')
+  return request.get<any, any[]>('/api/v1/menus/user')
 }
 
 // 获取菜单详情

@@ -1,6 +1,6 @@
 import request from '@/utils/request'
 
-export type DataSourceType = 'prometheus' | 'victoriametrics' | 'loki' | 'elasticsearch'
+export type DataSourceType = 'prometheus' | 'victoriametrics' | 'loki' | 'elasticsearch' | 'opensearch' | 'opshub_logs'
 export type DataSourceAuthType = 'none' | 'basic' | 'bearer'
 export type ProbeProtocol = 'http' | 'icmp' | 'tcp' | 'ssl'
 
@@ -138,6 +138,12 @@ export interface MonitorAlertEventStats {
   pendingRules: number
   todayEvents: number
   unresolvedEvents: number
+}
+
+export interface MonitorAlertEventTrendPoint {
+  date: string
+  severity: string
+  count: number
 }
 
 export interface MonitorAlertCallbackResult {
@@ -312,7 +318,7 @@ export interface MonitorProbeRunSummary {
   results: MonitorProbeResult[]
 }
 
-export const getMonitorDataSources = (params?: { type?: string; keyword?: string }) => {
+export const getMonitorDataSources = (params?: { type?: string; keyword?: string; includeInternal?: boolean }) => {
   return request.get('/api/v1/plugins/monitor/datasources', { params })
 }
 
@@ -617,6 +623,19 @@ export const getMonitorAlertEvent = (id: number) => {
 
 export const getMonitorAlertEventStats = () => {
   return request.get('/api/v1/plugins/monitor/alert-events/stats')
+}
+
+export const getMonitorAlertEventTrend = (params?: {
+  ruleId?: number
+  ruleGroupId?: number
+  faultCenterId?: number
+  dataSourceType?: string
+  state?: string
+  severity?: string
+  startDate?: string
+  endDate?: string
+}) => {
+  return request.get('/api/v1/plugins/monitor/alert-events/trend', { params })
 }
 
 export const acknowledgeMonitorAlertEvent = (id: number, data?: { username?: string }) => {

@@ -17,9 +17,15 @@ export default defineConfig({
     port: 5173,
     host: "0.0.0.0",
     proxy: {
+      '/api/v1/logs': {
+        target: process.env.VITE_LOG_GATEWAY_URL || 'http://localhost:9880',
+        changeOrigin: true,
+        xfwd: true
+      },
       '/api': {
         target: process.env.VITE_API_BASE_URL || 'http://localhost:9876',
         changeOrigin: true,
+        xfwd: true,
         ws: true,  // 启用 WebSocket 代理
         cookieDomainRewrite: '',  // 重写 cookie domain
         cookiePathRewrite: '/'    // 重写 cookie path

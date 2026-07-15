@@ -29,6 +29,16 @@ spec:
     - host: {{ .host | quote }}
       http:
         paths:
+          {{- if $.Values.logCenter.ingest.enabled }}
+          # Agent 日志写入直接进入 Log Gateway
+          - path: /api/v1/logs
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "opshub.fullname" $ }}-log-gateway
+                port:
+                  number: {{ $.Values.logCenter.ingest.gateway.service.port }}
+          {{- end }}
           # API 路由到后端
           - path: /api
             pathType: Prefix

@@ -94,6 +94,9 @@ func resetAgentState(host *Host) {
 
 // Create 创建主机
 func (uc *HostUseCase) Create(ctx context.Context, req *HostRequest) (*Host, error) {
+	if err := uc.prepareInlinePasswordCredential(ctx, req); err != nil {
+		return nil, err
+	}
 	host := req.ToModel()
 
 	if err := uc.hostRepo.CreateOrUpdate(ctx, host); err != nil {
@@ -115,6 +118,9 @@ func (uc *HostUseCase) Update(ctx context.Context, req *HostRequest) error {
 	if err == nil && existHost != nil && existHost.ID != req.ID {
 		return fmt.Errorf("IP地址 %s 已被其他主机使用", req.IP)
 	}
+	if err := uc.prepareInlinePasswordCredential(ctx, req); err != nil {
+		return err
+	}
 
 	host.Name = req.Name
 	host.GroupID = req.GroupID
@@ -133,6 +139,54 @@ func (uc *HostUseCase) Update(ctx context.Context, req *HostRequest) error {
 	}
 
 	return uc.hostRepo.Update(ctx, host)
+}
+
+func (uc *HostUseCase) prepareInlinePasswordCredential(ctx context.Context, req *HostRequest) error {
+	if req == nil || req.CredentialID > 0 || strings.TrimSpace(req.SSHPassword) == "" {
+		return nil
+	}
+	if req.IP != "" {
+		if existing, err := uc.hostRepo.GetByIP(ctx, req.IP); err == nil && existing != nil && existing.ID != req.ID {
+			return fmt.Errorf("IP地址 %s 已存在", req.IP)
+		}
+	}
+
+	credential := &Credential{
+		Name:        buildInlineHostCredentialName(req),
+		Type:        "password",
+		Username:    strings.TrimSpace(req.SSHUser),
+		Password:    req.SSHPassword,
+		Description: fmt.Sprintf("由主机 %s 快速创建", strings.TrimSpace(req.Name)),
+	}
+	if credential.Username == "" {
+		credential.Username = "root"
+	}
+	if err := uc.credentialRepo.Create(ctx, credential); err != nil {
+		return fmt.Errorf("创建主机凭据失败: %w", err)
+	}
+	req.CredentialID = credential.ID
+	req.SSHPassword = ""
+	return nil
+}
+
+func buildInlineHostCredentialName(req *HostRequest) string {
+	hostName := strings.TrimSpace(req.Name)
+	if hostName == "" {
+		hostName = strings.TrimSpace(req.IP)
+	}
+	if hostName == "" {
+		hostName = "主机"
+	}
+	ip := strings.TrimSpace(req.IP)
+	name := fmt.Sprintf("%s SSH密码", hostName)
+	if ip != "" && !strings.Contains(hostName, ip) {
+		name = fmt.Sprintf("%s(%s) SSH密码", hostName, ip)
+	}
+	runes := []rune(name)
+	if len(runes) > 100 {
+		return string(runes[:100])
+	}
+	return name
 }
 
 // Delete 删除主机

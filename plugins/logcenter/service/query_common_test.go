@@ -1,0 +1,60 @@
+package service
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestAppendKubernetesAccessConditionScopesClustersAndNamespaces(t *testing.T) {
+	conditions := []string{"timestamp >= {start:String}"}
+	params := map[string]string{}
+	appendKubernetesAccessCondition(&conditions, params, map[uint64][]string{
+		9: {"production", "staging"},
+		3: nil,
+	}, "acl")
+
+	where := strings.Join(conditions, " AND ")
+	for _, expected := range []string{
+		"cluster_id = 0",
+		"cluster_id = 3",
+		"cluster_id = 9 AND namespace IN ({acl_0:String},{acl_1:String})",
+	} {
+		if !strings.Contains(where, expected) {
+			t.Fatalf("Kubernetes ACL condition does not contain %q: %s", expected, where)
+		}
+	}
+	if params["acl_0"] != "production" || params["acl_1"] != "staging" {
+		t.Fatalf("namespace ACL params are incorrect: %#v", params)
+	}
+}
+
+func TestApplyLogFieldSecurityHandlesNestedArrays(t *testing.T) {
+	items := []LogItem{{
+		Message: "plain message",
+		Level:   "ERROR",
+		Labels:  map[string]string{"token": "label-token", "service": "api"},
+		Fields: map[string]interface{}{
+			"records": []interface{}{
+				map[string]interface{}{"Password": "plain-password", "user": "demo"},
+				map[string]interface{}{"secret": "plain-secret"},
+			},
+		},
+	}}
+
+	secured := applyLogFieldSecurity(items, []string{"password", "labels.token"}, []string{"secret", "body"})
+	if secured[0].Message != "******" {
+		t.Fatalf("message was not masked: %#v", secured[0])
+	}
+	if _, exists := secured[0].Labels["token"]; exists {
+		t.Fatalf("denied label was retained: %#v", secured[0].Labels)
+	}
+	records := secured[0].Fields["records"].([]interface{})
+	first := records[0].(map[string]interface{})
+	second := records[1].(map[string]interface{})
+	if _, exists := first["Password"]; exists {
+		t.Fatalf("denied nested field was retained: %#v", first)
+	}
+	if second["secret"] != "******" {
+		t.Fatalf("nested array field was not masked: %#v", second)
+	}
+}

@@ -1,0 +1,42 @@
+ARG BUILDPLATFORM=linux/amd64
+ARG TARGETPLATFORM=linux/amd64
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+
+FROM --platform=${BUILDPLATFORM} swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/golang:1.25-alpine AS builder
+
+ARG TARGETOS
+ARG TARGETARCH
+ARG AGENT_VERSION=0.3.0
+
+ENV GOPROXY=https://goproxy.cn,https://mirrors.aliyun.com/goproxy/,direct \
+    GO111MODULE=on \
+    CGO_ENABLED=0
+
+WORKDIR /build
+
+COPY go.mod go.sum ./
+COPY plugins/kubernetes/go.mod plugins/kubernetes/go.sum ./plugins/kubernetes/
+RUN go mod download
+
+COPY . .
+RUN GOOS="${TARGETOS}" GOARCH="${TARGETARCH:-$(go env GOARCH)}" \
+    go build -trimpath -ldflags="-s -w -X main.version=${AGENT_VERSION}" -o /out/opshub-agent ./cmd/opshub-agent
+
+FROM --platform=${TARGETPLATFORM} swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/alpine:3.21
+
+RUN apk --no-cache add ca-certificates tzdata
+
+ENV TZ=Asia/Shanghai
+
+COPY --from=builder /out/opshub-agent /usr/local/bin/opshub-agent
+
+# Keep the legacy API-image path so an existing DaemonSet can switch images
+# before the control plane itself is upgraded.
+RUN mkdir -p /app/data/agent-binaries && \
+    ln -s /usr/local/bin/opshub-agent /app/data/agent-binaries/opshub-agent-linux-amd64 && \
+    ln -s /usr/local/bin/opshub-agent /app/data/agent-binaries/opshub-agent-linux-arm64
+
+EXPOSE 19877
+
+ENTRYPOINT ["/usr/local/bin/opshub-agent"]

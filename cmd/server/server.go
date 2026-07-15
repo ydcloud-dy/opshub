@@ -27,6 +27,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -39,6 +40,7 @@ import (
 	systemmodel "github.com/ydcloud-dy/opshub/internal/biz/system"
 	"github.com/ydcloud-dy/opshub/internal/conf"
 	dataPkg "github.com/ydcloud-dy/opshub/internal/data"
+	aiopsmodel "github.com/ydcloud-dy/opshub/internal/data/aiops"
 	systemdata "github.com/ydcloud-dy/opshub/internal/data/system"
 	"github.com/ydcloud-dy/opshub/internal/server"
 	"github.com/ydcloud-dy/opshub/internal/service"
@@ -166,6 +168,9 @@ func runServer() (*conf.Config, error) {
 	if err := ensureAssetAgentMenu(data.DB()); err != nil {
 		appLogger.Warn("补充资产Agent管理菜单失败", zap.Error(err))
 	}
+	if err := disableAIOpsMenus(data.DB()); err != nil {
+		appLogger.Warn("关闭智能运维菜单失败", zap.Error(err))
+	}
 	if err := ensureTestReadonlyAccess(data.DB()); err != nil {
 		appLogger.Warn("补充test只读账号失败", zap.Error(err))
 	}
@@ -224,6 +229,13 @@ func autoMigrate(db *gorm.DB) error {
 		&mfamodel.UserMFA{},
 		&mfamodel.MFALog{},
 		&mfamodel.TrustedDevice{},
+		// 智能运维相关表
+		&aiopsmodel.Provider{},
+		&aiopsmodel.Session{},
+		&aiopsmodel.Message{},
+		&aiopsmodel.ToolCall{},
+		&aiopsmodel.DiagnosisTask{},
+		&aiopsmodel.RootCauseAnalysis{},
 	); err != nil {
 		return err
 	}
@@ -248,20 +260,59 @@ func autoMigrate(db *gorm.DB) error {
 		}
 	}
 
-	// 2. 删除旧的索引
-	db.Exec("DROP INDEX idx_username_deleted_at ON sys_user")
-	db.Exec("DROP INDEX idx_email_deleted_at ON sys_user")
-	db.Exec("DROP INDEX idx_username_email_deleted_at ON sys_user")
+	// 2. 删除旧的索引（存在才删除，避免每次启动输出 1091 错误）
+	for _, indexName := range []string{
+		"idx_username_deleted_at",
+		"idx_email_deleted_at",
+		"idx_username_email_deleted_at",
+	} {
+		if err := dropIndexIfExists(db, "sys_user", indexName); err != nil {
+			appLogger.Warn("删除旧用户索引失败", zap.String("index", indexName), zap.Error(err))
+		}
+	}
 
 	// 3. 创建新的唯一索引：用户名 + 邮箱 + is_deleted
 	// 这样未删除的记录 (is_deleted=0) 中，username + email 的组合必须唯一
 	// 已删除的记录 (is_deleted=1) 不会阻止新记录创建
-	if err := db.Exec("CREATE UNIQUE INDEX idx_username_email_is_deleted ON sys_user(username, email, is_deleted)").Error; err != nil {
-		appLogger.Warn("创建用户名邮箱唯一索引失败", zap.Error(err))
+	exists, err := indexExists(db, "sys_user", "idx_username_email_is_deleted")
+	if err != nil {
+		appLogger.Warn("检查用户名邮箱联合唯一索引失败", zap.Error(err))
+	} else if !exists {
+		if err := db.Exec("CREATE UNIQUE INDEX idx_username_email_is_deleted ON sys_user(username, email, is_deleted)").Error; err != nil {
+			appLogger.Warn("创建用户名邮箱唯一索引失败", zap.Error(err))
+		} else {
+			appLogger.Info("成功创建用户名邮箱联合唯一索引")
+		}
 	} else {
-		appLogger.Info("成功创建用户名邮箱联合唯一索引")
+		appLogger.Info("用户名邮箱联合唯一索引已存在")
 	}
 
+	return nil
+}
+
+func indexExists(db *gorm.DB, tableName, indexName string) (bool, error) {
+	var count int64
+	if err := db.Raw(`
+		SELECT COUNT(*)
+		FROM information_schema.STATISTICS
+		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?
+	`, tableName, indexName).Scan(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+func dropIndexIfExists(db *gorm.DB, tableName, indexName string) error {
+	exists, err := indexExists(db, tableName, indexName)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return nil
+	}
+	if err := db.Exec(fmt.Sprintf("DROP INDEX %s ON %s", indexName, tableName)).Error; err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -346,6 +397,31 @@ func ensureAssetAgentMenu(db *gorm.DB) error {
 		}
 	}
 	return nil
+}
+
+func disableAIOpsMenus(db *gorm.DB) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		var menuIDs []uint
+		if err := tx.Unscoped().
+			Model(&rbacmodel.SysMenu{}).
+			Where("code = ? OR code LIKE ?", "aiops", "aiops-%").
+			Pluck("id", &menuIDs).Error; err != nil {
+			return err
+		}
+		if len(menuIDs) == 0 {
+			return nil
+		}
+		if err := tx.Where("menu_id IN ?", menuIDs).Delete(&rbacmodel.SysRoleMenu{}).Error; err != nil {
+			return err
+		}
+		return tx.Model(&rbacmodel.SysMenu{}).
+			Where("id IN ?", menuIDs).
+			Updates(map[string]interface{}{
+				"visible":    0,
+				"status":     0,
+				"deleted_at": gorm.Expr("NOW()"),
+			}).Error
+	})
 }
 
 func ensureTestReadonlyAccess(db *gorm.DB) error {
@@ -480,7 +556,7 @@ func assignReadonlyRoleMenus(db *gorm.DB, roleID uint) error {
 		INSERT IGNORE INTO sys_role_menu (role_id, menu_id)
 		SELECT ?, id
 		FROM sys_menu
-		WHERE deleted_at IS NULL AND status = 1 AND visible = 1
+		WHERE deleted_at IS NULL AND status = 1 AND visible = 1 AND code <> 'aiops-settings'
 	`, roleID).Error; err != nil {
 		return fmt.Errorf("分配test菜单权限失败: %w", err)
 	}
@@ -508,83 +584,195 @@ func assignReadonlyAssetPermissions(db *gorm.DB, roleID uint) error {
 	return nil
 }
 
+func ensureDefaultDepartment(db *gorm.DB) (*rbacmodel.SysDepartment, error) {
+	var dept rbacmodel.SysDepartment
+	err := db.Where("code = ?", "HQ").First(&dept).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		dept = rbacmodel.SysDepartment{
+			Name:     "总公司",
+			Code:     "HQ",
+			ParentID: 0,
+			DeptType: 3,
+			Sort:     0,
+			Status:   1,
+		}
+		if err := db.Create(&dept).Error; err != nil {
+			return nil, fmt.Errorf("创建默认部门失败: %w", err)
+		}
+		appLogger.Info("默认部门已创建", zap.String("code", dept.Code))
+		return &dept, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("查询默认部门失败: %w", err)
+	}
+	updates := map[string]interface{}{
+		"name":      "总公司",
+		"parent_id": uint(0),
+		"dept_type": 3,
+		"sort":      0,
+		"status":    1,
+	}
+	if err := db.Model(&dept).Updates(updates).Error; err != nil {
+		return nil, fmt.Errorf("修复默认部门失败: %w", err)
+	}
+	return &dept, nil
+}
+
+func ensureDefaultAdminRole(db *gorm.DB) (*rbacmodel.SysRole, error) {
+	var role rbacmodel.SysRole
+	err := db.Where("code = ?", "admin").First(&role).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		role = rbacmodel.SysRole{
+			Name:        "超级管理员",
+			Code:        "admin",
+			Description: "系统超级管理员，拥有所有权限",
+			Sort:        0,
+			Status:      1,
+		}
+		if err := db.Create(&role).Error; err != nil {
+			return nil, fmt.Errorf("创建管理员角色失败: %w", err)
+		}
+		return &role, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("查询管理员角色失败: %w", err)
+	}
+	if err := db.Model(&role).Updates(map[string]interface{}{
+		"name":        "超级管理员",
+		"description": "系统超级管理员，拥有所有权限",
+		"sort":        0,
+		"status":      1,
+	}).Error; err != nil {
+		return nil, fmt.Errorf("修复管理员角色失败: %w", err)
+	}
+	return &role, nil
+}
+
+func ensureDefaultAdminUser(db *gorm.DB, deptID uint) (*rbacmodel.SysUser, error) {
+	var user rbacmodel.SysUser
+	err := db.Where("username = ?", "admin").First(&user).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		hashedPassword, hashErr := bcrypt.GenerateFromPassword([]byte("123456"), bcrypt.DefaultCost)
+		if hashErr != nil {
+			return nil, fmt.Errorf("加密密码失败: %w", hashErr)
+		}
+		user = rbacmodel.SysUser{
+			Username:     "admin",
+			Password:     string(hashedPassword),
+			RealName:     "系统管理员",
+			Email:        "admin@opshub.com",
+			Status:       1,
+			Source:       rbacmodel.UserSourceLocal,
+			DepartmentID: deptID,
+		}
+		if err := db.Create(&user).Error; err != nil {
+			return nil, fmt.Errorf("创建管理员用户失败: %w", err)
+		}
+		appLogger.Info("默认管理员已创建", zap.String("username", "admin"), zap.String("password", "123456"))
+		return &user, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("查询管理员用户失败: %w", err)
+	}
+	updates := map[string]interface{}{
+		"real_name":     "系统管理员",
+		"email":         "admin@opshub.com",
+		"status":        1,
+		"source":        rbacmodel.UserSourceLocal,
+		"department_id": deptID,
+	}
+	if err := db.Model(&user).Updates(updates).Error; err != nil {
+		return nil, fmt.Errorf("修复管理员用户失败: %w", err)
+	}
+	return &user, nil
+}
+
+func ensureMenu(db *gorm.DB, menu *rbacmodel.SysMenu) (*rbacmodel.SysMenu, error) {
+	var existing rbacmodel.SysMenu
+	err := db.Where("code = ?", menu.Code).First(&existing).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		if err := db.Create(menu).Error; err != nil {
+			return nil, err
+		}
+		return menu, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := db.Model(&existing).Updates(map[string]interface{}{
+		"name":      menu.Name,
+		"type":      menu.Type,
+		"parent_id": menu.ParentID,
+		"path":      menu.Path,
+		"component": menu.Component,
+		"icon":      menu.Icon,
+		"sort":      menu.Sort,
+		"visible":   menu.Visible,
+		"status":    menu.Status,
+	}).Error; err != nil {
+		return nil, err
+	}
+	existing.Name = menu.Name
+	existing.Type = menu.Type
+	existing.ParentID = menu.ParentID
+	existing.Path = menu.Path
+	existing.Component = menu.Component
+	existing.Icon = menu.Icon
+	existing.Sort = menu.Sort
+	existing.Visible = menu.Visible
+	existing.Status = menu.Status
+	return &existing, nil
+}
+
 // initDefaultData 初始化默认数据
 func initDefaultData(db *gorm.DB) error {
-	// 检查是否已有管理员用户
-	var count int64
-	db.Model(&rbacmodel.SysUser{}).Where("username = ?", "admin").Count(&count)
-	if count > 0 {
-		return nil // 已存在管理员，无需初始化
+	appLogger.Info("检查默认数据...")
+	if err := cleanupServiceOperationsMenus(db); err != nil {
+		appLogger.Warn("清理服务运营菜单失败", zap.Error(err))
 	}
 
-	appLogger.Info("开始初始化默认数据...")
-
-	// 创建默认部门
-	dept := &rbacmodel.SysDepartment{
-		Name:     "总公司",
-		Code:     "HQ",
-		ParentID: 0,
-		Sort:     0,
-		Status:   1,
-	}
-	if err := db.Create(dept).Error; err != nil {
-		return fmt.Errorf("创建默认部门失败: %w", err)
-	}
-
-	// 创建管理员角色
-	adminRole := &rbacmodel.SysRole{
-		Name:        "超级管理员",
-		Code:        "admin",
-		Description: "系统超级管理员，拥有所有权限",
-		Sort:        0,
-		Status:      1,
-	}
-	if err := db.Create(adminRole).Error; err != nil {
-		return fmt.Errorf("创建管理员角色失败: %w", err)
-	}
-
-	// 创建管理员用户（密码：123456）
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte("123456"), bcrypt.DefaultCost)
+	dept, err := ensureDefaultDepartment(db)
 	if err != nil {
-		return fmt.Errorf("加密密码失败: %w", err)
+		return err
 	}
 
-	adminUser := &rbacmodel.SysUser{
-		Username:     "admin",
-		Password:     string(hashedPassword),
-		RealName:     "系统管理员",
-		Email:        "admin@opshub.com",
-		Status:       1,
-		DepartmentID: dept.ID,
-	}
-	if err := db.Create(adminUser).Error; err != nil {
-		return fmt.Errorf("创建管理员用户失败: %w", err)
+	adminRole, err := ensureDefaultAdminRole(db)
+	if err != nil {
+		return err
 	}
 
-	// 为管理员分配角色
-	if err := db.Exec("INSERT INTO sys_user_role (user_id, role_id) VALUES (?, ?)",
+	adminUser, err := ensureDefaultAdminUser(db, dept.ID)
+	if err != nil {
+		return err
+	}
+
+	if err := db.Exec("INSERT IGNORE INTO sys_user_role (user_id, role_id) VALUES (?, ?)",
 		adminUser.ID, adminRole.ID).Error; err != nil {
 		return fmt.Errorf("分配管理员角色失败: %w", err)
 	}
 
-	// 辅助函数：创建菜单并分配权限
-	createMenuWithPermission := func(menu *rbacmodel.SysMenu) error {
-		if err := db.Create(menu).Error; err != nil {
-			return err
+	// 辅助函数：创建/修复菜单并分配管理员权限。返回数据库中的真实菜单ID，避免子菜单丢失父级。
+	ensureMenuWithPermission := func(menu *rbacmodel.SysMenu) (*rbacmodel.SysMenu, error) {
+		created, err := ensureMenu(db, menu)
+		if err != nil {
+			return nil, err
 		}
-		db.Exec("INSERT INTO sys_role_menu (role_id, menu_id) VALUES (?, ?)", adminRole.ID, menu.ID)
-		return nil
+		if err := db.Exec("INSERT IGNORE INTO sys_role_menu (role_id, menu_id) VALUES (?, ?)", adminRole.ID, created.ID).Error; err != nil {
+			return nil, err
+		}
+		return created, nil
 	}
 
 	// ========== 1. 仪表盘 ==========
 	dashboardMenu := &rbacmodel.SysMenu{Name: "仪表盘", Code: "dashboard", Type: 1, ParentID: 0, Path: "/dashboard", Icon: "HomeFilled", Sort: 0, Visible: 1, Status: 1}
-	if err := createMenuWithPermission(dashboardMenu); err != nil {
+	if _, err := ensureMenuWithPermission(dashboardMenu); err != nil {
 		return fmt.Errorf("创建仪表盘菜单失败: %w", err)
 	}
 
 	// ========== 2. 资产管理 ==========
 	assetMenu := &rbacmodel.SysMenu{Name: "资产管理", Code: "asset-management", Type: 1, ParentID: 0, Path: "/asset", Icon: "Coin", Sort: 1, Visible: 1, Status: 1}
-	if err := createMenuWithPermission(assetMenu); err != nil {
+	assetMenu, err = ensureMenuWithPermission(assetMenu)
+	if err != nil {
 		return fmt.Errorf("创建资产管理菜单失败: %w", err)
 	}
 
@@ -597,7 +785,7 @@ func initDefaultData(db *gorm.DB) error {
 		{Name: "权限配置", Code: "asset_permission", Type: 2, ParentID: assetMenu.ID, Path: "/asset/permissions", Component: "views/asset/AssetPermission.vue", Icon: "Lock", Sort: 6, Visible: 1, Status: 1},
 	}
 	for _, menu := range assetSubMenus {
-		if err := createMenuWithPermission(menu); err != nil {
+		if _, err := ensureMenuWithPermission(menu); err != nil {
 			return fmt.Errorf("创建资产管理子菜单失败: %w", err)
 		}
 	}
@@ -623,7 +811,8 @@ func initDefaultData(db *gorm.DB) error {
 
 	// ========== 4. 操作审计 ==========
 	auditMenu := &rbacmodel.SysMenu{Name: "操作审计", Code: "audit", Type: 1, ParentID: 0, Path: "/audit", Icon: "Document", Sort: 50, Visible: 1, Status: 1}
-	if err := createMenuWithPermission(auditMenu); err != nil {
+	auditMenu, err = ensureMenuWithPermission(auditMenu)
+	if err != nil {
 		return fmt.Errorf("创建操作审计菜单失败: %w", err)
 	}
 
@@ -632,14 +821,15 @@ func initDefaultData(db *gorm.DB) error {
 		{Name: "登录日志", Code: "login-logs", Type: 2, ParentID: auditMenu.ID, Path: "/audit/login-logs", Component: "audit/LoginLogs", Icon: "CircleCheck", Sort: 2, Visible: 1, Status: 1},
 	}
 	for _, menu := range auditSubMenus {
-		if err := createMenuWithPermission(menu); err != nil {
+		if _, err := ensureMenuWithPermission(menu); err != nil {
 			return fmt.Errorf("创建操作审计子菜单失败: %w", err)
 		}
 	}
 
 	// ========== 5. 插件管理 ==========
 	pluginMenu := &rbacmodel.SysMenu{Name: "插件管理", Code: "plugin", Type: 1, ParentID: 0, Path: "/plugin", Icon: "Grid", Sort: 80, Visible: 1, Status: 1}
-	if err := createMenuWithPermission(pluginMenu); err != nil {
+	pluginMenu, err = ensureMenuWithPermission(pluginMenu)
+	if err != nil {
 		return fmt.Errorf("创建插件管理菜单失败: %w", err)
 	}
 
@@ -648,14 +838,15 @@ func initDefaultData(db *gorm.DB) error {
 		{Name: "插件安装", Code: "plugin-install", Type: 2, ParentID: pluginMenu.ID, Path: "/plugin/install", Component: "plugin/PluginInstall", Icon: "Upload", Sort: 2, Visible: 1, Status: 1},
 	}
 	for _, menu := range pluginSubMenus {
-		if err := createMenuWithPermission(menu); err != nil {
+		if _, err := ensureMenuWithPermission(menu); err != nil {
 			return fmt.Errorf("创建插件管理子菜单失败: %w", err)
 		}
 	}
 
 	// ========== 6. 系统管理 ==========
 	systemMenu := &rbacmodel.SysMenu{Name: "系统管理", Code: "system", Type: 1, ParentID: 0, Path: "/system", Icon: "Setting", Sort: 100, Visible: 1, Status: 1}
-	if err := createMenuWithPermission(systemMenu); err != nil {
+	systemMenu, err = ensureMenuWithPermission(systemMenu)
+	if err != nil {
 		return fmt.Errorf("创建系统管理菜单失败: %w", err)
 	}
 
@@ -668,14 +859,12 @@ func initDefaultData(db *gorm.DB) error {
 		{Name: "系统配置", Code: "system-config", Type: 2, ParentID: systemMenu.ID, Path: "/system-config", Component: "system/SystemConfig", Icon: "Setting", Sort: 6, Visible: 1, Status: 1},
 	}
 	for _, menu := range systemSubMenus {
-		if err := createMenuWithPermission(menu); err != nil {
+		if _, err := ensureMenuWithPermission(menu); err != nil {
 			return fmt.Errorf("创建系统管理子菜单失败: %w", err)
 		}
 	}
 
-	appLogger.Info("默认数据初始化完成")
-	appLogger.Info("默认管理员账号: admin")
-	appLogger.Info("默认管理员密码: 123456")
+	appLogger.Info("默认数据检查完成")
 
 	// 初始化系统默认配置
 	configRepo := systemdata.NewConfigRepo(db)
@@ -686,6 +875,41 @@ func initDefaultData(db *gorm.DB) error {
 	}
 
 	return nil
+}
+
+func cleanupServiceOperationsMenus(db *gorm.DB) error {
+	codes := []string{
+		"service-operations",
+		"applications", "application-services", "application-topology", "application-observability", "application-dependencies",
+		"incidents", "incident-active", "incident-history", "incident-reviews", "incident-actions",
+		"changes", "change-events", "change-sources", "change-webhooks",
+		"runbooks", "runbook-list", "runbook-executions", "runbook-commands",
+		"health-checks", "health-hosts", "health-kubernetes", "health-capacity", "health-backups",
+	}
+
+	var menuIDs []uint
+	if err := db.Unscoped().
+		Model(&rbacmodel.SysMenu{}).
+		Where("code IN ?", codes).
+		Pluck("id", &menuIDs).Error; err != nil {
+		return err
+	}
+	if len(menuIDs) == 0 {
+		return nil
+	}
+	if err := db.Where("menu_id IN ?", menuIDs).Delete(&rbacmodel.SysRoleMenu{}).Error; err != nil {
+		return err
+	}
+	now := time.Now()
+	return db.Unscoped().
+		Model(&rbacmodel.SysMenu{}).
+		Where("id IN ?", menuIDs).
+		Updates(map[string]interface{}{
+			"visible":    0,
+			"status":     0,
+			"deleted_at": now,
+			"updated_at": now,
+		}).Error
 }
 
 func stopServer(ctx context.Context, cfg *conf.Config) error {

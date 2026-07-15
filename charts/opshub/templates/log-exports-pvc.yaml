@@ -1,0 +1,20 @@
+{{- if .Values.logCenter.export.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "opshub.fullname" . }}-log-exports
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "opshub.backend.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    {{- toYaml .Values.logCenter.export.persistence.accessModes | nindent 4 }}
+  {{- if .Values.logCenter.export.persistence.storageClass }}
+  storageClassName: {{ .Values.logCenter.export.persistence.storageClass | quote }}
+  {{- else if .Values.global.storageClass }}
+  storageClassName: {{ .Values.global.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.logCenter.export.persistence.size }}
+{{- end }}

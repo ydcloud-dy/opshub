@@ -153,6 +153,98 @@ func TestAlertRuleLabelsAnnotationsAndCallbackVariables(t *testing.T) {
 	}
 }
 
+func TestParseOpsHubLogQueryASTAppliesDefaultsAndValidation(t *testing.T) {
+	ast, err := parseOpsHubLogQueryAST(`{"version":1,"keyword":"ERROR","scope":{"hostIds":[2]},"aggregation":"rate"}`)
+	if err != nil {
+		t.Fatalf("parseOpsHubLogQueryAST failed: %v", err)
+	}
+	if ast.WindowSeconds != 300 || ast.SampleLimit != 5 || ast.Keyword != "ERROR" || ast.Aggregation != "rate" {
+		t.Fatalf("OpsHub log AST defaults are incorrect: %#v", ast)
+	}
+	if len(ast.Scope.HostIDs) != 1 || ast.Scope.HostIDs[0] != 2 {
+		t.Fatalf("OpsHub log AST scope was lost: %#v", ast.Scope)
+	}
+
+	for _, raw := range []string{
+		`{"version":2}`,
+		`{"version":1,"windowSeconds":9}`,
+		`{"version":1,"aggregation":"sum"}`,
+		`not-json`,
+	} {
+		if _, parseErr := parseOpsHubLogQueryAST(raw); parseErr == nil {
+			t.Fatalf("invalid OpsHub log AST was accepted: %s", raw)
+		}
+	}
+}
+
+func TestExtractOpsHubLogSamplesPreservesLabelsAndLogs(t *testing.T) {
+	raw := map[string]interface{}{
+		"data": map[string]interface{}{
+			"result": []interface{}{
+				map[string]interface{}{
+					"metric": map[string]interface{}{"service": "api", "namespace": "production"},
+					"value":  []interface{}{float64(1710000000), "3"},
+					"matchedLogs": []interface{}{
+						map[string]interface{}{
+							"timestamp": "2026-07-15T02:00:00Z",
+							"line":      "ERROR database timeout",
+							"labels":    map[string]interface{}{"podName": "api-0"},
+						},
+					},
+					"matchedLogCount": float64(3),
+					"matchedLogQuery": `{"version":1,"keyword":"ERROR"}`,
+				},
+			},
+		},
+	}
+	samples, err := extractOpsHubLogSamples(raw)
+	if err != nil {
+		t.Fatalf("extractOpsHubLogSamples failed: %v", err)
+	}
+	if len(samples) != 1 || samples[0].Value != 3 || samples[0].MatchedLogCount != 3 {
+		t.Fatalf("unexpected OpsHub log samples: %#v", samples)
+	}
+	if samples[0].Labels["service"] != "api" || len(samples[0].MatchedLogs) != 1 || samples[0].MatchedLogs[0].Line != "ERROR database timeout" {
+		t.Fatalf("OpsHub sample detail was lost: %#v", samples[0])
+	}
+}
+
+func TestBuildOpsHubLogNoticeURLLinksToExactQuery(t *testing.T) {
+	queryAST := `{"version":1,"storageId":7,"windowSeconds":300,"keyword":"ERROR","scope":{"hostIds":[2,4],"clusterIds":[9],"services":["api"],"namespaces":["production"]},"filters":[{"field":"level","operator":"eq","value":"ERROR"}],"groupBy":["service"],"aggregation":"count","sampleLimit":5}`
+	evaluatedAt := time.Date(2026, 7, 15, 10, 0, 0, 0, time.FixedZone("CST", 8*60*60))
+	annotations, _ := json.Marshal(map[string]string{"matched_log_query": queryAST})
+	result := buildOpsHubLogNoticeURL(ruleNotificationPayload{
+		DataSourceType: opsHubLogDataSourceType,
+		Annotations:    string(annotations),
+		Time:           evaluatedAt,
+	})
+	parsed, err := url.Parse(result)
+	if err != nil {
+		t.Fatalf("parse alert URL failed: %v", err)
+	}
+	if !strings.HasSuffix(parsed.Path, "/logs/query") {
+		t.Fatalf("OpsHub log alert URL points to the wrong page: %s", result)
+	}
+	values := parsed.Query()
+	for key, expected := range map[string]string{
+		"storageId":  "7",
+		"q":          "ERROR",
+		"hostIds":    "2,4",
+		"clusterIds": "9",
+		"services":   "api",
+		"namespaces": "production",
+		"start":      "2026-07-15T01:55:00Z",
+		"end":        "2026-07-15T02:00:00Z",
+	} {
+		if values.Get(key) != expected {
+			t.Fatalf("alert URL query %s = %q, want %q: %s", key, values.Get(key), expected, result)
+		}
+	}
+	if !strings.Contains(values.Get("filters"), `"field":"level"`) {
+		t.Fatalf("alert URL lost structured filters: %s", result)
+	}
+}
+
 func TestShouldSendRecoveryNotificationOnlyForNotifiedFiringEvents(t *testing.T) {
 	cases := []struct {
 		name  string

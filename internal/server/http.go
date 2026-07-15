@@ -33,6 +33,7 @@ import (
 	mfadata "github.com/ydcloud-dy/opshub/internal/data/mfa"
 	rbacdata "github.com/ydcloud-dy/opshub/internal/data/rbac"
 	"github.com/ydcloud-dy/opshub/internal/plugin"
+	aiopsserver "github.com/ydcloud-dy/opshub/internal/server/aiops"
 	assetserver "github.com/ydcloud-dy/opshub/internal/server/asset"
 	auditserver "github.com/ydcloud-dy/opshub/internal/server/audit"
 	identityserver "github.com/ydcloud-dy/opshub/internal/server/identity"
@@ -45,6 +46,8 @@ import (
 	appLogger "github.com/ydcloud-dy/opshub/pkg/logger"
 	"github.com/ydcloud-dy/opshub/pkg/middleware"
 	k8splugin "github.com/ydcloud-dy/opshub/plugins/kubernetes"
+	logcenterplugin "github.com/ydcloud-dy/opshub/plugins/logcenter"
+	logcenterserver "github.com/ydcloud-dy/opshub/plugins/logcenter/server"
 	monitorplugin "github.com/ydcloud-dy/opshub/plugins/monitor"
 	nginxplugin "github.com/ydcloud-dy/opshub/plugins/nginx"
 	sslcertplugin "github.com/ydcloud-dy/opshub/plugins/ssl-cert"
@@ -99,6 +102,11 @@ func NewHTTPServer(conf *conf.Config, svc *service.Service, db *gorm.DB) *HTTPSe
 	// 注册 Monitor 插件
 	if err := pluginMgr.Register(monitorplugin.New()); err != nil {
 		appLogger.Error("注册Monitor插件失败", zap.Error(err))
+	}
+
+	// 注册 LogCenter 插件
+	if err := pluginMgr.Register(logcenterplugin.New()); err != nil {
+		appLogger.Error("注册LogCenter插件失败", zap.Error(err))
 	}
 
 	// 注册 Nginx 插件
@@ -194,6 +202,7 @@ func (s *HTTPServer) registerRoutes(router *gin.Engine, jwtSecret string) {
 	{
 		public.GET("/example", s.svc.Example)
 		assetServer.RegisterPublicRoutes(public)
+		logcenterserver.RegisterPublicRoutes(public, s.db)
 	}
 
 	identityServer, err := identityserver.NewIdentityServices(s.db, s.conf)
@@ -214,6 +223,10 @@ func (s *HTTPServer) registerRoutes(router *gin.Engine, jwtSecret string) {
 
 		// 注册 Asset 路由
 		assetServer.RegisterRoutes(v1)
+
+		// 智能运维路由（内置模块，非插件）
+		aiopsHTTPServer := aiopsserver.NewHTTPServer(s.db, authMiddleware)
+		aiopsHTTPServer.RegisterRoutes(v1)
 
 		if identityServer != nil {
 			identityServer.RegisterRoutes(v1)

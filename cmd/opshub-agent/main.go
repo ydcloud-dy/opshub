@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -12,26 +13,32 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/ydcloud-dy/opshub/internal/logagent"
 )
 
-const defaultVersion = "0.1.0"
+const defaultVersion = "0.3.0"
 
 var (
 	version = defaultVersion
 )
 
 type config struct {
-	ServerURL       string `json:"serverUrl"`
-	EnrollmentToken string `json:"enrollmentToken"`
-	AgentID         string `json:"agentId"`
-	AgentToken      string `json:"agentToken"`
-	Interval        int    `json:"interval"`
+	ServerURL         string          `json:"serverUrl"`
+	EnrollmentToken   string          `json:"enrollmentToken"`
+	AgentID           string          `json:"agentId"`
+	AgentToken        string          `json:"agentToken"`
+	HostID            uint            `json:"hostId"`
+	Interval          int             `json:"interval"`
+	LogMetricsAddress string          `json:"logMetricsAddress"`
+	LogCollection     logagent.Config `json:"logCollection"`
 }
 
 type apiResponse struct {
@@ -69,12 +76,26 @@ type metricsPayload struct {
 
 func main() {
 	var (
-		configPath      string
-		serverURL       string
-		enrollmentToken string
-		interval        int
-		once            bool
-		printVersion    bool
+		configPath        string
+		serverURL         string
+		enrollmentToken   string
+		interval          int
+		once              bool
+		printVersion      bool
+		logGatewayURL     string
+		logGatewayToken   string
+		logPaths          string
+		logReadFrom       string
+		logService        string
+		logEnvironment    string
+		logStateDir       string
+		logMetricsAddress string
+		agentMode         string
+		clusterID         uint
+		clusterToken      string
+		nodeName          string
+		podName           string
+		podNamespace      string
 	)
 
 	flag.StringVar(&configPath, "config", "/etc/opshub-agent/agent.json", "Agent配置文件")
@@ -83,10 +104,35 @@ func main() {
 	flag.IntVar(&interval, "interval", 30, "采集间隔秒数")
 	flag.BoolVar(&once, "once", false, "仅采集上报一次")
 	flag.BoolVar(&printVersion, "version", false, "显示版本")
+	flag.StringVar(&logGatewayURL, "log-gateway", "", "Log Gateway HTTP 地址")
+	flag.StringVar(&logGatewayToken, "log-gateway-token", "", "Log Gateway Agent Token")
+	flag.StringVar(&logPaths, "log-paths", "", "逗号分隔的日志文件路径或通配符")
+	flag.StringVar(&logReadFrom, "log-read-from", "latest", "首次读取位置: latest 或 beginning")
+	flag.StringVar(&logService, "log-service", "", "日志所属服务")
+	flag.StringVar(&logEnvironment, "log-environment", "", "日志所属环境")
+	flag.StringVar(&logStateDir, "log-state-dir", "", "日志 checkpoint 与 WAL 目录")
+	flag.StringVar(&logMetricsAddress, "log-metrics-address", "", "日志采集指标监听地址")
+	flag.StringVar(&agentMode, "mode", "host", "Agent 运行模式: host 或 kubernetes-node")
+	flag.UintVar(&clusterID, "cluster-id", 0, "Kubernetes 集群 ID")
+	flag.StringVar(&clusterToken, "cluster-token", "", "Kubernetes 日志采集 Token")
+	flag.StringVar(&nodeName, "node-name", "", "当前 Kubernetes 节点名称")
+	flag.StringVar(&podName, "pod-name", "", "当前 DaemonSet Pod 名称")
+	flag.StringVar(&podNamespace, "pod-namespace", "", "当前 DaemonSet Namespace")
 	flag.Parse()
 
 	if printVersion {
 		fmt.Printf("opshub-agent %s %s/%s\n", version, runtime.GOOS, runtime.GOARCH)
+		return
+	}
+	if agentMode == "kubernetes-node" {
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		if err := runKubernetesNodeCollector(ctx, kubernetesNodeConfig{
+			ServerURL: strings.TrimRight(serverURL, "/"), ClusterID: clusterID, ClusterToken: clusterToken,
+			NodeName: nodeName, PodName: podName, Namespace: podNamespace, MetricsAddress: logMetricsAddress,
+		}); err != nil {
+			fatal(err)
+		}
 		return
 	}
 
@@ -99,6 +145,11 @@ func main() {
 	if err := ensureRegistered(client, configPath, cfg); err != nil {
 		fatal(err)
 	}
+	if applyLogCLI(cfg, logGatewayURL, logGatewayToken, logPaths, logReadFrom, logService, logEnvironment, logStateDir, logMetricsAddress) {
+		if err := saveConfig(configPath, cfg); err != nil {
+			fatal(err)
+		}
+	}
 
 	if once {
 		if err := collectAndReport(client, cfg); err != nil {
@@ -107,12 +158,89 @@ func main() {
 		return
 	}
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	go runMetricsReporter(ctx, client, cfg)
+
+	if err := runManagedLogCollector(ctx, client, configPath, cfg); err != nil {
+		fatal(err)
+	}
+	logf("收到停止信号，正在保存日志 checkpoint 与 WAL")
+}
+
+func runMetricsReporter(ctx context.Context, client *http.Client, cfg *config) {
+	ticker := time.NewTicker(time.Duration(cfg.Interval) * time.Second)
+	defer ticker.Stop()
 	for {
 		if err := collectAndReport(client, cfg); err != nil {
 			logf("采集或上报失败: %v", err)
 		}
-		time.Sleep(time.Duration(cfg.Interval) * time.Second)
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
 	}
+}
+
+func startLogCollector(cfg *config) (*logagent.Agent, error) {
+	if !cfg.LogCollection.Enabled {
+		return nil, nil
+	}
+	if cfg.HostID == 0 {
+		return nil, fmt.Errorf("当前 Agent 配置缺少 hostId，请重新注册或等待平台下发日志策略")
+	}
+	agent, err := logagent.NewAgent(cfg.LogCollection, logagent.AgentIdentity{
+		AgentID: cfg.AgentID, AssetType: "host", AssetID: uint64(cfg.HostID), HostID: uint64(cfg.HostID),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return agent, nil
+}
+
+func applyLogCLI(cfg *config, gatewayURL, gatewayToken, paths, readFrom, service, environment, stateDir, metricsAddress string) bool {
+	changed := false
+	if gatewayURL != "" {
+		cfg.LogCollection.GatewayURL = gatewayURL
+		changed = true
+	}
+	if gatewayToken != "" {
+		cfg.LogCollection.GatewayToken = gatewayToken
+		changed = true
+	}
+	if stateDir != "" {
+		cfg.LogCollection.StateDir = stateDir
+		changed = true
+	}
+	if metricsAddress != "" {
+		cfg.LogMetricsAddress = metricsAddress
+		changed = true
+	}
+	if paths != "" {
+		pathList := splitAgentList(paths)
+		cfg.LogCollection.Enabled = true
+		cfg.LogCollection.Sources = []logagent.SourceConfig{{
+			ID: "cli-files", Paths: pathList, ReadFrom: readFrom, Service: service,
+			Environment: environment, Parser: logagent.ParserConfig{Type: "raw"},
+		}}
+		changed = true
+	}
+	if changed {
+		cfg.LogCollection.Normalize()
+	}
+	return changed
+}
+
+func splitAgentList(value string) []string {
+	parts := strings.FieldsFunc(value, func(char rune) bool { return char == ',' || char == ';' })
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if part = strings.TrimSpace(part); part != "" {
+			result = append(result, part)
+		}
+	}
+	return result
 }
 
 func loadOrInitConfig(path, serverURL, enrollmentToken string, interval int) (*config, error) {
@@ -200,6 +328,7 @@ func ensureRegistered(client *http.Client, configPath string, cfg *config) error
 
 	cfg.AgentID = result.AgentID
 	cfg.AgentToken = result.AgentToken
+	cfg.HostID = result.HostID
 	cfg.EnrollmentToken = ""
 	if result.Interval > 0 && cfg.Interval <= 0 {
 		cfg.Interval = result.Interval

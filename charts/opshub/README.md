@@ -81,6 +81,20 @@ kubectl delete namespace opshub
 | `frontend.resources.requests.memory` | 内存请求 | `64Mi` |
 | `frontend.resources.requests.cpu` | CPU 请求 | `50m` |
 
+### 日志数据面配置
+
+Log Gateway 与 Log Writer 使用独立镜像和 Deployment，不复用后端 API 镜像，可分别发布、扩容和回滚。
+
+| 参数 | 描述 | 默认值 |
+|------|------|--------|
+| `logCenter.ingest.gateway.replicaCount` | Gateway 副本数 | `2` |
+| `logCenter.ingest.gateway.image.repository` | Gateway 镜像仓库 | `docker.1ms.run/dyclouds/opshub-log-gateway` |
+| `logCenter.ingest.gateway.image.tag` | Gateway 镜像标签 | `v0.0.8` |
+| `logCenter.ingest.writer.replicaCount` | Writer 副本数 | `2` |
+| `logCenter.ingest.writer.image.repository` | Writer 镜像仓库 | `docker.1ms.run/dyclouds/opshub-log-writer` |
+| `logCenter.ingest.writer.image.tag` | Writer 镜像标签 | `v0.0.8` |
+| `logCenter.ingest.queue.mode` | 数据面模式：`direct` 或 `kafka` | `direct` |
+
 ### MySQL 配置
 
 | 参数 | 描述 | 默认值 |

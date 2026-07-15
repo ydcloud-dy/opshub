@@ -1,0 +1,152 @@
+{{- if and .Values.logCenter.ingest.enabled .Values.logCenter.ingest.queue.redpanda.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "opshub.fullname" . }}-redpanda-headless
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "opshub.redpanda.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "opshub.redpanda.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: kafka
+      port: 9092
+      targetPort: kafka
+    - name: rpc
+      port: 33145
+      targetPort: rpc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "opshub.fullname" . }}-redpanda
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "opshub.redpanda.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "opshub.redpanda.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: kafka
+      port: 9092
+      targetPort: kafka
+    - name: admin
+      port: 9644
+      targetPort: admin
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "opshub.fullname" . }}-redpanda
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "opshub.redpanda.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "opshub.fullname" . }}-redpanda-headless
+  podManagementPolicy: Parallel
+  replicas: {{ .Values.logCenter.ingest.queue.redpanda.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "opshub.redpanda.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "opshub.redpanda.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      terminationGracePeriodSeconds: 90
+      containers:
+        - name: redpanda
+          image: "{{ .Values.logCenter.ingest.queue.redpanda.image.repository }}:{{ .Values.logCenter.ingest.queue.redpanda.image.tag }}"
+          imagePullPolicy: {{ .Values.logCenter.ingest.queue.redpanda.image.pullPolicy | default .Values.global.imagePullPolicy }}
+          command: ["/bin/bash", "-ec"]
+          args:
+            - |
+              exec redpanda start \
+                --overprovisioned \
+                --smp={{ .Values.logCenter.ingest.queue.redpanda.smp }} \
+                --memory={{ .Values.logCenter.ingest.queue.redpanda.memory }} \
+                --reserve-memory=0M \
+                --check=false \
+                --kafka-addr=internal://0.0.0.0:9092 \
+                --advertise-kafka-addr=internal://${POD_NAME}.{{ include "opshub.fullname" . }}-redpanda-headless.${POD_NAMESPACE}.svc:9092 \
+                --rpc-addr=0.0.0.0:33145 \
+                --advertise-rpc-addr=${POD_NAME}.{{ include "opshub.fullname" . }}-redpanda-headless.${POD_NAMESPACE}.svc:33145 \
+                --seeds={{ include "opshub.fullname" . }}-redpanda-0.{{ include "opshub.fullname" . }}-redpanda-headless.${POD_NAMESPACE}.svc:33145
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          ports:
+            - name: kafka
+              containerPort: 9092
+            - name: rpc
+              containerPort: 33145
+            - name: admin
+              containerPort: 9644
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/redpanda/data
+          startupProbe:
+            httpGet:
+              path: /v1/status/ready
+              port: admin
+            failureThreshold: 30
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /v1/status/ready
+              port: admin
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /v1/status/ready
+              port: admin
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.logCenter.ingest.queue.redpanda.resources | nindent 12 }}
+      {{- if not .Values.logCenter.ingest.queue.redpanda.persistence.enabled }}
+      volumes:
+        - name: data
+          emptyDir: {}
+      {{- end }}
+  {{- if .Values.logCenter.ingest.queue.redpanda.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- if or .Values.logCenter.ingest.queue.redpanda.persistence.storageClass .Values.global.storageClass }}
+        storageClassName: {{ .Values.logCenter.ingest.queue.redpanda.persistence.storageClass | default .Values.global.storageClass | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.logCenter.ingest.queue.redpanda.persistence.size }}
+  {{- end }}
+{{- if and .Values.logCenter.ingest.queue.redpanda.podDisruptionBudget.enabled (gt (int .Values.logCenter.ingest.queue.redpanda.replicaCount) 1) }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "opshub.fullname" . }}-redpanda
+  namespace: {{ .Release.Namespace }}
+spec:
+  minAvailable: {{ .Values.logCenter.ingest.queue.redpanda.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "opshub.redpanda.selectorLabels" . | nindent 6 }}
+{{- end }}
+{{- end }}

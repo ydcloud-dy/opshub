@@ -24,15 +24,36 @@
               <el-icon><component :is="getIcon(menu.icon)" /></el-icon>
               <span>{{ menu.name }}</span>
             </template>
-            <el-menu-item
-              v-for="subMenu in menu.children"
-              :key="subMenu.ID"
-              :index="subMenu.status === 0 ? undefined : subMenu.path"
-              :class="{ 'menu-disabled': subMenu.status === 0 }"
-            >
-              <el-icon><component :is="getIcon(subMenu.icon)" /></el-icon>
-              <span>{{ subMenu.name }}</span>
-            </el-menu-item>
+            <template v-for="subMenu in menu.children" :key="subMenu.ID || subMenu.id || subMenu.path">
+              <el-sub-menu
+                v-if="subMenu.children && subMenu.children.length > 0"
+                :index="String(subMenu.ID || subMenu.id || subMenu.path)"
+                :class="{ 'menu-disabled': subMenu.status === 0, 'nested-sub-menu': true }"
+              >
+                <template #title>
+                  <el-icon><component :is="getIcon(subMenu.icon)" /></el-icon>
+                  <span>{{ subMenu.name }}</span>
+                </template>
+                <el-menu-item
+                  v-for="thirdMenu in subMenu.children"
+                  :key="thirdMenu.ID || thirdMenu.id || thirdMenu.path"
+                  :index="thirdMenu.status === 0 ? undefined : thirdMenu.path"
+                  :class="{ 'menu-disabled': thirdMenu.status === 0 }"
+                >
+                  <el-icon><component :is="getIcon(thirdMenu.icon)" /></el-icon>
+                  <span>{{ thirdMenu.name }}</span>
+                </el-menu-item>
+              </el-sub-menu>
+
+              <el-menu-item
+                v-else
+                :index="subMenu.status === 0 ? undefined : subMenu.path"
+                :class="{ 'menu-disabled': subMenu.status === 0 }"
+              >
+                <el-icon><component :is="getIcon(subMenu.icon)" /></el-icon>
+                <span>{{ subMenu.name }}</span>
+              </el-menu-item>
+            </template>
           </el-sub-menu>
 
           <!-- 没有子菜单的情况 -->
@@ -99,14 +120,19 @@
         <!-- 无权限时显示无权限页面 -->
         <NoPermission v-if="hasNoPermission" />
         <!-- 有权限时显示正常内容 -->
-        <router-view v-else />
+        <router-view v-else v-slot="{ Component, route }">
+          <keep-alive>
+            <component :is="Component" v-if="route.path.startsWith('/aiops')" :key="route.name || route.path" />
+          </keep-alive>
+          <component :is="Component" v-if="!route.path.startsWith('/aiops')" />
+        </router-view>
       </el-main>
     </el-container>
   </el-container>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted, shallowRef } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useSystemStore } from '@/stores/system'
@@ -117,9 +143,11 @@ import {
   HomeFilled,
   User,
   UserFilled,
+  Avatar,
   OfficeBuilding,
   Menu,
   SwitchButton,
+  Switch,
   ArrowDown,
   Platform,
   Setting,
@@ -128,6 +156,8 @@ import {
   Monitor,
   FolderOpened,
   Connection,
+  Coin,
+  Collection,
   Files,
   Lock,
   View,
@@ -159,9 +189,12 @@ import {
   MessageBox,
   Notification,
   Operation,
+  Search,
   SetUp,
+  Share,
   TrendCharts,
-  Warning
+  Warning,
+  CircleCheck
 } from '@element-plus/icons-vue'
 import { getUserMenu } from '@/api/menu'
 
@@ -247,8 +280,11 @@ const iconMap: Record<string, any> = {
   'HomeFilled': HomeFilled,
   'User': User,
   'UserFilled': UserFilled,
+  'Avatar': Avatar,
   'OfficeBuilding': OfficeBuilding,
   'Menu': Menu,
+  'Switch': Switch,
+  'SwitchButton': SwitchButton,
   'Platform': Platform,
   'Setting': Setting,
   'Document': Document,
@@ -256,6 +292,8 @@ const iconMap: Record<string, any> = {
   'Monitor': Monitor,
   'FolderOpened': FolderOpened,
   'Connection': Connection,
+  'Coin': Coin,
+  'Collection': Collection,
   'Files': Files,
   'Lock': Lock,
   'View': View,
@@ -287,9 +325,12 @@ const iconMap: Record<string, any> = {
   'MessageBox': MessageBox,
   'Notification': Notification,
   'Operation': Operation,
+  'Search': Search,
   'SetUp': SetUp,
+  'Share': Share,
   'TrendCharts': TrendCharts,
-  'Warning': Warning
+  'Warning': Warning,
+  'CircleCheck': CircleCheck
 }
 
 const monitorMenuIconMap: Record<string, string> = {
@@ -394,6 +435,81 @@ const normalizeMonitorMenuEntries = (menus: any[]) => {
   }
 
   return normalized
+}
+
+const hiddenMenuPaths = new Set([
+  '/aiops',
+  '/aiops/reports',
+  '/service-operations',
+  '/applications',
+  '/applications/services',
+  '/applications/topology',
+  '/applications/observability',
+  '/applications/dependencies',
+  '/changes',
+  '/changes/events',
+  '/changes/sources',
+  '/changes/webhooks',
+  '/incidents',
+  '/incidents/active',
+  '/incidents/history',
+  '/incidents/reviews',
+  '/incidents/actions',
+  '/runbooks',
+  '/runbooks/list',
+  '/runbooks/executions',
+  '/runbooks/commands',
+  '/health-checks',
+  '/health-checks/hosts',
+  '/health-checks/kubernetes',
+  '/health-checks/capacity',
+  '/health-checks/backups'
+])
+
+const hiddenMenuCodes = new Set([
+  'aiops',
+  'aiops-assistant',
+  'aiops-diagnosis',
+  'aiops-logs',
+  'aiops-alerts',
+  'aiops-sessions',
+  'aiops-settings',
+  'aiops-reports',
+  'aiops-knowledge',
+  'aiops-tasks',
+  'aiops-risks',
+  'aiops-remediation',
+  'aiops-feedbacks',
+  'service-operations',
+  'applications',
+  'application-services',
+  'application-topology',
+  'application-observability',
+  'application-dependencies',
+  'changes',
+  'change-events',
+  'change-sources',
+  'change-webhooks',
+  'incidents',
+  'incident-active',
+  'incident-history',
+  'incident-reviews',
+  'incident-actions',
+  'runbooks',
+  'runbook-list',
+  'runbook-executions',
+  'runbook-commands',
+  'health-checks',
+  'health-hosts',
+  'health-kubernetes',
+  'health-capacity',
+  'health-backups'
+])
+
+const shouldHideMenuEntry = (menu: any) => {
+  const path = String(menu?.path || '')
+  const code = String(menu?.code || '')
+  return hiddenMenuPaths.has(path) || path.startsWith('/aiops/') || hiddenMenuCodes.has(code)
 }
 
 // 构建菜单树
@@ -558,7 +674,7 @@ const flattenMenus = (menus: any[], result: any[] = []) => {
 }
 
 const prepareMenuList = (menus: any[]) => {
-  const flatMenus = normalizeMonitorMenuEntries(flattenMenus(menus))
+  const flatMenus = normalizeMonitorMenuEntries(flattenMenus(menus).filter(menu => !shouldHideMenuEntry(menu)))
   return buildMenuTree(flatMenus)
 }
 
@@ -919,6 +1035,27 @@ onMounted(async () => {
   padding-left: 48px !important; /* 从56px改为48px,与父菜单的间距保持一致 */
   margin: 4px 20px; /* 上下4px间距,左右20px(更大,使背景更小) */
   border-radius: 6px; /* 子菜单圆角稍小 */
+}
+
+:deep(.nested-sub-menu > .el-sub-menu__title) {
+  padding-left: 42px !important;
+  height: 42px !important;
+  line-height: 42px !important;
+  margin: 2px 18px;
+  border-radius: 6px;
+  font-size: 15px !important;
+}
+
+:deep(.nested-sub-menu .el-menu--inline .el-menu-item) {
+  padding-left: 58px !important;
+  height: 40px !important;
+  line-height: 40px !important;
+  margin: 2px 18px 2px 26px;
+  font-size: 14px !important;
+}
+
+:deep(.nested-sub-menu .el-menu--inline .el-menu-item .el-icon) {
+  font-size: 15px !important;
 }
 
 /* 禁用子菜单展开动画，防止抖动 */

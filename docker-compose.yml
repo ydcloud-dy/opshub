@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   mysql:
     image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/mysql:8.0.44
@@ -52,6 +50,145 @@ services:
     networks:
       - opshub-network
 
+  clickhouse:
+    image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/clickhouse/clickhouse-server:26.1
+    container_name: opshub-clickhouse
+    restart: unless-stopped
+    ports:
+      - "${CLICKHOUSE_HTTP_PORT:-18123}:8123"
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DATABASE:-opshub_logs}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USERNAME:-opshub}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-OpsHub@ClickHouse}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+      TZ: UTC
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - clickhouse-logs:/var/log/clickhouse-server
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --user \"$$CLICKHOUSE_USER\" --password \"$$CLICKHOUSE_PASSWORD\" --query 'SELECT 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - opshub-network
+
+  redpanda:
+    profiles: ["standard"]
+    image: ${REDPANDA_IMAGE:-docker.redpanda.com/redpandadata/redpanda:v24.3.18}
+    container_name: opshub-redpanda
+    restart: unless-stopped
+    command:
+      - redpanda
+      - start
+      - --overprovisioned
+      - --smp=1
+      - --memory=1G
+      - --reserve-memory=0M
+      - --node-id=0
+      - --check=false
+      - --kafka-addr=internal://0.0.0.0:9092
+      - --advertise-kafka-addr=internal://redpanda:9092
+      - --rpc-addr=0.0.0.0:33145
+      - --advertise-rpc-addr=redpanda:33145
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health --brokers=127.0.0.1:9092 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - opshub-network
+
+  log-writer:
+    image: ${OPSHUB_LOG_WRITER_IMAGE:-docker.1ms.run/dyclouds/opshub-log-writer:v0.0.8}
+    container_name: opshub-log-writer
+    restart: unless-stopped
+    environment:
+      OPSHUB_LOG_QUEUE_MODE: ${OPSHUB_LOG_QUEUE_MODE:-direct}
+      OPSHUB_LOG_WRITER_HTTP_ADDRESS: :9881
+      OPSHUB_LOG_WRITER_TOKEN: ${OPSHUB_LOG_WRITER_TOKEN:-opshub-log-writer-token-change-in-production}
+      OPSHUB_LOG_WRITER_QUEUE_CAPACITY: ${OPSHUB_LOG_WRITER_QUEUE_CAPACITY:-2048}
+      OPSHUB_LOG_WRITER_WORKERS: ${OPSHUB_LOG_WRITER_WORKERS:-4}
+      OPSHUB_LOG_WRITER_MAX_RETRIES: ${OPSHUB_LOG_WRITER_MAX_RETRIES:-3}
+      OPSHUB_LOG_WRITER_DEADLETTER_PATH: /app/data/log-deadletter/failed.ndjson
+      OPSHUB_LOG_KAFKA_BROKERS: ${OPSHUB_LOG_KAFKA_BROKERS:-redpanda:9092}
+      OPSHUB_LOG_KAFKA_TOPIC: ${OPSHUB_LOG_KAFKA_TOPIC:-opshub.logs.v1}
+      OPSHUB_LOG_KAFKA_DEADLETTER_TOPIC: ${OPSHUB_LOG_KAFKA_DEADLETTER_TOPIC:-opshub.logs.deadletter.v1}
+      OPSHUB_LOG_KAFKA_CONSUMER_GROUP: ${OPSHUB_LOG_KAFKA_CONSUMER_GROUP:-opshub-log-writer}
+      OPSHUB_LOG_KAFKA_PARTITIONS: ${OPSHUB_LOG_KAFKA_PARTITIONS:-12}
+      OPSHUB_LOG_KAFKA_REPLICATION_FACTOR: ${OPSHUB_LOG_KAFKA_REPLICATION_FACTOR:-1}
+      OPSHUB_LOG_KAFKA_AUTO_CREATE_TOPICS: ${OPSHUB_LOG_KAFKA_AUTO_CREATE_TOPICS:-true}
+      OPSHUB_LOG_KAFKA_RETENTION_HOURS: ${OPSHUB_LOG_KAFKA_RETENTION_HOURS:-72}
+      OPSHUB_LOG_KAFKA_TLS: ${OPSHUB_LOG_KAFKA_TLS:-false}
+      OPSHUB_LOG_KAFKA_TLS_SKIP_VERIFY: ${OPSHUB_LOG_KAFKA_TLS_SKIP_VERIFY:-false}
+      OPSHUB_LOG_KAFKA_SASL_MECHANISM: ${OPSHUB_LOG_KAFKA_SASL_MECHANISM:-}
+      OPSHUB_LOG_KAFKA_USERNAME: ${OPSHUB_LOG_KAFKA_USERNAME:-}
+      OPSHUB_LOG_KAFKA_PASSWORD: ${OPSHUB_LOG_KAFKA_PASSWORD:-}
+      OPSHUB_LOG_KAFKA_MAX_POLL_RECORDS: ${OPSHUB_LOG_KAFKA_MAX_POLL_RECORDS:-500}
+      OPSHUB_LOG_KAFKA_FETCH_MAX_MB: ${OPSHUB_LOG_KAFKA_FETCH_MAX_MB:-64}
+      OPSHUB_LOGCENTER_CLICKHOUSE_ENDPOINT: http://clickhouse:8123
+      OPSHUB_LOGCENTER_CLICKHOUSE_DATABASE: ${CLICKHOUSE_DATABASE:-opshub_logs}
+      OPSHUB_LOGCENTER_CLICKHOUSE_USERNAME: ${CLICKHOUSE_USERNAME:-opshub}
+      OPSHUB_LOGCENTER_CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-OpsHub@ClickHouse}
+      TZ: Asia/Shanghai
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    volumes:
+      - log-deadletter:/app/data/log-deadletter
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9881/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - opshub-network
+
+  log-gateway:
+    image: ${OPSHUB_LOG_GATEWAY_IMAGE:-docker.1ms.run/dyclouds/opshub-log-gateway:v0.0.8}
+    container_name: opshub-log-gateway
+    restart: unless-stopped
+    ports:
+      - "${LOG_GATEWAY_PORT:-19880}:9880"
+      - "${LOG_GATEWAY_GRPC_PORT:-19882}:9882"
+    environment:
+      OPSHUB_LOG_QUEUE_MODE: ${OPSHUB_LOG_QUEUE_MODE:-direct}
+      OPSHUB_LOG_GATEWAY_HTTP_ADDRESS: :9880
+      OPSHUB_LOG_GATEWAY_GRPC_ADDRESS: :9882
+      OPSHUB_LOG_WRITER_URL: http://log-writer:9881
+      OPSHUB_LOG_WRITER_TOKEN: ${OPSHUB_LOG_WRITER_TOKEN:-opshub-log-writer-token-change-in-production}
+      OPSHUB_LOG_INGEST_TOKENS: ${OPSHUB_LOG_INGEST_TOKEN:-opshub-log-ingest-token-change-in-production}
+      OPSHUB_LOG_GATEWAY_RATE_PER_SECOND: ${OPSHUB_LOG_GATEWAY_RATE_PER_SECOND:-5000}
+      OPSHUB_LOG_GATEWAY_BURST_RECORDS: ${OPSHUB_LOG_GATEWAY_BURST_RECORDS:-10000}
+      OPSHUB_LOG_GATEWAY_GLOBAL_RATE_PER_SECOND: ${OPSHUB_LOG_GATEWAY_GLOBAL_RATE_PER_SECOND:-50000}
+      OPSHUB_LOG_GATEWAY_GLOBAL_BURST_RECORDS: ${OPSHUB_LOG_GATEWAY_GLOBAL_BURST_RECORDS:-100000}
+      OPSHUB_LOG_GATEWAY_MAX_INFLIGHT: ${OPSHUB_LOG_GATEWAY_MAX_INFLIGHT:-256}
+      OPSHUB_LOG_KAFKA_BROKERS: ${OPSHUB_LOG_KAFKA_BROKERS:-redpanda:9092}
+      OPSHUB_LOG_KAFKA_TOPIC: ${OPSHUB_LOG_KAFKA_TOPIC:-opshub.logs.v1}
+      OPSHUB_LOG_KAFKA_DEADLETTER_TOPIC: ${OPSHUB_LOG_KAFKA_DEADLETTER_TOPIC:-opshub.logs.deadletter.v1}
+      OPSHUB_LOG_KAFKA_PARTITIONS: ${OPSHUB_LOG_KAFKA_PARTITIONS:-12}
+      OPSHUB_LOG_KAFKA_REPLICATION_FACTOR: ${OPSHUB_LOG_KAFKA_REPLICATION_FACTOR:-1}
+      OPSHUB_LOG_KAFKA_AUTO_CREATE_TOPICS: ${OPSHUB_LOG_KAFKA_AUTO_CREATE_TOPICS:-true}
+      OPSHUB_LOG_KAFKA_RETENTION_HOURS: ${OPSHUB_LOG_KAFKA_RETENTION_HOURS:-72}
+      OPSHUB_LOG_KAFKA_TLS: ${OPSHUB_LOG_KAFKA_TLS:-false}
+      OPSHUB_LOG_KAFKA_TLS_SKIP_VERIFY: ${OPSHUB_LOG_KAFKA_TLS_SKIP_VERIFY:-false}
+      OPSHUB_LOG_KAFKA_SASL_MECHANISM: ${OPSHUB_LOG_KAFKA_SASL_MECHANISM:-}
+      OPSHUB_LOG_KAFKA_USERNAME: ${OPSHUB_LOG_KAFKA_USERNAME:-}
+      OPSHUB_LOG_KAFKA_PASSWORD: ${OPSHUB_LOG_KAFKA_PASSWORD:-}
+      TZ: Asia/Shanghai
+    depends_on:
+      log-writer:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9880/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - opshub-network
+
   backend:
     image: docker.1ms.run/dyclouds/opshub-api:v0.0.8
     container_name: opshub-backend
@@ -79,14 +216,38 @@ services:
       OPSHUB_REDIS_PORT: 6379
       OPSHUB_REDIS_PASSWORD: ""
       OPSHUB_REDIS_DB: 0
+      OPSHUB_LOGCENTER_ENCRYPTION_KEY: ${OPSHUB_LOGCENTER_ENCRYPTION_KEY:-opshub-logcenter-encryption-key-change-in-production}
+      OPSHUB_LOGCENTER_CLICKHOUSE_ENDPOINT: http://clickhouse:8123
+      OPSHUB_LOGCENTER_CLICKHOUSE_DATABASE: ${CLICKHOUSE_DATABASE:-opshub_logs}
+      OPSHUB_LOGCENTER_CLICKHOUSE_USERNAME: ${CLICKHOUSE_USERNAME:-opshub}
+      OPSHUB_LOGCENTER_CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-OpsHub@ClickHouse}
+      OPSHUB_LOG_GATEWAY_STATUS_URL: http://log-gateway:9880
+      OPSHUB_LOG_WRITER_STATUS_URL: http://log-writer:9881
+      OPSHUB_LOG_QUEUE_MODE: ${OPSHUB_LOG_QUEUE_MODE:-direct}
+      OPSHUB_LOG_INGEST_TEST_TOKEN: ${OPSHUB_LOG_INGEST_TOKEN:-opshub-log-ingest-token-change-in-production}
+      OPSHUB_LOG_AGENT_INGEST_TOKEN: ${OPSHUB_LOG_INGEST_TOKEN:-opshub-log-ingest-token-change-in-production}
+      OPSHUB_LOG_GATEWAY_PUBLIC_URL: ${OPSHUB_LOG_GATEWAY_PUBLIC_URL:-}
+      OPSHUB_LOG_AGENT_IMAGE: ${OPSHUB_LOG_AGENT_IMAGE:-docker.1ms.run/dyclouds/opshub-log-agent:v0.0.8}
+      OPSHUB_LOG_TAIL_MAX_CONNECTIONS: ${OPSHUB_LOG_TAIL_MAX_CONNECTIONS:-50}
+      OPSHUB_LOG_TAIL_POLL_MILLISECONDS: ${OPSHUB_LOG_TAIL_POLL_MILLISECONDS:-1000}
+      OPSHUB_LOG_TAIL_MAX_MINUTES: ${OPSHUB_LOG_TAIL_MAX_MINUTES:-60}
+      OPSHUB_LOG_EXPORT_DIR: /app/data/log-exports
+      OPSHUB_LOG_EXPORT_MAX_ROWS: ${OPSHUB_LOG_EXPORT_MAX_ROWS:-1000000}
+      OPSHUB_LOG_EXPORT_WORKERS: ${OPSHUB_LOG_EXPORT_WORKERS:-2}
+      OPSHUB_LOG_EXPORT_QUEUE_CAPACITY: ${OPSHUB_LOG_EXPORT_QUEUE_CAPACITY:-100}
+      OPSHUB_LOG_EXPORT_RETENTION_HOURS: ${OPSHUB_LOG_EXPORT_RETENTION_HOURS:-24}
+      OPSHUB_LOG_EXPORT_TIMEOUT_MINUTES: ${OPSHUB_LOG_EXPORT_TIMEOUT_MINUTES:-120}
       TZ: Asia/Shanghai
     depends_on:
       mysql:
         condition: service_healthy
       redis:
         condition: service_healthy
+      clickhouse:
+        condition: service_healthy
     volumes:
       - ./logs:/app/logs
+      - ./data/log-exports:/app/data/log-exports
     networks:
       - opshub-network
 
@@ -109,6 +270,14 @@ volumes:
   mysql-data:
     driver: local
   redis-data:
+    driver: local
+  clickhouse-data:
+    driver: local
+  clickhouse-logs:
+    driver: local
+  log-deadletter:
+    driver: local
+  redpanda-data:
     driver: local
 
 networks:

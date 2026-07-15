@@ -155,6 +155,89 @@ Redis port
 {{- end }}
 {{- end }}
 
+{{- define "opshub.clickhouse.labels" -}}
+{{ include "opshub.labels" . }}
+app.kubernetes.io/component: clickhouse
+{{- end }}
+
+{{- define "opshub.clickhouse.selectorLabels" -}}
+{{ include "opshub.selectorLabels" . }}
+app.kubernetes.io/component: clickhouse
+{{- end }}
+
+{{- define "opshub.clickhouse.endpoint" -}}
+{{- if .Values.clickhouse.enabled -}}
+{{- printf "http://%s-clickhouse:8123" (include "opshub.fullname" .) -}}
+{{- else -}}
+{{- .Values.externalClickHouse.endpoint -}}
+{{- end -}}
+{{- end }}
+
+{{- define "opshub.clickhouse.database" -}}
+{{- if .Values.clickhouse.enabled -}}
+{{- .Values.clickhouse.auth.database -}}
+{{- else -}}
+{{- .Values.externalClickHouse.database -}}
+{{- end -}}
+{{- end }}
+
+{{- define "opshub.clickhouse.username" -}}
+{{- if .Values.clickhouse.enabled -}}
+{{- .Values.clickhouse.auth.username -}}
+{{- else -}}
+{{- .Values.externalClickHouse.username -}}
+{{- end -}}
+{{- end }}
+
+{{- define "opshub.clickhouse.host" -}}
+{{- if .Values.clickhouse.enabled -}}
+{{- printf "%s-clickhouse" (include "opshub.fullname" .) -}}
+{{- else -}}
+{{- $endpoint := .Values.externalClickHouse.endpoint | trimPrefix "http://" | trimPrefix "https://" -}}
+{{- first (splitList ":" $endpoint) -}}
+{{- end -}}
+{{- end }}
+
+{{- define "opshub.logGateway.labels" -}}
+{{ include "opshub.labels" . }}
+app.kubernetes.io/component: log-gateway
+{{- end }}
+
+{{- define "opshub.logGateway.selectorLabels" -}}
+{{ include "opshub.selectorLabels" . }}
+app.kubernetes.io/component: log-gateway
+{{- end }}
+
+{{- define "opshub.logWriter.labels" -}}
+{{ include "opshub.labels" . }}
+app.kubernetes.io/component: log-writer
+{{- end }}
+
+{{- define "opshub.logWriter.selectorLabels" -}}
+{{ include "opshub.selectorLabels" . }}
+app.kubernetes.io/component: log-writer
+{{- end }}
+
+{{- define "opshub.redpanda.labels" -}}
+{{ include "opshub.labels" . }}
+app.kubernetes.io/component: redpanda
+{{- end }}
+
+{{- define "opshub.redpanda.selectorLabels" -}}
+{{ include "opshub.selectorLabels" . }}
+app.kubernetes.io/component: redpanda
+{{- end }}
+
+{{- define "opshub.kafka.brokers" -}}
+{{- if .Values.logCenter.ingest.queue.brokers -}}
+{{- join "," .Values.logCenter.ingest.queue.brokers -}}
+{{- else if .Values.logCenter.ingest.queue.redpanda.enabled -}}
+{{- printf "%s-redpanda:9092" (include "opshub.fullname" .) -}}
+{{- else if eq (lower .Values.logCenter.ingest.queue.mode) "kafka" -}}
+{{- fail "logCenter.ingest.queue.mode=kafka 时必须配置 queue.brokers 或启用 queue.redpanda" -}}
+{{- end -}}
+{{- end }}
+
 {{/*
 Frontend public URL for notification links.
 Explicit server.frontendURL wins; otherwise derive it from the first Ingress host.

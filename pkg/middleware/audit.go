@@ -23,6 +23,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"net/url"
 	"strings"
 	"time"
 
@@ -406,15 +407,14 @@ func getAssetOperationDescription(path string, method string) string {
 func getRequestParams(c *gin.Context, bodyBytes []byte) string {
 	// 对于GET请求，记录查询参数
 	if c.Request.Method == "GET" {
-		return c.Request.URL.RawQuery
+		return filterSensitiveQuery(c.Request.URL.RawQuery)
 	}
 
 	// 对于POST/PUT/DELETE请求，记录请求体（但过滤敏感信息）
 	if len(bodyBytes) > 0 {
-		var params map[string]interface{}
+		var params interface{}
 		if err := json.Unmarshal(bodyBytes, &params); err == nil {
-			// 过滤敏感字段
-			filterSensitiveFields(params)
+			filterSensitiveValue(params)
 			if filtered, err := json.Marshal(params); err == nil {
 				return string(filtered)
 			}
@@ -427,20 +427,67 @@ func getRequestParams(c *gin.Context, bodyBytes []byte) string {
 
 // filterSensitiveFields 过滤敏感字段
 func filterSensitiveFields(params map[string]interface{}) {
-	sensitiveFields := []string{"password", "pwd", "secret", "token", "key"}
+	for key, value := range params {
+		if isSensitiveAuditField(key) {
+			params[key] = "******"
+			continue
+		}
+		filterSensitiveValue(value)
+	}
+}
 
-	for _, field := range sensitiveFields {
-		if _, exists := params[field]; exists {
-			params[field] = "******"
+func filterSensitiveValue(value interface{}) {
+	switch typed := value.(type) {
+	case map[string]interface{}:
+		filterSensitiveFields(typed)
+	case []interface{}:
+		for _, item := range typed {
+			filterSensitiveValue(item)
 		}
 	}
+}
 
-	// 递归处理嵌套对象
-	for _, v := range params {
-		if nested, ok := v.(map[string]interface{}); ok {
-			filterSensitiveFields(nested)
+func filterSensitiveQuery(raw string) string {
+	values, err := url.ParseQuery(raw)
+	if err != nil {
+		return raw
+	}
+	for key := range values {
+		if isSensitiveAuditField(key) {
+			values[key] = []string{"******"}
 		}
 	}
+	return values.Encode()
+}
+
+func isSensitiveAuditField(field string) bool {
+	normalized := normalizeAuditField(field)
+	if normalized == "" {
+		return false
+	}
+	exact := map[string]struct{}{
+		"password": {}, "passwd": {}, "pwd": {}, "secret": {}, "token": {}, "key": {},
+		"authorization": {}, "cookie": {}, "credential": {}, "privatekey": {}, "apikey": {}, "accesskey": {},
+	}
+	if _, ok := exact[normalized]; ok {
+		return true
+	}
+	for _, suffix := range []string{"password", "passwd", "secret", "token", "authorization", "privatekey", "apikey", "accesskey"} {
+		if strings.HasSuffix(normalized, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeAuditField(field string) string {
+	var builder strings.Builder
+	for _, char := range strings.ToLower(strings.TrimSpace(field)) {
+		if char >= 'a' && char <= 'z' || char >= '0' && char <= '9' {
+			builder.WriteRune(char)
+		}
+	}
+	return builder.String()
 }
 
 // responseWriter 响应写入器包装器，用于捕获状态码

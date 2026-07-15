@@ -1,5 +1,4 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { useUserStore } from '@/stores/user'
 import { pluginManager } from '@/plugins/manager'
 
 const router = createRouter({
@@ -190,6 +189,78 @@ const router = createRouter({
           name: 'IdentityLogs',
           component: () => import('@/views/identity/AuthLogs.vue'),
           meta: { title: '认证日志' }
+        },
+        {
+          path: 'aiops/assistant',
+          name: 'AIOpsAssistant',
+          component: () => import('@/views/aiops/Assistant.vue'),
+          meta: { title: 'AI助手' }
+        },
+        {
+          path: 'aiops/diagnosis',
+          name: 'AIOpsDiagnosis',
+          component: () => import('@/views/aiops/Diagnosis.vue'),
+          meta: { title: '智能诊断' }
+        },
+        {
+          path: 'aiops/logs',
+          name: 'AIOpsLogAnalysis',
+          component: () => import('@/views/aiops/LogAnalysis.vue'),
+          meta: { title: '日志分析' }
+        },
+        {
+          path: 'aiops/alerts',
+          name: 'AIOpsAlerts',
+          component: () => import('@/views/aiops/Alerts.vue'),
+          meta: { title: '告警分析' }
+        },
+        {
+          path: 'aiops/sessions',
+          name: 'AIOpsSessions',
+          component: () => import('@/views/aiops/Sessions.vue'),
+          meta: { title: 'AI会话记录' }
+        },
+        {
+          path: 'aiops/settings',
+          name: 'AIOpsSettings',
+          component: () => import('@/views/aiops/Settings.vue'),
+          meta: { title: 'AI配置' }
+        },
+        {
+          path: 'logs',
+          name: 'LogCenter',
+          redirect: '/logs/overview',
+          meta: { title: '日志中心' }
+        },
+        {
+          path: 'logs/overview',
+          name: 'LogCenterOverview',
+          component: () => import('@/views/logcenter/Overview.vue'),
+          meta: { title: '日志总览' }
+        },
+        {
+          path: 'logs/query',
+          name: 'LogCenterQuery',
+          component: () => import('@/views/logcenter/Query.vue'),
+          meta: { title: '日志查询' }
+        },
+        {
+          path: 'logs/library',
+          name: 'LogCenterLibrary',
+          component: () => import('@/views/logcenter/Library.vue'),
+          meta: { title: '日志库' }
+        },
+        {
+          path: 'logs/templates',
+          name: 'LogCenterTemplates',
+          component: () => import('@/views/logcenter/Templates.vue'),
+          meta: { title: '查询模板' }
+        },
+        {
+          path: 'logs/collectors',
+          name: 'LogCenterCollectors',
+          component: () => import('@/views/logcenter/Collectors.vue'),
+          meta: { title: '采集接入' }
         }
       ]
     }
@@ -207,6 +278,9 @@ export function registerPluginRoutes() {
 
       // 添加插件的子路由到 Layout
       routes.forEach(route => {
+        if (route.name && router.hasRoute(route.name)) {
+          return
+        }
         router.addRoute('Layout', route)
       })
     }
@@ -239,7 +313,7 @@ export function clearMFAFlag() {
 }
 
 // 路由守卫
-router.beforeEach(async (to, from, next) => {
+router.beforeEach(async (to, _from, next) => {
   const token = localStorage.getItem('token')
 
   // 公开路由（登录页、OAuth回调等）
@@ -282,10 +356,12 @@ router.beforeEach(async (to, from, next) => {
         const { getSecurityConfig } = await import('@/api/system')
         const { getMFAStatus } = await import('@/api/mfa')
 
-        const [securityConfig, mfaStatus] = await Promise.all([
+        const [securityConfigResult, mfaStatusResult] = await Promise.all([
           getSecurityConfig(),
           getMFAStatus()
         ])
+        const securityConfig = securityConfigResult as any
+        const mfaStatus = mfaStatusResult as any
 
         // 更新缓存
         mfaCheckCache = {

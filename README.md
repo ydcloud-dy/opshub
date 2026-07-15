@@ -315,6 +315,8 @@ opshub/
 │   └── package.json
 ├── docker-compose.yml
 ├── Dockerfile
+├── Dockerfile.log-gateway # 独立日志接入服务镜像
+├── Dockerfile.log-writer  # 独立日志写入服务镜像
 └── main.go
 ```
 

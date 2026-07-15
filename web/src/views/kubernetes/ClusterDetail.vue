@@ -50,6 +50,8 @@
       </div>
     </div>
 
+    <ClusterLogCollection :cluster-id="clusterId" />
+
     <!-- 主内容区 -->
     <div class="main-content">
       <!-- 左侧列 -->
@@ -426,6 +428,7 @@ import {
   type NodeInfo,
   type EventInfo
 } from '@/api/kubernetes'
+import ClusterLogCollection from './components/ClusterLogCollection.vue'
 
 const route = useRoute()
 const router = useRouter()

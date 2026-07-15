@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -269,11 +270,17 @@ func (h *DataSourceHandler) RunDueProbeTasks(ctx context.Context) {
 		return
 	}
 	started := 0
+	var wg sync.WaitGroup
 	for i := range tasks {
 		task := tasks[i]
 		started++
-		go h.executeProbeTask(ctx, &task)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			h.executeProbeTask(ctx, &task)
+		}()
 	}
+	wg.Wait()
 	RecordMonitorProbeSchedulerFinished(startedAt, len(tasks), started, nil)
 }
 

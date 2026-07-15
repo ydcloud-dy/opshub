@@ -616,7 +616,13 @@
           </el-col>
           <el-col :span="12">
             <el-form-item label="认证凭据">
-              <el-select v-model="hostForm.credentialId" placeholder="选择或新建凭证" clearable filterable>
+              <el-select
+                v-model="hostForm.credentialId"
+                placeholder="选择已有凭据"
+                clearable
+                filterable
+                @change="handleHostCredentialChange"
+              >
                 <el-option
                   v-for="cred in credentialList"
                   :key="cred.id"
@@ -631,6 +637,22 @@
               </el-select>
             </el-form-item>
           </el-col>
+        </el-row>
+
+        <el-row :gutter="20" v-if="!hostForm.credentialId">
+          <el-col :span="12">
+            <el-form-item label="SSH密码" prop="sshPassword">
+              <el-input
+                v-model="hostForm.sshPassword"
+                type="password"
+                show-password
+                clearable
+                autocomplete="new-password"
+                placeholder="请输入SSH密码"
+              />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12"></el-col>
         </el-row>
 
         <el-row :gutter="20">
@@ -834,6 +856,8 @@
               </div>
             </div>
           </div>
+
+          <HostLogCollection :host="hostDetail" />
 
           <!-- 资源信息 -->
           <div class="resource-section" v-if="hostDetail.cpuCores || hostDetail.memoryTotal">
@@ -1463,6 +1487,7 @@ import {
   Files
 } from '@element-plus/icons-vue'
 import HostFileBrowser from './components/HostFileBrowser.vue'
+import HostLogCollection from './components/HostLogCollection.vue'
 import {
   getGroupTree,
   createGroup,
@@ -1621,6 +1646,7 @@ const hostForm = reactive({
   ip: '',
   port: 22,
   credentialId: null as number | null,
+  sshPassword: '',
   tags: '',
   description: ''
 })
@@ -2269,10 +2295,14 @@ const handleDirectImport = async () => {
     name: '',
     groupId: selectedGroup.value?.id || null,
     type: 'self',
+    cloudProvider: '',
+    cloudInstanceId: '',
+    cloudAccountId: null,
     sshUser: 'root',
     ip: '',
     port: 22,
     credentialId: null,
+    sshPassword: '',
     tags: '',
     description: ''
   })
@@ -2282,6 +2312,13 @@ const handleDirectImport = async () => {
 // 直接导入关闭
 const handleDirectImportClose = () => {
   hostFormRef.value?.resetFields()
+  hostForm.sshPassword = ''
+}
+
+const handleHostCredentialChange = () => {
+  if (hostForm.credentialId) {
+    hostForm.sshPassword = ''
+  }
 }
 
 // 直接导入提交
@@ -2292,6 +2329,8 @@ const handleDirectImportSubmit = async () => {
     hostSubmitting.value = true
     try {
       let hostId = 0
+      const shouldCollectAfterSave = Boolean(hostForm.credentialId || String(hostForm.sshPassword || '').trim())
+      const usedInlinePassword = !hostForm.credentialId && Boolean(String(hostForm.sshPassword || '').trim())
       // 判断是创建还是更新
       if (hostForm.id && hostForm.id > 0) {
         // 更新主机
@@ -2302,7 +2341,14 @@ const handleDirectImportSubmit = async () => {
         // 创建主机
         const result = await createHost(hostForm)
         hostId = result.id
+        if (result.credentialId) {
+          hostForm.credentialId = result.credentialId
+        }
         ElMessage.success('主机导入成功')
+      }
+      if (usedInlinePassword) {
+        hostForm.sshPassword = ''
+        loadCredentialList()
       }
 
       directImportVisible.value = false
@@ -2310,7 +2356,7 @@ const handleDirectImportSubmit = async () => {
       loadGroupTree()
 
       // 如果配置了凭证，自动采集主机信息
-      if (hostForm.credentialId && hostId > 0) {
+      if (shouldCollectAfterSave && hostId > 0) {
         setTimeout(async () => {
           try {
             await collectHostInfo(hostId)
@@ -2614,6 +2660,7 @@ const handleEditHost = async (row: any) => {
     ip: row.ip,
     port: row.port,
     credentialId: row.credentialId,
+    sshPassword: '',
     tags: Array.isArray(row.tags) ? row.tags.join(',') : row.tags,
     description: row.description
   })

@@ -1,0 +1,329 @@
+{{- if .Values.logCenter.ingest.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "opshub.fullname" . }}-log-writer
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "opshub.logWriter.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.logCenter.ingest.writer.replicaCount }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "opshub.logWriter.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "opshub.logWriter.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    {{- include "opshub.logWriter.selectorLabels" . | nindent 20 }}
+      initContainers:
+        - name: wait-for-clickhouse
+          image: "{{ .Values.global.busybox.repository }}:{{ .Values.global.busybox.tag }}"
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z {{ include "opshub.clickhouse.host" . }} 8123; do
+                echo "Waiting for ClickHouse..."
+                sleep 2
+              done
+      containers:
+        - name: log-writer
+          image: "{{ .Values.logCenter.ingest.writer.image.repository }}:{{ .Values.logCenter.ingest.writer.image.tag }}"
+          imagePullPolicy: {{ .Values.logCenter.ingest.writer.image.pullPolicy | default .Values.global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.logCenter.ingest.writer.servicePort }}
+          env:
+            - name: OPSHUB_LOG_QUEUE_MODE
+              value: {{ .Values.logCenter.ingest.queue.mode | lower | quote }}
+            - name: OPSHUB_LOG_WRITER_HTTP_ADDRESS
+              value: {{ printf ":%v" .Values.logCenter.ingest.writer.servicePort | quote }}
+            - name: OPSHUB_LOG_WRITER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "opshub.fullname" . }}-secrets
+                  key: log-writer-token
+            - name: OPSHUB_LOG_WRITER_QUEUE_CAPACITY
+              value: {{ .Values.logCenter.ingest.writer.queueCapacity | quote }}
+            - name: OPSHUB_LOG_WRITER_WORKERS
+              value: {{ .Values.logCenter.ingest.writer.workers | quote }}
+            - name: OPSHUB_LOG_WRITER_MAX_RETRIES
+              value: {{ .Values.logCenter.ingest.writer.maxRetries | quote }}
+            - name: OPSHUB_LOG_WRITER_DEADLETTER_PATH
+              value: /app/data/log-deadletter/failed.ndjson
+            - name: OPSHUB_LOG_KAFKA_BROKERS
+              value: {{ include "opshub.kafka.brokers" . | quote }}
+            - name: OPSHUB_LOG_KAFKA_TOPIC
+              value: {{ .Values.logCenter.ingest.queue.topic | quote }}
+            - name: OPSHUB_LOG_KAFKA_DEADLETTER_TOPIC
+              value: {{ .Values.logCenter.ingest.queue.deadletterTopic | quote }}
+            - name: OPSHUB_LOG_KAFKA_CONSUMER_GROUP
+              value: {{ .Values.logCenter.ingest.queue.consumerGroup | quote }}
+            - name: OPSHUB_LOG_KAFKA_PARTITIONS
+              value: {{ .Values.logCenter.ingest.queue.partitions | quote }}
+            - name: OPSHUB_LOG_KAFKA_REPLICATION_FACTOR
+              value: {{ .Values.logCenter.ingest.queue.replicationFactor | quote }}
+            - name: OPSHUB_LOG_KAFKA_AUTO_CREATE_TOPICS
+              value: {{ .Values.logCenter.ingest.queue.autoCreateTopics | quote }}
+            - name: OPSHUB_LOG_KAFKA_RETENTION_HOURS
+              value: {{ .Values.logCenter.ingest.queue.retentionHours | quote }}
+            - name: OPSHUB_LOG_KAFKA_MAX_POLL_RECORDS
+              value: {{ .Values.logCenter.ingest.queue.maxPollRecords | quote }}
+            - name: OPSHUB_LOG_KAFKA_FETCH_MAX_MB
+              value: {{ .Values.logCenter.ingest.queue.fetchMaxMB | quote }}
+            - name: OPSHUB_LOG_KAFKA_TLS
+              value: {{ .Values.logCenter.ingest.queue.tls.enabled | quote }}
+            - name: OPSHUB_LOG_KAFKA_TLS_SKIP_VERIFY
+              value: {{ .Values.logCenter.ingest.queue.tls.skipVerify | quote }}
+            - name: OPSHUB_LOG_KAFKA_SASL_MECHANISM
+              value: {{ .Values.logCenter.ingest.queue.sasl.mechanism | quote }}
+            - name: OPSHUB_LOG_KAFKA_USERNAME
+              value: {{ .Values.logCenter.ingest.queue.sasl.username | quote }}
+            - name: OPSHUB_LOG_KAFKA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "opshub.fullname" . }}-secrets
+                  key: log-kafka-password
+            - name: OPSHUB_LOGCENTER_CLICKHOUSE_ENDPOINT
+              value: {{ include "opshub.clickhouse.endpoint" . | quote }}
+            - name: OPSHUB_LOGCENTER_CLICKHOUSE_DATABASE
+              value: {{ include "opshub.clickhouse.database" . | quote }}
+            - name: OPSHUB_LOGCENTER_CLICKHOUSE_USERNAME
+              value: {{ include "opshub.clickhouse.username" . | quote }}
+            - name: OPSHUB_LOGCENTER_CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "opshub.fullname" . }}-secrets
+                  key: clickhouse-password
+          resources:
+            {{- toYaml .Values.logCenter.ingest.writer.resources | nindent 12 }}
+          volumeMounts:
+            - name: deadletter
+              mountPath: /app/data/log-deadletter
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+      volumes:
+        - name: deadletter
+          {{- if .Values.logCenter.ingest.writer.deadletter.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "opshub.fullname" . }}-log-deadletter
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "opshub.fullname" . }}-log-writer
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector:
+    {{- include "opshub.logWriter.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.logCenter.ingest.writer.servicePort }}
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "opshub.fullname" . }}-log-gateway
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "opshub.logGateway.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.logCenter.ingest.gateway.replicaCount }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "opshub.logGateway.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "opshub.logGateway.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    {{- include "opshub.logGateway.selectorLabels" . | nindent 20 }}
+      containers:
+        - name: log-gateway
+          image: "{{ .Values.logCenter.ingest.gateway.image.repository }}:{{ .Values.logCenter.ingest.gateway.image.tag }}"
+          imagePullPolicy: {{ .Values.logCenter.ingest.gateway.image.pullPolicy | default .Values.global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.logCenter.ingest.gateway.service.port }}
+            - name: grpc
+              containerPort: {{ .Values.logCenter.ingest.gateway.service.grpcPort }}
+          env:
+            - name: OPSHUB_LOG_QUEUE_MODE
+              value: {{ .Values.logCenter.ingest.queue.mode | lower | quote }}
+            - name: OPSHUB_LOG_GATEWAY_HTTP_ADDRESS
+              value: {{ printf ":%v" .Values.logCenter.ingest.gateway.service.port | quote }}
+            - name: OPSHUB_LOG_GATEWAY_GRPC_ADDRESS
+              value: {{ printf ":%v" .Values.logCenter.ingest.gateway.service.grpcPort | quote }}
+            - name: OPSHUB_LOG_WRITER_URL
+              value: {{ printf "http://%s-log-writer:%v" (include "opshub.fullname" .) .Values.logCenter.ingest.writer.servicePort | quote }}
+            - name: OPSHUB_LOG_WRITER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "opshub.fullname" . }}-secrets
+                  key: log-writer-token
+            - name: OPSHUB_LOG_INGEST_TOKENS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "opshub.fullname" . }}-secrets
+                  key: log-ingest-token
+            - name: OPSHUB_LOG_GATEWAY_RATE_PER_SECOND
+              value: {{ .Values.logCenter.ingest.gateway.ratePerSecond | quote }}
+            - name: OPSHUB_LOG_GATEWAY_BURST_RECORDS
+              value: {{ .Values.logCenter.ingest.gateway.burstRecords | quote }}
+            - name: OPSHUB_LOG_GATEWAY_GLOBAL_RATE_PER_SECOND
+              value: {{ .Values.logCenter.ingest.gateway.globalRatePerSecond | quote }}
+            - name: OPSHUB_LOG_GATEWAY_GLOBAL_BURST_RECORDS
+              value: {{ .Values.logCenter.ingest.gateway.globalBurstRecords | quote }}
+            - name: OPSHUB_LOG_GATEWAY_MAX_INFLIGHT
+              value: {{ .Values.logCenter.ingest.gateway.maxInflight | quote }}
+            - name: OPSHUB_LOG_KAFKA_BROKERS
+              value: {{ include "opshub.kafka.brokers" . | quote }}
+            - name: OPSHUB_LOG_KAFKA_TOPIC
+              value: {{ .Values.logCenter.ingest.queue.topic | quote }}
+            - name: OPSHUB_LOG_KAFKA_DEADLETTER_TOPIC
+              value: {{ .Values.logCenter.ingest.queue.deadletterTopic | quote }}
+            - name: OPSHUB_LOG_KAFKA_PARTITIONS
+              value: {{ .Values.logCenter.ingest.queue.partitions | quote }}
+            - name: OPSHUB_LOG_KAFKA_REPLICATION_FACTOR
+              value: {{ .Values.logCenter.ingest.queue.replicationFactor | quote }}
+            - name: OPSHUB_LOG_KAFKA_AUTO_CREATE_TOPICS
+              value: {{ .Values.logCenter.ingest.queue.autoCreateTopics | quote }}
+            - name: OPSHUB_LOG_KAFKA_RETENTION_HOURS
+              value: {{ .Values.logCenter.ingest.queue.retentionHours | quote }}
+            - name: OPSHUB_LOG_KAFKA_TLS
+              value: {{ .Values.logCenter.ingest.queue.tls.enabled | quote }}
+            - name: OPSHUB_LOG_KAFKA_TLS_SKIP_VERIFY
+              value: {{ .Values.logCenter.ingest.queue.tls.skipVerify | quote }}
+            - name: OPSHUB_LOG_KAFKA_SASL_MECHANISM
+              value: {{ .Values.logCenter.ingest.queue.sasl.mechanism | quote }}
+            - name: OPSHUB_LOG_KAFKA_USERNAME
+              value: {{ .Values.logCenter.ingest.queue.sasl.username | quote }}
+            - name: OPSHUB_LOG_KAFKA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "opshub.fullname" . }}-secrets
+                  key: log-kafka-password
+          resources:
+            {{- toYaml .Values.logCenter.ingest.gateway.resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "opshub.fullname" . }}-log-gateway
+  namespace: {{ .Release.Namespace }}
+spec:
+  type: {{ .Values.logCenter.ingest.gateway.service.type }}
+  selector:
+    {{- include "opshub.logGateway.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.logCenter.ingest.gateway.service.port }}
+      targetPort: http
+    - name: grpc
+      port: {{ .Values.logCenter.ingest.gateway.service.grpcPort }}
+      targetPort: grpc
+{{- if and .Values.logCenter.ingest.writer.podDisruptionBudget.enabled (gt (int .Values.logCenter.ingest.writer.replicaCount) 1) }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "opshub.fullname" . }}-log-writer
+  namespace: {{ .Release.Namespace }}
+spec:
+  minAvailable: {{ .Values.logCenter.ingest.writer.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "opshub.logWriter.selectorLabels" . | nindent 6 }}
+{{- end }}
+{{- if and .Values.logCenter.ingest.gateway.podDisruptionBudget.enabled (gt (int .Values.logCenter.ingest.gateway.replicaCount) 1) }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "opshub.fullname" . }}-log-gateway
+  namespace: {{ .Release.Namespace }}
+spec:
+  minAvailable: {{ .Values.logCenter.ingest.gateway.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "opshub.logGateway.selectorLabels" . | nindent 6 }}
+{{- end }}
+{{- if .Values.logCenter.ingest.writer.deadletter.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "opshub.fullname" . }}-log-deadletter
+  namespace: {{ .Release.Namespace }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- if .Values.logCenter.ingest.writer.deadletter.persistence.storageClass }}
+  storageClassName: {{ .Values.logCenter.ingest.writer.deadletter.persistence.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.logCenter.ingest.writer.deadletter.persistence.size }}
+{{- end }}
+{{- end }}
