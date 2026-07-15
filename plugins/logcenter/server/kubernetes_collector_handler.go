@@ -7,7 +7,9 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"sort"
 	"strconv"
@@ -103,6 +105,7 @@ func (h *Handler) GetKubernetesCollectorStatus(c *gin.Context) {
 	lastError := ""
 	collectorImage := ""
 	imagePullPolicy := ""
+	collectorServerURL := ""
 	clientset, err := k8sservice.NewClusterService(h.db).GetCachedClientset(c.Request.Context(), clusterID)
 	if err == nil {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
@@ -114,6 +117,9 @@ func (h *Handler) GetKubernetesCollectorStatus(c *gin.Context) {
 			if len(daemonSet.Spec.Template.Spec.Containers) > 0 {
 				collectorImage = daemonSet.Spec.Template.Spec.Containers[0].Image
 				imagePullPolicy = string(daemonSet.Spec.Template.Spec.Containers[0].ImagePullPolicy)
+			}
+			if configMap, configErr := clientset.CoreV1().ConfigMaps(kubernetesCollectorNamespace).Get(ctx, kubernetesCollectorName, metav1.GetOptions{}); configErr == nil {
+				collectorServerURL = strings.TrimSpace(configMap.Data["server-url"])
 			}
 			pods, listErr := clientset.CoreV1().Pods(kubernetesCollectorNamespace).List(ctx, metav1.ListOptions{LabelSelector: "app.kubernetes.io/name=" + kubernetesCollectorName})
 			if listErr != nil {
@@ -133,6 +139,7 @@ func (h *Handler) GetKubernetesCollectorStatus(c *gin.Context) {
 		"desiredNodes": desired, "readyNodes": ready, "availableNodes": available,
 		"instanceTotal": len(instances), "instanceOnline": online, "policyCount": policyCount,
 		"instances": instances, "lastError": lastError, "image": collectorImage, "imagePullPolicy": imagePullPolicy,
+		"serverUrl": collectorServerURL,
 	})
 }
 
@@ -162,12 +169,17 @@ func (h *Handler) GenerateKubernetesCollectorManifest(c *gin.Context) {
 		return
 	}
 	request := parseKubernetesCollectorRequest(c)
+	serverURL, err := resolveCollectorServerURL(c, request.ServerURL)
+	if err != nil {
+		response.ErrorCode(c, http.StatusBadRequest, err.Error())
+		return
+	}
 	token, credential, err := h.rotateKubernetesCollectorCredential(c, clusterID)
 	if err != nil {
 		response.ErrorCode(c, http.StatusInternalServerError, "生成集群采集 Token 失败: "+err.Error())
 		return
 	}
-	resources := buildKubernetesCollectorResources(clusterID, token, resolveCollectorServerURL(c, request.ServerURL), resolveCollectorImage(request.Image), request.Namespace)
+	resources := buildKubernetesCollectorResources(clusterID, token, serverURL, resolveCollectorImage(request.Image), request.Namespace)
 	manifest, err := marshalKubernetesResources(resources)
 	if err != nil {
 		response.ErrorCode(c, http.StatusInternalServerError, "生成 DaemonSet 清单失败: "+err.Error())
@@ -186,6 +198,11 @@ func (h *Handler) InstallKubernetesCollector(c *gin.Context) {
 		return
 	}
 	request := parseKubernetesCollectorRequest(c)
+	serverURL, err := resolveCollectorServerURL(c, request.ServerURL)
+	if err != nil {
+		response.ErrorCode(c, http.StatusBadRequest, err.Error())
+		return
+	}
 	clientset, err := k8sservice.NewClusterService(h.db).GetCachedClientset(c.Request.Context(), clusterID)
 	if err != nil {
 		response.ErrorCode(c, http.StatusBadGateway, "连接 Kubernetes 集群失败: "+err.Error())
@@ -196,7 +213,7 @@ func (h *Handler) InstallKubernetesCollector(c *gin.Context) {
 		response.ErrorCode(c, http.StatusInternalServerError, "生成集群采集 Token 失败: "+err.Error())
 		return
 	}
-	resources := buildKubernetesCollectorResources(clusterID, token, resolveCollectorServerURL(c, request.ServerURL), resolveCollectorImage(request.Image), request.Namespace)
+	resources := buildKubernetesCollectorResources(clusterID, token, serverURL, resolveCollectorImage(request.Image), request.Namespace)
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
 	defer cancel()
 	if err := applyKubernetesCollectorResources(ctx, clientset, resources); err != nil {
@@ -570,19 +587,35 @@ func parseKubernetesCollectorRequest(c *gin.Context) kubernetesCollectorRequest 
 	return request
 }
 
-func resolveCollectorServerURL(c *gin.Context, requested string) string {
+func resolveCollectorServerURL(c *gin.Context, requested string) (string, error) {
 	publicScheme := firstNonEmpty(c.GetHeader("X-Forwarded-Proto"), os.Getenv("OPSHUB_PUBLIC_SCHEME"), "http")
 	if requested = strings.TrimRight(strings.TrimSpace(requested), "/"); requested != "" {
-		return normalizePublicURL(requested, publicScheme)
+		return validateCollectorServerURL(normalizePublicURL(requested, publicScheme))
 	}
 	for _, key := range []string{"OPSHUB_SERVER_EXTERNAL_URL", "OPSHUB_SERVER_FRONTEND_URL"} {
 		if value := strings.TrimRight(strings.TrimSpace(os.Getenv(key)), "/"); value != "" {
-			return normalizePublicURL(value, publicScheme)
+			return validateCollectorServerURL(normalizePublicURL(value, publicScheme))
 		}
 	}
-	proto := publicScheme
-	host := firstNonEmpty(c.GetHeader("X-Forwarded-Host"), c.Request.Host)
-	return strings.TrimRight(proto+"://"+host, "/")
+	if publicHost := strings.TrimSpace(os.Getenv("OPSHUB_PUBLIC_HOST")); publicHost != "" {
+		return validateCollectorServerURL(normalizePublicURL(publicHost, publicScheme))
+	}
+	host := firstNonEmpty(firstForwardedValue(c.GetHeader("X-Forwarded-Host")), c.Request.Host)
+	return validateCollectorServerURL(normalizePublicURL(host, publicScheme))
+}
+
+func validateCollectorServerURL(value string) (string, error) {
+	value = strings.TrimRight(strings.TrimSpace(value), "/")
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Hostname() == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return "", fmt.Errorf("Kubernetes 采集器控制面地址无效，请填写以 http:// 或 https:// 开头的完整地址")
+	}
+	hostname := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
+	ip := net.ParseIP(hostname)
+	if hostname == "localhost" || (ip != nil && (ip.IsLoopback() || ip.IsUnspecified())) {
+		return "", fmt.Errorf("Kubernetes 采集器控制面地址不能使用 %s；请填写目标集群 Pod 可访问的 OpsHub 地址，例如 https://opshub.example.com 或 http://10.0.0.8:9876", parsed.Host)
+	}
+	return value, nil
 }
 
 func resolveCollectorImage(requested string) string {

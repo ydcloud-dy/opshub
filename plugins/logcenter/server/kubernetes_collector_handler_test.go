@@ -50,6 +50,18 @@ func TestCollectorEntrypointScriptSyntax(t *testing.T) {
 	}
 }
 
+func TestValidateCollectorServerURLRejectsLoopback(t *testing.T) {
+	for _, value := range []string{"http://localhost:5173", "http://127.0.0.1:9876", "http://[::1]:9876", "http://0.0.0.0:9876"} {
+		if _, err := validateCollectorServerURL(value); err == nil {
+			t.Fatalf("expected loopback URL %q to be rejected", value)
+		}
+	}
+	value, err := validateCollectorServerURL("https://opshub.example.com/")
+	if err != nil || value != "https://opshub.example.com" {
+		t.Fatalf("valid collector URL was not normalized: value=%q err=%v", value, err)
+	}
+}
+
 func TestKubernetesCollectorPodError(t *testing.T) {
 	pods := []corev1.Pod{{
 		ObjectMeta: metav1.ObjectMeta{Name: "opshub-log-agent-test"},

@@ -425,6 +425,7 @@ export interface LogKubernetesCollectorStatus {
   policyCount: number
   image?: string
   imagePullPolicy?: string
+  serverUrl?: string
   instances: Array<{
     instanceId: string
     nodeName: string

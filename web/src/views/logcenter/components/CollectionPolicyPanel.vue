@@ -273,6 +273,7 @@ const containerExcludeText = ref('')
 const pathText = ref('')
 const excludePathText = ref('*.gz\n*.tmp')
 const changeSummary = ref('')
+const COLLECTOR_SERVER_URL_KEY = 'opshub_log_collector_server_url'
 
 const normalizedPaths = computed(() => lines(pathText.value))
 const hostsWithoutAgent = computed(() => selectedHostIds.value.filter(id => !targetOptions.hosts.find(item => item.id === id)?.agentId).length)
@@ -424,21 +425,55 @@ const handleSourceModeChange = (value: string | number | boolean) => {
 }
 const installSelectedClusterCollector = async () => {
   if (!selectedClusterId.value) return
-  await ElMessageBox.confirm(
-    collectorStatus.value?.installed
-      ? '升级会轮换集群采集 Token，并滚动更新所有节点采集 Pod。'
-      : '将在目标集群创建只读 RBAC、ConfigMap、Secret 和日志采集 DaemonSet。',
-    collectorStatus.value?.installed ? '升级日志采集器' : '安装日志采集器',
-    { type: 'warning', confirmButtonText: '确认执行' },
-  )
-  collectorInstalling.value = true
   try {
-    await installLogKubernetesCollector(selectedClusterId.value)
+    const serverUrl = await requestCollectorServerURL()
+    if (!serverUrl) return
+    await ElMessageBox.confirm(
+      `${collectorStatus.value?.installed
+        ? '升级会轮换集群采集 Token，并滚动更新所有节点采集 Pod。'
+        : '将在目标集群创建只读 RBAC、ConfigMap、Secret 和日志采集 DaemonSet。'}\n\n采集器连接地址：${serverUrl}`,
+      collectorStatus.value?.installed ? '升级日志采集器' : '安装日志采集器',
+      { type: 'warning', confirmButtonText: '确认执行' },
+    )
+    collectorInstalling.value = true
+    await installLogKubernetesCollector(selectedClusterId.value, { serverUrl })
     ElMessage.success(collectorStatus.value?.installed ? '采集器升级已提交' : '采集器安装已提交')
     await loadCollectorStatus(selectedClusterId.value)
+  } catch (error: any) {
+    if (error !== 'cancel' && error !== 'close') throw error
   } finally {
     collectorInstalling.value = false
   }
+}
+const normalizeCollectorServerURL = (value: string) => value.trim().replace(/\/+$/, '')
+const collectorServerURLValidationError = (value: string) => {
+  try {
+    const parsed = new URL(normalizeCollectorServerURL(value))
+    if (!['http:', 'https:'].includes(parsed.protocol)) return '地址必须以 http:// 或 https:// 开头'
+    if (['localhost', '127.0.0.1', '::1', '0.0.0.0'].includes(parsed.hostname)) {
+      return '不能使用 localhost 或回环地址，请填写目标集群 Pod 能访问的 OpsHub 地址'
+    }
+    return ''
+  } catch {
+    return '请输入完整有效的 URL'
+  }
+}
+const requestCollectorServerURL = async () => {
+  const initialValue = collectorStatus.value?.serverUrl || localStorage.getItem(COLLECTOR_SERVER_URL_KEY) || window.location.origin
+  const promptResult = await ElMessageBox.prompt(
+    '该地址会写入目标集群的采集器配置。请填写集群 Pod 能访问且可请求 /api/v1/public/ 的 OpsHub 地址。',
+    '配置采集器连接地址',
+    {
+      inputValue: initialValue,
+      inputPlaceholder: '例如：https://opshub.example.com 或 http://10.0.0.8:9876',
+      confirmButtonText: '继续',
+      cancelButtonText: '取消',
+      inputValidator: value => collectorServerURLValidationError(value) || true,
+    },
+  ) as any
+  const normalized = normalizeCollectorServerURL(String(promptResult?.value || ''))
+  localStorage.setItem(COLLECTOR_SERVER_URL_KEY, normalized)
+  return normalized
 }
 const nextStep = async () => {
   if (step.value === 0 && !form.name.trim()) return ElMessage.warning('请输入策略名称')
