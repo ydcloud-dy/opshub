@@ -1,15 +1,23 @@
 package logagent
 
 import (
+	"context"
+	"errors"
 	"testing"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes/fake"
 	appslisters "k8s.io/client-go/listers/apps/v1"
 	batchlisters "k8s.io/client-go/listers/batch/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
+	clienttesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -58,5 +66,43 @@ func TestParseKubernetesContainerLogPath(t *testing.T) {
 	pod, namespace, container, ok := parseKubernetesContainerLogPath("/var/log/containers/frontend-abc_default_web-nginx-0123456789abcdef.log")
 	if !ok || pod != "frontend-abc" || namespace != "default" || container != "web-nginx" {
 		t.Fatalf("parsed = %q %q %q %v", pod, namespace, container, ok)
+	}
+}
+
+func TestKubernetesResolverStartsWhenOptionalOwnerCachesAreUnavailable(t *testing.T) {
+	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "api-1", Namespace: "default"}, Spec: corev1.PodSpec{NodeName: "node-1"}}
+	client := fake.NewSimpleClientset(pod)
+	for _, resource := range []schema.GroupResource{{Group: "apps", Resource: "replicasets"}, {Group: "batch", Resource: "jobs"}} {
+		resource := resource
+		client.PrependReactor("list", resource.Resource, func(clienttesting.Action) (bool, runtime.Object, error) {
+			return true, nil, apierrors.NewForbidden(resource, "", errors.New("denied for test"))
+		})
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	resolver, err := newKubernetesResolver(ctx, client, "node-1", time.Second)
+	if err != nil {
+		t.Fatalf("optional owner cache prevented startup: %v", err)
+	}
+	if resolver == nil || resolver.pods == nil {
+		t.Fatal("pod resolver was not initialized")
+	}
+}
+
+func TestResolveWorkloadFallsBackWhenOptionalListersAreUnavailable(t *testing.T) {
+	controller := true
+	resolver := &KubernetesResolver{}
+	for _, test := range []struct {
+		owner metav1.OwnerReference
+		kind  string
+		name  string
+	}{
+		{owner: metav1.OwnerReference{Kind: "ReplicaSet", Name: "api-7d9c8", Controller: &controller}, kind: "ReplicaSet", name: "api-7d9c8"},
+		{owner: metav1.OwnerReference{Kind: "Job", Name: "backup-123", Controller: &controller}, kind: "Job", name: "backup-123"},
+	} {
+		kind, name := resolver.resolveWorkload("default", &test.owner)
+		if kind != test.kind || name != test.name {
+			t.Fatalf("resolveWorkload() = %s/%s, want %s/%s", kind, name, test.kind, test.name)
+		}
 	}
 }

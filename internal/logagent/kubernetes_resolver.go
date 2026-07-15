@@ -24,7 +24,13 @@ type KubernetesResolver struct {
 	jobs        batchlisters.JobLister
 }
 
+const kubernetesMetadataSyncTimeout = 60 * time.Second
+
 func NewKubernetesResolver(ctx context.Context, client kubernetes.Interface, nodeName string) (*KubernetesResolver, error) {
+	return newKubernetesResolver(ctx, client, nodeName, kubernetesMetadataSyncTimeout)
+}
+
+func newKubernetesResolver(ctx context.Context, client kubernetes.Interface, nodeName string, syncTimeout time.Duration) (*KubernetesResolver, error) {
 	if client == nil {
 		return nil, fmt.Errorf("Kubernetes client 不能为空")
 	}
@@ -39,11 +45,27 @@ func NewKubernetesResolver(ctx context.Context, client kubernetes.Interface, nod
 	podInformer := podFactory.Core().V1().Pods()
 	replicaSetInformer := ownerFactory.Apps().V1().ReplicaSets()
 	jobInformer := ownerFactory.Batch().V1().Jobs()
+	podSharedInformer := podInformer.Informer()
+	// SharedInformerFactory 只会启动 Start 调用前已经注册的 informer。
+	// 提前实例化可选 informer，确保后续 ownerFactory.Start 真正启动它们。
+	_ = replicaSetInformer.Informer()
+	_ = jobInformer.Informer()
 	podFactory.Start(ctx.Done())
-	ownerFactory.Start(ctx.Done())
-	if !cache.WaitForCacheSync(ctx.Done(), podInformer.Informer().HasSynced, replicaSetInformer.Informer().HasSynced, jobInformer.Informer().HasSynced) {
-		return nil, fmt.Errorf("等待 Kubernetes 元数据缓存同步失败")
+	if syncTimeout <= 0 {
+		syncTimeout = kubernetesMetadataSyncTimeout
 	}
+	syncCtx, cancel := context.WithTimeout(ctx, syncTimeout)
+	defer cancel()
+	if !cache.WaitForCacheSync(syncCtx.Done(), podSharedInformer.HasSynced) {
+		if err := ctx.Err(); err != nil {
+			return nil, fmt.Errorf("等待 Kubernetes Pod 元数据缓存同步失败: %w", err)
+		}
+		return nil, fmt.Errorf("等待 Kubernetes Pod 元数据缓存同步超过 %s，请检查采集器 ServiceAccount 是否具备 pods 的 list/watch 权限以及 Kubernetes API 是否可达", syncTimeout)
+	}
+
+	// Pod 元数据是日志归属判断的必需信息；RS/Job 只用于补全上层工作负载，
+	// 大集群或权限受限时不应阻塞采集器启动。
+	ownerFactory.Start(ctx.Done())
 	return &KubernetesResolver{
 		pods: podInformer.Lister(), replicaSets: replicaSetInformer.Lister(), jobs: jobInformer.Lister(),
 	}, nil
@@ -102,15 +124,19 @@ func (resolver *KubernetesResolver) resolveWorkload(namespace string, owner *met
 	kind, name := owner.Kind, owner.Name
 	switch strings.ToLower(kind) {
 	case "replicaset":
-		if replicaSet, err := resolver.replicaSets.ReplicaSets(namespace).Get(name); err == nil {
-			if parent := metav1.GetControllerOf(replicaSet); parent != nil {
-				return parent.Kind, parent.Name
+		if resolver.replicaSets != nil {
+			if replicaSet, err := resolver.replicaSets.ReplicaSets(namespace).Get(name); err == nil {
+				if parent := metav1.GetControllerOf(replicaSet); parent != nil {
+					return parent.Kind, parent.Name
+				}
 			}
 		}
 	case "job":
-		if job, err := resolver.jobs.Jobs(namespace).Get(name); err == nil {
-			if parent := metav1.GetControllerOf(job); parent != nil {
-				return parent.Kind, parent.Name
+		if resolver.jobs != nil {
+			if job, err := resolver.jobs.Jobs(namespace).Get(name); err == nil {
+				if parent := metav1.GetControllerOf(job); parent != nil {
+					return parent.Kind, parent.Name
+				}
 			}
 		}
 	}

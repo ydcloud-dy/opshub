@@ -338,6 +338,10 @@ func buildKubernetesCollectorResources(clusterID uint, token, serverURL, image, 
 					},
 					ReadinessProbe: &corev1.Probe{ProbeHandler: corev1.ProbeHandler{HTTPGet: &corev1.HTTPGetAction{Path: "/health", Port: intstr.FromString("metrics")}}, InitialDelaySeconds: 5, PeriodSeconds: 10},
 					LivenessProbe:  &corev1.Probe{ProbeHandler: corev1.ProbeHandler{HTTPGet: &corev1.HTTPGetAction{Path: "/health", Port: intstr.FromString("metrics")}}, InitialDelaySeconds: 20, PeriodSeconds: 20},
+					StartupProbe: &corev1.Probe{
+						ProbeHandler:  corev1.ProbeHandler{HTTPGet: &corev1.HTTPGetAction{Path: "/health", Port: intstr.FromString("metrics")}},
+						PeriodSeconds: 5, TimeoutSeconds: 2, FailureThreshold: 30,
+					},
 				}},
 				Volumes: []corev1.Volume{
 					{Name: "varlog", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/var/log", Type: hostPathTypePointer(corev1.HostPathDirectory)}}},

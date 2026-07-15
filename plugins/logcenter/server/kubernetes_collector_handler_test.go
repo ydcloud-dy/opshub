@@ -22,6 +22,9 @@ func TestBuildKubernetesCollectorResourcesIncludesRuntimeMountsAndRBAC(t *testin
 	if container.ImagePullPolicy != corev1.PullAlways {
 		t.Fatalf("unexpected image pull policy: %s", container.ImagePullPolicy)
 	}
+	if container.StartupProbe == nil || container.StartupProbe.FailureThreshold < 24 {
+		t.Fatalf("collector startup probe must allow metadata cache initialization: %#v", container.StartupProbe)
+	}
 	if len(resources.ClusterRole.Rules) != 3 {
 		t.Fatalf("unexpected RBAC rules: %#v", resources.ClusterRole.Rules)
 	}
