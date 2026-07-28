@@ -57,10 +57,13 @@ func TestClickHouseInitializeCreatesRequiredTables(t *testing.T) {
 		t.Fatalf("Initialize failed: %v", err)
 	}
 	joined := strings.Join(statements, "\n")
-	for _, expected := range []string{"CREATE DATABASE", "opshub_logs.opshub_logs", "opshub_log_metrics_1m", "MATERIALIZED VIEW", "non_replicated_deduplication_window = 100000", "merge_with_ttl_timeout = 1800"} {
+	for _, expected := range []string{"CREATE DATABASE", "opshub_logs.opshub_logs", "opshub_log_metrics_1m", "MATERIALIZED VIEW", "non_replicated_deduplication_window = 100000", "merge_with_ttl_timeout = 1800", "expire_at DateTime('UTC') DEFAULT toDateTime(timestamp, 'UTC') + toIntervalDay(retention_days)"} {
 		if !strings.Contains(joined, expected) {
 			t.Fatalf("schema does not contain %q", expected)
 		}
+	}
+	if strings.Contains(joined, "expire_at DateTime64") {
+		t.Fatalf("schema contains unsupported DateTime64 TTL column")
 	}
 }
 

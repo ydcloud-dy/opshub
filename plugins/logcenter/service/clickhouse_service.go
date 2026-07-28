@@ -138,7 +138,7 @@ func (s *ClickHouseService) Initialize(ctx context.Context, cluster logmodel.Sto
     service LowCardinality(String),
     level LowCardinality(String),
 	retention_days UInt16 DEFAULT %d,
-	expire_at DateTime64(9, 'UTC') DEFAULT timestamp + toIntervalDay(retention_days),
+	expire_at DateTime('UTC') DEFAULT toDateTime(timestamp, 'UTC') + toIntervalDay(retention_days),
     namespace LowCardinality(String),
     workload_kind LowCardinality(String),
     workload_name String,
@@ -174,7 +174,7 @@ MODIFY SETTING %s, merge_with_ttl_timeout = %d`, database, onCluster, deduplicat
 		fmt.Sprintf(`ALTER TABLE %s.opshub_logs%s
 ADD COLUMN IF NOT EXISTS retention_days UInt16 DEFAULT %d AFTER level`, database, onCluster, retentionDays),
 		fmt.Sprintf(`ALTER TABLE %s.opshub_logs%s
-ADD COLUMN IF NOT EXISTS expire_at DateTime64(9, 'UTC') DEFAULT timestamp + toIntervalDay(retention_days) AFTER retention_days`, database, onCluster),
+ADD COLUMN IF NOT EXISTS expire_at DateTime('UTC') DEFAULT toDateTime(timestamp, 'UTC') + toIntervalDay(retention_days) AFTER retention_days`, database, onCluster),
 		fmt.Sprintf(`ALTER TABLE %s.opshub_logs%s
 MODIFY TTL expire_at DELETE`, database, onCluster),
 		fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s.opshub_log_metrics_1m%s

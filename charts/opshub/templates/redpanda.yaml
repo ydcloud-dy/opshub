@@ -86,7 +86,7 @@ spec:
           command: ["/bin/bash", "-ec"]
           args:
             - |
-              exec redpanda start \
+              exec rpk redpanda start \
                 --overprovisioned \
                 --smp={{ .Values.logCenter.ingest.queue.redpanda.smp }} \
                 --memory={{ .Values.logCenter.ingest.queue.redpanda.memory }} \
