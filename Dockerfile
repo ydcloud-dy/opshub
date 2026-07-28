@@ -1,4 +1,3 @@
-
 # Build stage
 FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/golang:1.25-alpine AS builder
 # 设置 Go 环境变量
@@ -12,18 +11,22 @@ ENV GOPROXY=https://goproxy.cn,https://mirrors.aliyun.com/goproxy/,direct \
 # Set working directory
 WORKDIR /build
 
+# Cache dependencies independently from application source changes. The local
+# Kubernetes plugin is a replace target, so its module files are needed here.
+COPY go.mod go.sum ./
+COPY plugins/kubernetes/go.mod plugins/kubernetes/go.sum ./plugins/kubernetes/
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
+
 # Copy source code
 COPY . .
 
-# Copy go mod files
-#COPY go.mod go.sum ./
-# Download dependencies
-RUN go mod download
 # Build the API and Linux Agent binaries used by one-click install
-RUN CGO_ENABLED=0 GOOS=linux go build -o opshub main.go && \
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build -o opshub main.go && \
     mkdir -p data/agent-binaries && \
-    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=0.3.0" -o data/agent-binaries/opshub-agent-linux-amd64 ./cmd/opshub-agent && \
-    CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "-X main.version=0.3.0" -o data/agent-binaries/opshub-agent-linux-arm64 ./cmd/opshub-agent
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=0.3.1" -o data/agent-binaries/opshub-agent-linux-amd64 ./cmd/opshub-agent && \
+    CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "-X main.version=0.3.1" -o data/agent-binaries/opshub-agent-linux-arm64 ./cmd/opshub-agent
 
 # Runtime stage
 FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/selectdb/alpine:latest

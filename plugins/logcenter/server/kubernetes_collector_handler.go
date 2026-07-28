@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -21,6 +22,7 @@ import (
 	k8smodel "github.com/ydcloud-dy/opshub/plugins/kubernetes/data/models"
 	k8sservice "github.com/ydcloud-dy/opshub/plugins/kubernetes/service"
 	logmodel "github.com/ydcloud-dy/opshub/plugins/logcenter/model"
+	"gorm.io/gorm"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -35,6 +37,7 @@ import (
 const (
 	kubernetesCollectorNamespace = "opshub-system"
 	kubernetesCollectorName      = "opshub-log-agent"
+	kubernetesCollectorVersion   = "0.3.1"
 )
 
 type kubernetesCollectorRequest struct {
@@ -47,6 +50,57 @@ type kubernetesWorkloadOption struct {
 	Namespace string `json:"namespace"`
 	Kind      string `json:"kind"`
 	Name      string `json:"name"`
+}
+
+type kubernetesCollectorShutdownResult struct {
+	ClusterID         uint   `json:"clusterId"`
+	ClusterName       string `json:"clusterName"`
+	Status            string `json:"status"`
+	ActivePolicyCount int64  `json:"activePolicyCount"`
+	Message           string `json:"message"`
+}
+
+type activeKubernetesPolicyCounter func(context.Context, uint, uint) (int64, error)
+type kubernetesCollectorUninstaller func(context.Context, uint) error
+
+func shutdownUnusedKubernetesCollectors(
+	ctx context.Context,
+	policyID uint,
+	clusters []k8smodel.Cluster,
+	countActivePolicies activeKubernetesPolicyCounter,
+	uninstallCollector kubernetesCollectorUninstaller,
+) []kubernetesCollectorShutdownResult {
+	results := make([]kubernetesCollectorShutdownResult, 0, len(clusters))
+	for _, cluster := range clusters {
+		result := kubernetesCollectorShutdownResult{
+			ClusterID:   cluster.ID,
+			ClusterName: firstNonEmpty(cluster.Alias, cluster.Name, fmt.Sprintf("集群 %d", cluster.ID)),
+		}
+		activePolicyCount, err := countActivePolicies(ctx, cluster.ID, policyID)
+		result.ActivePolicyCount = activePolicyCount
+		if err != nil {
+			result.Status = "failed"
+			result.Message = "检查共享采集器使用情况失败: " + err.Error()
+			results = append(results, result)
+			continue
+		}
+		if activePolicyCount > 0 {
+			result.Status = "skipped"
+			result.Message = fmt.Sprintf("仍有 %d 条已发布策略使用该集群采集器，已保留 DaemonSet", activePolicyCount)
+			results = append(results, result)
+			continue
+		}
+		if err := uninstallCollector(ctx, cluster.ID); err != nil {
+			result.Status = "failed"
+			result.Message = "关闭采集器失败: " + err.Error()
+			results = append(results, result)
+			continue
+		}
+		result.Status = "uninstalled"
+		result.Message = "DaemonSet、RBAC、配置和采集凭据已回收"
+		results = append(results, result)
+	}
+	return results
 }
 
 func (h *Handler) GetKubernetesPolicyOptions(c *gin.Context) {
@@ -236,23 +290,106 @@ func (h *Handler) UninstallKubernetesCollector(c *gin.Context) {
 	if !ok {
 		return
 	}
-	clientset, err := k8sservice.NewClusterService(h.db).GetCachedClientset(c.Request.Context(), clusterID)
+	activePolicyCount, err := h.countOtherPublishedKubernetesPolicies(c.Request.Context(), clusterID, 0)
 	if err != nil {
-		response.ErrorCode(c, http.StatusBadGateway, "连接 Kubernetes 集群失败: "+err.Error())
+		response.ErrorCode(c, http.StatusInternalServerError, "检查采集策略失败: "+err.Error())
 		return
 	}
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
-	defer cancel()
-	deletePolicy := metav1.DeletePropagationBackground
-	_ = clientset.AppsV1().DaemonSets(kubernetesCollectorNamespace).Delete(ctx, kubernetesCollectorName, metav1.DeleteOptions{PropagationPolicy: &deletePolicy})
-	_ = clientset.CoreV1().Secrets(kubernetesCollectorNamespace).Delete(ctx, kubernetesCollectorName, metav1.DeleteOptions{})
-	_ = clientset.CoreV1().ConfigMaps(kubernetesCollectorNamespace).Delete(ctx, kubernetesCollectorName, metav1.DeleteOptions{})
-	_ = clientset.CoreV1().ServiceAccounts(kubernetesCollectorNamespace).Delete(ctx, kubernetesCollectorName, metav1.DeleteOptions{})
-	_ = clientset.RbacV1().ClusterRoleBindings().Delete(ctx, kubernetesCollectorName, metav1.DeleteOptions{})
-	_ = clientset.RbacV1().ClusterRoles().Delete(ctx, kubernetesCollectorName, metav1.DeleteOptions{})
-	h.db.WithContext(c.Request.Context()).Model(&logmodel.ClusterCollectorCredential{}).Where("cluster_id = ?", clusterID).Update("status", "revoked")
-	h.db.WithContext(c.Request.Context()).Model(&logmodel.CollectorInstance{}).Where("mode = ? AND cluster_id = ?", "kubernetes-node", clusterID).Update("status", "offline")
+	if activePolicyCount > 0 {
+		response.ErrorCode(c, http.StatusConflict, fmt.Sprintf("该集群仍有 %d 条已发布采集策略，请先停用策略后再卸载采集器", activePolicyCount))
+		return
+	}
+	if err := h.uninstallKubernetesCollector(c.Request.Context(), clusterID); err != nil {
+		response.ErrorCode(c, http.StatusBadGateway, "卸载 Kubernetes 日志采集器失败: "+err.Error())
+		return
+	}
 	response.Success(c, gin.H{"clusterId": clusterID})
+}
+
+func (h *Handler) countOtherPublishedKubernetesPolicies(ctx context.Context, clusterID, excludedPolicyID uint) (int64, error) {
+	query := h.db.WithContext(ctx).Model(&logmodel.CollectionPolicy{}).
+		Where("source_mode = ? AND status = ?", "kubernetes", "published").
+		Where("id IN (?)", h.db.Model(&logmodel.PolicyTarget{}).
+			Select("policy_id").Where("target_type = ? AND target_id = ?", "cluster", clusterID))
+	if excludedPolicyID > 0 {
+		query = query.Where("id <> ?", excludedPolicyID)
+	}
+	var count int64
+	err := query.Count(&count).Error
+	return count, err
+}
+
+func (h *Handler) uninstallKubernetesCollector(ctx context.Context, clusterID uint) error {
+	clientset, err := k8sservice.NewClusterService(h.db).GetCachedClientset(ctx, clusterID)
+	if err != nil {
+		return fmt.Errorf("连接 Kubernetes 集群失败: %w", err)
+	}
+	kubernetesContext, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	if err := deleteKubernetesCollectorResources(kubernetesContext, clientset); err != nil {
+		return err
+	}
+	return h.markKubernetesCollectorUninstalled(ctx, clusterID, 0)
+}
+
+// markKubernetesCollectorUninstalled records a terminal disabled state after
+// the remote collector resources have been removed. No agent can acknowledge
+// the change after its credential is revoked, so leaving assignments pending
+// would make the rollout appear stuck forever.
+func (h *Handler) markKubernetesCollectorUninstalled(ctx context.Context, clusterID, policyID uint) error {
+	return h.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&logmodel.ClusterCollectorCredential{}).
+			Where("cluster_id = ?", clusterID).Update("status", "revoked").Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&logmodel.CollectorInstance{}).
+			Where("mode = ? AND cluster_id = ?", "kubernetes-node", clusterID).Update("status", "offline").Error; err != nil {
+			return err
+		}
+		assignmentQuery := tx.Model(&logmodel.CollectorAssignment{}).
+			Where("instance_id LIKE ? AND desired_state = ?", fmt.Sprintf("k8s:%d:%%", clusterID), "disabled")
+		if policyID > 0 {
+			assignmentQuery = assignmentQuery.Where("policy_id = ?", policyID)
+		}
+		now := time.Now()
+		return assignmentQuery.Updates(map[string]any{
+			"apply_status": "disabled", "applied_at": &now, "last_error": "",
+		}).Error
+	})
+}
+
+func deleteKubernetesCollectorResources(ctx context.Context, clientset kubernetes.Interface) error {
+	deletePolicy := metav1.DeletePropagationBackground
+	operations := []struct {
+		name   string
+		remove func() error
+	}{
+		{name: "DaemonSet", remove: func() error {
+			return clientset.AppsV1().DaemonSets(kubernetesCollectorNamespace).Delete(ctx, kubernetesCollectorName, metav1.DeleteOptions{PropagationPolicy: &deletePolicy})
+		}},
+		{name: "Secret", remove: func() error {
+			return clientset.CoreV1().Secrets(kubernetesCollectorNamespace).Delete(ctx, kubernetesCollectorName, metav1.DeleteOptions{})
+		}},
+		{name: "ConfigMap", remove: func() error {
+			return clientset.CoreV1().ConfigMaps(kubernetesCollectorNamespace).Delete(ctx, kubernetesCollectorName, metav1.DeleteOptions{})
+		}},
+		{name: "ServiceAccount", remove: func() error {
+			return clientset.CoreV1().ServiceAccounts(kubernetesCollectorNamespace).Delete(ctx, kubernetesCollectorName, metav1.DeleteOptions{})
+		}},
+		{name: "ClusterRoleBinding", remove: func() error {
+			return clientset.RbacV1().ClusterRoleBindings().Delete(ctx, kubernetesCollectorName, metav1.DeleteOptions{})
+		}},
+		{name: "ClusterRole", remove: func() error {
+			return clientset.RbacV1().ClusterRoles().Delete(ctx, kubernetesCollectorName, metav1.DeleteOptions{})
+		}},
+	}
+	var deleteErrors []error
+	for _, operation := range operations {
+		if err := operation.remove(); err != nil && !apierrors.IsNotFound(err) {
+			deleteErrors = append(deleteErrors, fmt.Errorf("删除 %s 失败: %w", operation.name, err))
+		}
+	}
+	return errors.Join(deleteErrors...)
 }
 
 func (h *Handler) kubernetesCollectorCluster(c *gin.Context) (uint, k8smodel.Cluster, bool) {
@@ -308,7 +445,7 @@ type kubernetesCollectorResources struct {
 func buildKubernetesCollectorResources(clusterID uint, token, serverURL, image, namespace string) kubernetesCollectorResources {
 	namespace = kubernetesCollectorNamespace
 	labels := map[string]string{"app.kubernetes.io/name": kubernetesCollectorName, "app.kubernetes.io/component": "log-collector", "app.kubernetes.io/managed-by": "opshub"}
-	rolloutHash := sha256.Sum256([]byte(token + "\x00" + serverURL + "\x00" + image))
+	rolloutHash := sha256.Sum256([]byte(token + "\x00" + serverURL + "\x00" + image + "\x00" + kubernetesCollectorVersion))
 	privileged := false
 	readOnlyRoot := true
 	runAsUser := int64(0)
@@ -328,9 +465,24 @@ func buildKubernetesCollectorResources(clusterID uint, token, serverURL, image, 
 		TypeMeta: metav1.TypeMeta{APIVersion: "apps/v1", Kind: "DaemonSet"}, ObjectMeta: metav1.ObjectMeta{Name: kubernetesCollectorName, Namespace: namespace, Labels: labels},
 		Spec: appsv1.DaemonSetSpec{
 			Selector: &metav1.LabelSelector{MatchLabels: labels}, UpdateStrategy: appsv1.DaemonSetUpdateStrategy{Type: appsv1.RollingUpdateDaemonSetStrategyType},
-			Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{Labels: labels, Annotations: map[string]string{"opshub.io/config-checksum": hex.EncodeToString(rolloutHash[:])}}, Spec: corev1.PodSpec{
+			Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{Labels: labels, Annotations: map[string]string{"opshub.io/agent-version": kubernetesCollectorVersion, "opshub.io/config-checksum": hex.EncodeToString(rolloutHash[:])}}, Spec: corev1.PodSpec{
 				ServiceAccountName: kubernetesCollectorName, AutomountServiceAccountToken: boolPointer(true),
 				Tolerations: []corev1.Toleration{{Operator: corev1.TolerationOpExists}},
+				InitContainers: []corev1.Container{{
+					Name:            "download-agent",
+					Image:           resolveCollectorDownloaderImage(),
+					ImagePullPolicy: corev1.PullIfNotPresent,
+					Command:         []string{"/bin/sh", "-ec"},
+					Args:            []string{collectorDownloadScript()},
+					Env: []corev1.EnvVar{
+						{Name: "OPSHUB_SERVER_URL", ValueFrom: &corev1.EnvVarSource{ConfigMapKeyRef: &corev1.ConfigMapKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: kubernetesCollectorName}, Key: "server-url"}}},
+					},
+					Resources: corev1.ResourceRequirements{
+						Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("10m"), corev1.ResourceMemory: resource.MustParse("16Mi")},
+						Limits:   corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("100m"), corev1.ResourceMemory: resource.MustParse("64Mi")},
+					},
+					VolumeMounts: []corev1.VolumeMount{{Name: "agent-bin", MountPath: "/agent-bin"}},
+				}},
 				Containers: []corev1.Container{{
 					Name: kubernetesCollectorName, Image: image, ImagePullPolicy: corev1.PullAlways,
 					Command: []string{"/bin/sh", "-ec"}, Args: []string{collectorEntrypointScript()},
@@ -349,6 +501,7 @@ func buildKubernetesCollectorResources(clusterID uint, token, serverURL, image, 
 						Limits:   corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("500m"), corev1.ResourceMemory: resource.MustParse("256Mi")},
 					},
 					VolumeMounts: []corev1.VolumeMount{
+						{Name: "agent-bin", MountPath: "/opshub-agent-bin", ReadOnly: true},
 						{Name: "varlog", MountPath: "/var/log", ReadOnly: true},
 						{Name: "dockerlogs", MountPath: "/var/lib/docker/containers", ReadOnly: true},
 						{Name: "state", MountPath: "/var/lib/opshub-log-agent"},
@@ -361,6 +514,7 @@ func buildKubernetesCollectorResources(clusterID uint, token, serverURL, image, 
 					},
 				}},
 				Volumes: []corev1.Volume{
+					{Name: "agent-bin", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
 					{Name: "varlog", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/var/log", Type: hostPathTypePointer(corev1.HostPathDirectory)}}},
 					{Name: "dockerlogs", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/var/lib/docker/containers", Type: hostPathTypePointer(corev1.HostPathDirectoryOrCreate)}}},
 					{Name: "state", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/var/lib/opshub-log-agent", Type: hostPathTypePointer(corev1.HostPathDirectoryOrCreate)}}},
@@ -371,8 +525,35 @@ func buildKubernetesCollectorResources(clusterID uint, token, serverURL, image, 
 	return resources
 }
 
+func collectorDownloadScript() string {
+	return `case "$(uname -m)" in
+  x86_64|amd64) ARCH=amd64 ;;
+  aarch64|arm64) ARCH=arm64 ;;
+  *) echo "unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+esac
+SERVER="${OPSHUB_SERVER_URL%/}"
+URL="${SERVER}/api/v1/public/agents/binaries/opshub-agent-linux-${ARCH}"
+OUT=/agent-bin/opshub-agent
+TMP=/agent-bin/opshub-agent.tmp
+rm -f "${TMP}" "${OUT}"
+if command -v wget >/dev/null 2>&1; then
+  wget -q -O "${TMP}" "${URL}"
+elif command -v curl >/dev/null 2>&1; then
+  curl -fsSL -o "${TMP}" "${URL}"
+else
+  echo "downloader image must include wget or curl" >&2
+  exit 1
+fi
+chmod 0755 "${TMP}"
+"${TMP}" -version
+mv "${TMP}" "${OUT}"`
+}
+
 func collectorEntrypointScript() string {
-	return `AGENT=/usr/local/bin/opshub-agent
+	return `AGENT=/opshub-agent-bin/opshub-agent
+if [ ! -x "${AGENT}" ]; then
+  AGENT=/usr/local/bin/opshub-agent
+fi
 if [ ! -x "${AGENT}" ]; then
   case "$(uname -m)" in
     x86_64|amd64) ARCH=amd64 ;;
@@ -620,6 +801,10 @@ func validateCollectorServerURL(value string) (string, error) {
 
 func resolveCollectorImage(requested string) string {
 	return firstNonEmpty(strings.TrimSpace(requested), strings.TrimSpace(os.Getenv("OPSHUB_LOG_AGENT_IMAGE")), "docker.1ms.run/dyclouds/opshub-log-agent:v0.0.8")
+}
+
+func resolveCollectorDownloaderImage() string {
+	return firstNonEmpty(strings.TrimSpace(os.Getenv("OPSHUB_LOG_AGENT_DOWNLOADER_IMAGE")), "swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/busybox:1.37.0")
 }
 
 func boolPointer(value bool) *bool                                       { return &value }

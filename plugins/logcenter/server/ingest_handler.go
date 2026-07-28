@@ -6,10 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-<<<<<<< HEAD
-=======
 	"errors"
->>>>>>> feat: update log
 	"fmt"
 	"io"
 	"net"
@@ -17,20 +14,14 @@ import (
 	"net/url"
 	"os"
 	"strings"
-<<<<<<< HEAD
-=======
 	"sync"
->>>>>>> feat: update log
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/ydcloud-dy/opshub/internal/loggingest"
 	"github.com/ydcloud-dy/opshub/pkg/response"
 	logmodel "github.com/ydcloud-dy/opshub/plugins/logcenter/model"
-<<<<<<< HEAD
-=======
 	"gorm.io/gorm"
->>>>>>> feat: update log
 )
 
 type ingestComponentResult struct {
@@ -38,8 +29,6 @@ type ingestComponentResult struct {
 	Reachable bool `json:"reachable"`
 }
 
-<<<<<<< HEAD
-=======
 type ingestQueueResult struct {
 	Enabled           bool   `json:"enabled"`
 	Status            string `json:"status"`
@@ -53,13 +42,20 @@ type ingestQueueResult struct {
 }
 
 type ingestStorageResult struct {
-	ID            uint       `json:"id,omitempty"`
-	Name          string     `json:"name,omitempty"`
-	Status        string     `json:"status"`
-	Reachable     bool       `json:"reachable"`
-	LastTestAt    *time.Time `json:"lastTestAt,omitempty"`
-	LastError     string     `json:"lastError,omitempty"`
-	InitializedAt *time.Time `json:"initializedAt,omitempty"`
+	ID                     uint       `json:"id,omitempty"`
+	Name                   string     `json:"name,omitempty"`
+	Status                 string     `json:"status"`
+	Reachable              bool       `json:"reachable"`
+	LastTestAt             *time.Time `json:"lastTestAt,omitempty"`
+	LastError              string     `json:"lastError,omitempty"`
+	InitializedAt          *time.Time `json:"initializedAt,omitempty"`
+	RetentionStatus        string     `json:"retentionStatus,omitempty"`
+	RetentionError         string     `json:"retentionError,omitempty"`
+	ExpiredParts           int64      `json:"expiredParts"`
+	TTLLagSeconds          int64      `json:"ttlLagSeconds"`
+	TTLMergeActive         bool       `json:"ttlMergeActive"`
+	TTLMergeProgress       float64    `json:"ttlMergeProgress"`
+	TTLMergeTimeoutSeconds int        `json:"ttlMergeTimeoutSeconds"`
 }
 
 type ingestReadinessCheck struct {
@@ -77,16 +73,14 @@ type ingestReadinessSummary struct {
 	Total    int `json:"total"`
 }
 
->>>>>>> feat: update log
 func (h *Handler) GetIngestStatus(c *gin.Context) {
+	if !h.requireLogAdmin(c, "只有管理员可以查看日志采集链路") {
+		return
+	}
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 	gatewayURL := strings.TrimRight(firstNonEmpty(os.Getenv("OPSHUB_LOG_GATEWAY_STATUS_URL"), "http://127.0.0.1:9880"), "/")
 	writerURL := strings.TrimRight(firstNonEmpty(os.Getenv("OPSHUB_LOG_WRITER_STATUS_URL"), "http://127.0.0.1:9881"), "/")
-<<<<<<< HEAD
-	gateway := fetchIngestComponent(ctx, gatewayURL+"/status", "log-gateway")
-	writer := fetchIngestComponent(ctx, writerURL+"/status", "log-writer")
-=======
 	var gateway, writer ingestComponentResult
 	var waitGroup sync.WaitGroup
 	waitGroup.Add(2)
@@ -100,7 +94,6 @@ func (h *Handler) GetIngestStatus(c *gin.Context) {
 	}()
 	storage := h.loadIngestStorageStatus(ctx)
 	waitGroup.Wait()
->>>>>>> feat: update log
 	mode := strings.ToLower(firstNonEmpty(gateway.QueueMode, writer.QueueMode, os.Getenv("OPSHUB_LOG_QUEUE_MODE"), "direct"))
 	if mode == "redpanda" {
 		mode = "kafka"
@@ -115,36 +108,6 @@ func (h *Handler) GetIngestStatus(c *gin.Context) {
 			queueStatus = "degraded"
 		}
 	}
-<<<<<<< HEAD
-	queue := gin.H{
-		"enabled": queueEnabled, "status": queueStatus, "reachable": queueReachable,
-		"topic":         firstNonEmpty(gateway.QueueTopic, writer.QueueTopic),
-		"consumerGroup": writer.ConsumerGroup, "brokerCount": maxInt(gateway.BrokerCount, writer.BrokerCount),
-		"lag": writer.QueueLag, "deadletterBatches": writer.DeadletterBatches,
-		"lastError": firstNonEmpty(writer.QueueLastError, gateway.QueueLastError, gateway.LastError, writer.LastError),
-	}
-
-	var storage logmodel.StorageCluster
-	storageStatus := gin.H{"status": "unconfigured", "reachable": false}
-	if err := h.db.Where("enabled = ?", true).Order("is_primary DESC, id ASC").First(&storage).Error; err == nil {
-		prepareStorageForResponse(&storage)
-		storageStatus = gin.H{
-			"id": storage.ID, "name": storage.Name, "status": storage.Status,
-			"reachable": storage.Status == "healthy", "lastTestAt": storage.LastTestAt,
-			"lastError": storage.LastError, "initializedAt": storage.InitializedAt,
-		}
-	}
-	response.Success(c, gin.H{
-		"mode":       mode,
-		"gateway":    gateway,
-		"queue":      queue,
-		"writer":     writer,
-		"storage":    storageStatus,
-		"gatewayUrl": gatewayURL,
-		"writerUrl":  writerURL,
-		"checkedAt":  time.Now(),
-	})
-=======
 	queue := ingestQueueResult{
 		Enabled: queueEnabled, Status: queueStatus, Reachable: queueReachable,
 		Topic: firstNonEmpty(gateway.QueueTopic, writer.QueueTopic), ConsumerGroup: writer.ConsumerGroup,
@@ -197,6 +160,18 @@ func (h *Handler) loadIngestStorageStatus(ctx context.Context) ingestStorageResu
 	result.Status = "healthy"
 	result.Reachable = true
 	result.LastError = ""
+	retention, retentionErr := h.clickhouse.RetentionHealth(ctx, storage, password)
+	if retentionErr != nil {
+		result.RetentionStatus = "error"
+		result.RetentionError = retentionErr.Error()
+		return result
+	}
+	result.RetentionStatus = retention.Status
+	result.ExpiredParts = retention.ExpiredParts
+	result.TTLLagSeconds = retention.TTLLagSeconds
+	result.TTLMergeActive = retention.TTLMergeActive
+	result.TTLMergeProgress = retention.TTLMergeProgress
+	result.TTLMergeTimeoutSeconds = retention.TTLMergeTimeoutSeconds
 	return result
 }
 
@@ -205,12 +180,55 @@ func buildIngestReadiness(gateway, writer ingestComponentResult, queue ingestQue
 		componentReadiness("gateway", "Log Gateway", gateway),
 		componentReadiness("writer", "Log Writer", writer),
 		storageReadiness(storage),
+		retentionReadiness(storage),
 		queueReadiness(queue),
 		publicGatewayReadiness(publicGatewayURL),
 		secretReadiness(),
 		collectorImageReadiness(strings.TrimSpace(os.Getenv("OPSHUB_LOG_AGENT_IMAGE"))),
 	}
 	return checks
+}
+
+func retentionReadiness(storage ingestStorageResult) ingestReadinessCheck {
+	check := ingestReadinessCheck{ID: "retention", Title: "日志保留清理"}
+	if storage.ID == 0 || !storage.Reachable {
+		check.Status = "failed"
+		check.Description = "无法检查日志保留清理状态"
+		check.Recommendation = firstNonEmpty(storage.LastError, "先恢复 ClickHouse 日志存储")
+		return check
+	}
+	if storage.RetentionStatus == "error" || storage.RetentionStatus == "" {
+		check.Status = "failed"
+		check.Description = "读取 ClickHouse TTL 状态失败"
+		check.Recommendation = firstNonEmpty(storage.RetentionError, "检查 system.parts 和 system.merges 查询权限")
+		return check
+	}
+	description := fmt.Sprintf("过期 Part %d 个，最老清理延迟 %s", storage.ExpiredParts, formatRetentionLag(storage.TTLLagSeconds))
+	if storage.TTLMergeActive {
+		description += fmt.Sprintf("，TTL Merge %.0f%%", storage.TTLMergeProgress*100)
+	}
+	check.Description = description
+	switch storage.RetentionStatus {
+	case "critical":
+		check.Status = "failed"
+		check.Recommendation = "TTL 清理延迟超过调度周期 6 倍，请检查 Merge 队列、磁盘和后台线程"
+	case "warning":
+		check.Status = "warning"
+		check.Recommendation = "TTL 清理存在积压，持续观察 Merge 进度和磁盘使用率"
+	default:
+		check.Status = "passed"
+	}
+	return check
+}
+
+func formatRetentionLag(seconds int64) string {
+	if seconds <= 0 {
+		return "0 分钟"
+	}
+	if seconds < 3600 {
+		return fmt.Sprintf("%d 分钟", (seconds+59)/60)
+	}
+	return fmt.Sprintf("%.1f 小时", float64(seconds)/3600)
 }
 
 func componentReadiness(id, title string, component ingestComponentResult) ingestReadinessCheck {
@@ -328,10 +346,12 @@ func summarizeIngestReadiness(checks []ingestReadinessCheck) ingestReadinessSumm
 		}
 	}
 	return summary
->>>>>>> feat: update log
 }
 
 func (h *Handler) TestIngest(c *gin.Context) {
+	if !h.requireLogAdmin(c, "只有管理员可以写入采集链路测试日志") {
+		return
+	}
 	gatewayURL := strings.TrimRight(firstNonEmpty(os.Getenv("OPSHUB_LOG_GATEWAY_STATUS_URL"), "http://127.0.0.1:9880"), "/")
 	token := resolveIngestTestToken(gatewayURL)
 	if token == "" {

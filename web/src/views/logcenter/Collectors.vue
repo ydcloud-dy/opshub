@@ -1,10 +1,5 @@
 <template>
   <div class="log-center-page ingest-page">
-<<<<<<< HEAD
-    <el-tabs v-model="activeTab" class="collector-tabs">
-      <el-tab-pane label="采集链路" name="pipeline">
-=======
->>>>>>> feat: update log
     <div class="page-head">
       <div class="page-title-group">
         <div class="page-title-icon">
@@ -12,26 +7,6 @@
         </div>
         <div>
           <h2>采集接入</h2>
-<<<<<<< HEAD
-          <p>查看 OpsHub Log Gateway、Writer 与 ClickHouse 的实时数据链路</p>
-        </div>
-      </div>
-      <div class="head-actions">
-        <el-tag effect="plain" :type="pipelineHealthy ? 'success' : 'danger'">
-          {{ pipelineHealthy ? '链路正常' : '链路异常' }}
-        </el-tag>
-        <el-button :loading="loading" @click="loadStatus">
-          <el-icon><Refresh /></el-icon>
-          刷新
-        </el-button>
-        <el-button type="primary" class="primary-action" :loading="testing" @click="runTest">
-          <el-icon><Promotion /></el-icon>
-          写入测试日志
-        </el-button>
-      </div>
-    </div>
-
-=======
           <p>管理日志采集链路、采集策略、运行实例与配置发布版本</p>
         </div>
       </div>
@@ -39,16 +14,12 @@
 
     <el-tabs v-model="activeTab" class="collector-tabs">
       <el-tab-pane label="采集链路" name="pipeline">
->>>>>>> feat: update log
     <section class="panel pipeline-panel" v-loading="loading && !status">
       <div class="panel-heading">
         <div>
           <h3>实时采集链路</h3>
           <p>{{ pipelineDescription }}</p>
         </div>
-<<<<<<< HEAD
-        <span class="checked-at">更新于 {{ formatTime(status?.checkedAt) }}</span>
-=======
         <div class="pipeline-heading-actions">
           <span class="checked-at">更新于 {{ formatTime(status?.checkedAt) }}</span>
           <div class="head-actions">
@@ -65,7 +36,6 @@
             </el-button>
           </div>
         </div>
->>>>>>> feat: update log
       </div>
 
       <div class="pipeline-flow" :class="{ 'with-queue': queueEnabled }">
@@ -158,10 +128,7 @@
         <div class="panel-heading compact"><h3>运行信息</h3></div>
         <div class="runtime-list">
           <div><span>传输模式</span><el-tag size="small" type="info">{{ queueModeText }}</el-tag></div>
-<<<<<<< HEAD
-=======
           <div><span>Agent 接入地址</span><strong :title="status?.publicGatewayUrl">{{ status?.publicGatewayUrl || '-' }}</strong></div>
->>>>>>> feat: update log
           <div><span>Gateway 实例</span><strong>{{ status?.gateway.instanceId || '-' }}</strong></div>
           <div><span>Writer 实例</span><strong>{{ status?.writer.instanceId || '-' }}</strong></div>
           <div v-if="queueEnabled"><span>Consumer Group</span><strong>{{ status?.queue?.consumerGroup || '-' }}</strong></div>
@@ -193,8 +160,6 @@
 	  </section>
     </div>
 
-<<<<<<< HEAD
-=======
     <section class="panel readiness-panel">
       <div class="panel-heading compact readiness-heading">
         <div>
@@ -223,7 +188,6 @@
       </div>
     </section>
 
->>>>>>> feat: update log
     <el-alert
       v-if="lastError"
       class="error-alert"
@@ -246,14 +210,10 @@
 	</el-dialog>
       </el-tab-pane>
       <el-tab-pane label="采集策略" name="policies" lazy>
-<<<<<<< HEAD
-        <CollectionPolicyPanel :preset-host-id="Number(route.query.hostId || 0)" :preset-cluster-id="Number(route.query.clusterId || 0)" />
-=======
-        <CollectionPolicyPanel :preset-host-id="Number(route.query.hostId || 0)" :preset-cluster-id="Number(route.query.clusterId || 0)" @open-instances="activeTab = 'instances'" />
->>>>>>> feat: update log
+        <CollectionPolicyPanel :preset-host-id="Number(route.query.hostId || 0)" :preset-cluster-id="Number(route.query.clusterId || 0)" @open-instances="openInstances" />
       </el-tab-pane>
       <el-tab-pane label="采集实例" name="instances" lazy>
-        <CollectorInstancePanel />
+        <CollectorInstancePanel :preset-policy-id="selectedInstancePolicyId" />
       </el-tab-pane>
       <el-tab-pane label="发布记录" name="revisions" lazy>
         <PolicyRevisionPanel />
@@ -266,11 +226,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-<<<<<<< HEAD
-import { ArrowRight, Box, Coin, Connection, DataLine, DocumentCopy, Download, Files, Lock, Operation, Promotion, Refresh, RefreshRight } from '@element-plus/icons-vue'
-=======
 import { ArrowRight, Box, CircleCheck, CircleClose, Coin, Connection, DataLine, DocumentCopy, Download, Files, Lock, Operation, Promotion, Refresh, RefreshRight, WarningFilled } from '@element-plus/icons-vue'
->>>>>>> feat: update log
 import { getLogIngestStatus, testLogIngest, type LogIngestComponentStatus, type LogIngestStatus } from '@/api/logcenter'
 import CollectionPolicyPanel from './components/CollectionPolicyPanel.vue'
 import CollectorInstancePanel from './components/CollectorInstancePanel.vue'
@@ -282,8 +238,14 @@ const activeTab = ref(['pipeline', 'policies', 'instances', 'revisions'].include
 const loading = ref(false)
 const testing = ref(false)
 const configVisible = ref(false)
+const selectedInstancePolicyId = ref<number>()
 const status = ref<LogIngestStatus>()
 let timer: ReturnType<typeof setInterval> | undefined
+
+const openInstances = (policyId?: number) => {
+  selectedInstancePolicyId.value = policyId
+  activeTab.value = 'instances'
+}
 
 const agentConfigTemplate = JSON.stringify({
   serverUrl: 'https://opshub.example.com',
@@ -320,23 +282,15 @@ const pipelineHealthy = computed(() => Boolean(
   status.value?.gateway.reachable
   && (!queueEnabled.value || status.value?.queue?.reachable)
   && status.value?.writer.reachable
-<<<<<<< HEAD
-  && status.value?.storage.reachable,
-=======
   && status.value?.storage.reachable
   && status.value?.storage.initializedAt,
->>>>>>> feat: update log
 ))
 const queueModeText = computed(() => queueEnabled.value ? 'Redpanda / Kafka' : 'ClickHouse 直写')
 const pipelineDescription = computed(() => queueEnabled.value
   ? '日志经过鉴权与限流后进入持久化队列，由可水平扩展的 Writer 消费并批量写入 ClickHouse'
   : '当前使用直写模式，日志经过鉴权、限流与批量写入后进入内置日志库')
 const queueNodeClass = computed(() => status.value?.queue?.reachable ? 'healthy' : 'unhealthy')
-<<<<<<< HEAD
-const storageNodeClass = computed(() => status.value?.storage.reachable ? 'healthy' : 'unhealthy')
-=======
 const storageNodeClass = computed(() => status.value?.storage.reachable && status.value?.storage.initializedAt ? 'healthy' : 'unhealthy')
->>>>>>> feat: update log
 const storageStatusText = computed(() => {
   if (!status.value?.storage.id) return '尚未配置内置日志存储'
   if (status.value.storage.reachable) return '存储连接正常'
@@ -396,11 +350,8 @@ const duration = (seconds?: number) => {
   return `${Math.floor(value / 86400)} 天 ${Math.floor((value % 86400) / 3600)} 小时`
 }
 const latency = (milliseconds?: number) => `${Number(milliseconds || 0).toFixed(1)} ms`
-<<<<<<< HEAD
-=======
 const readinessText = (value: string) => ({ passed: '通过', warning: '建议优化', failed: '未通过' }[value] || value)
 const readinessType = (value: string) => value === 'passed' ? 'success' : value === 'warning' ? 'warning' : 'danger'
->>>>>>> feat: update log
 
 onMounted(async () => {
   await loadStatus()
@@ -414,20 +365,14 @@ onBeforeUnmount(() => timer && clearInterval(timer))
 .collector-tabs :deep(.el-tabs__item) { height: 42px; color: #667085; font-size: 14px; }
 .collector-tabs :deep(.el-tabs__item.is-active) { color: #111827; font-weight: 650; }
 .collector-tabs :deep(.el-tabs__active-bar) { height: 2px; background: #111827; }
-<<<<<<< HEAD
-=======
 .collector-tabs :deep(.el-tabs__content) { overflow: visible; }
->>>>>>> feat: update log
 .head-actions { display: flex; align-items: center; gap: 10px; }
 .pipeline-panel { padding: 20px; }
 .panel-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 24px; }
 .panel-heading h3 { margin: 0; color: #111827; font-size: 15px; font-weight: 650; }
 .panel-heading p { margin: 6px 0 0; color: #6b7280; font-size: 13px; }
 .panel-heading.compact { margin-bottom: 16px; }
-<<<<<<< HEAD
-=======
 .pipeline-heading-actions { display: flex; align-items: flex-end; flex-direction: column; gap: 8px; }
->>>>>>> feat: update log
 .checked-at { color: #9ca3af; font-size: 12px; white-space: nowrap; }
 .pipeline-flow { display: grid; grid-template-columns: minmax(210px, 1fr) 76px minmax(210px, 1fr) 76px minmax(210px, 1fr); align-items: center; }
 .pipeline-flow.with-queue { grid-template-columns: minmax(180px, 1fr) 48px minmax(180px, 1fr) 48px minmax(180px, 1fr) 48px minmax(180px, 1fr); }
@@ -482,8 +427,6 @@ onBeforeUnmount(() => timer && clearInterval(timer))
 .runtime-list { display: grid; gap: 13px; }
 .runtime-list > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; color: #6b7280; font-size: 13px; }
 .runtime-list strong { overflow: hidden; color: #1f2937; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
-<<<<<<< HEAD
-=======
 .readiness-panel { margin-top: 16px; padding: 20px; }
 .readiness-heading { align-items: center; }
 .readiness-summary { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
@@ -497,7 +440,6 @@ onBeforeUnmount(() => timer && clearInterval(timer))
 .readiness-content strong { color: #1f2937; font-size: 13px; }
 .readiness-content p { overflow: hidden; margin: 5px 0 0; color: #667085; font-size: 12px; line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; }
 .readiness-content small { display: block; margin-top: 4px; color: #98a2b3; font-size: 11px; line-height: 1.5; }
->>>>>>> feat: update log
 .error-alert { margin-top: 16px; }
 @keyframes flow { to { border-color: #16a34a; } }
 @media (max-width: 1100px) {
@@ -508,22 +450,15 @@ onBeforeUnmount(() => timer && clearInterval(timer))
 	.capability-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 820px) {
-<<<<<<< HEAD
-  .head-actions { flex-wrap: wrap; justify-content: flex-end; }
-=======
   .panel-heading { align-items: flex-start; flex-direction: column; }
   .pipeline-heading-actions { align-items: flex-start; width: 100%; }
   .head-actions { flex-wrap: wrap; justify-content: flex-start; }
->>>>>>> feat: update log
   .detail-grid { grid-template-columns: 1fr; }
   .metric-grid { grid-template-columns: repeat(2, 1fr); }
 	.capability-list { grid-template-columns: 1fr; }
 	.config-toolbar { align-items: flex-start; flex-direction: column; }
-<<<<<<< HEAD
-=======
   .readiness-heading { align-items: flex-start; flex-direction: column; }
   .readiness-summary { justify-content: flex-start; }
   .readiness-list { grid-template-columns: 1fr; }
->>>>>>> feat: update log
 }
 </style>

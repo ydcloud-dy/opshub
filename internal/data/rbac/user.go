@@ -106,7 +106,11 @@ func (r *userRepo) List(ctx context.Context, page, pageSize int, keyword string,
 			"%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%")
 	}
 	if departmentID > 0 {
-		query = query.Where("department_id = ?", departmentID)
+		departmentIDs, err := r.getDepartmentScopeIDs(ctx, departmentID)
+		if err != nil {
+			return nil, 0, err
+		}
+		query = query.Where("department_id IN ?", departmentIDs)
 	}
 
 	err := query.Count(&total).Error
@@ -120,6 +124,41 @@ func (r *userRepo) List(ctx context.Context, page, pageSize int, keyword string,
 		Find(&users).Error
 
 	return users, total, err
+}
+
+func (r *userRepo) getDepartmentScopeIDs(ctx context.Context, rootID uint) ([]uint, error) {
+	var departments []*rbac.SysDepartment
+	if err := r.db.WithContext(ctx).
+		Select("id", "parent_id").
+		Find(&departments).Error; err != nil {
+		return nil, err
+	}
+
+	return collectDepartmentScopeIDs(departments, rootID), nil
+}
+
+func collectDepartmentScopeIDs(departments []*rbac.SysDepartment, rootID uint) []uint {
+	childrenByParent := make(map[uint][]uint)
+	for _, department := range departments {
+		childrenByParent[department.ParentID] = append(childrenByParent[department.ParentID], department.ID)
+	}
+
+	result := make([]uint, 0, len(departments))
+	queue := []uint{rootID}
+	visited := make(map[uint]struct{}, len(departments))
+	for len(queue) > 0 {
+		departmentID := queue[0]
+		queue = queue[1:]
+		if _, exists := visited[departmentID]; exists {
+			continue
+		}
+
+		visited[departmentID] = struct{}{}
+		result = append(result, departmentID)
+		queue = append(queue, childrenByParent[departmentID]...)
+	}
+
+	return result
 }
 
 func (r *userRepo) AssignRoles(ctx context.Context, userID uint, roleIDs []uint) error {

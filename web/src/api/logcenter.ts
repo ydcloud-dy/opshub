@@ -37,6 +37,8 @@ export interface InternalLogQueryScope {
   workloads?: string[]
   pods?: string[]
   containers?: string[]
+  nodes?: string[]
+  levels?: string[]
   environments?: string[]
 }
 
@@ -47,6 +49,7 @@ export interface InternalLogQueryRequest {
   query?: string
   scope?: InternalLogQueryScope
   filters?: Array<{ field: string; operator: string; value: any }>
+  filterLogic?: 'and' | 'or'
   sort?: 'asc' | 'desc'
   limit?: number
   cursor?: string
@@ -79,6 +82,16 @@ export interface LogHistogramResponse {
   durationMs: number
 }
 
+export interface InternalKubernetesResourceOption {
+  clusterId: string
+  namespace: string
+  workloadKind: string
+  workloadName: string
+  podName: string
+  containerName: string
+  nodeName: string
+}
+
 export interface InternalLogResourceOptions {
   hostIds: string[]
   clusterIds: string[]
@@ -89,6 +102,7 @@ export interface InternalLogResourceOptions {
   pods: string[]
   containers: string[]
   nodes: string[]
+  kubernetesResources: InternalKubernetesResourceOption[]
 }
 
 export interface LogExportTask {
@@ -100,6 +114,9 @@ export interface LogExportTask {
   progress: number
   exportedRows: number
   maxRows: number
+	attemptCount: number
+	maxAttempts: number
+	nextAttemptAt?: string
   fileName?: string
   fileSize: number
   errorMessage?: string
@@ -240,8 +257,6 @@ export interface LogIngestQueueStatus {
   lastError?: string
 }
 
-<<<<<<< HEAD
-=======
 export interface LogIngestReadinessCheck {
   id: string
   title: string
@@ -257,7 +272,6 @@ export interface LogIngestReadinessSummary {
   total: number
 }
 
->>>>>>> feat: update log
 export interface LogIngestStatus {
   mode: string
   gateway: LogIngestComponentStatus
@@ -271,15 +285,19 @@ export interface LogIngestStatus {
     lastTestAt?: string
     lastError?: string
     initializedAt?: string
+	retentionStatus?: 'healthy' | 'warning' | 'critical' | 'error' | string
+	retentionError?: string
+	expiredParts: number
+	ttlLagSeconds: number
+	ttlMergeActive: boolean
+	ttlMergeProgress: number
+	ttlMergeTimeoutSeconds: number
   }
   gatewayUrl: string
   writerUrl: string
-<<<<<<< HEAD
-=======
   publicGatewayUrl: string
   readiness: LogIngestReadinessCheck[]
   readinessSummary: LogIngestReadinessSummary
->>>>>>> feat: update log
   checkedAt: string
 }
 
@@ -348,6 +366,8 @@ export interface LogCollectionPolicyPayload {
 
 export interface LogRetentionPolicy {
   id: number
+  boundPolicyCount?: number
+  updatedPolicyCount?: number
   createdBy?: number
   updatedBy?: number
   createdAt?: string
@@ -376,6 +396,8 @@ export interface LogAccessPolicy {
     subjectId: number
     storageId?: number
     libraryItemPattern?: string
+		scopeMode: 'all' | 'collection_policy'
+		collectionPolicyIds: number[]
     allowedActions: Array<'query' | 'tail' | 'export' | string>
     deniedFields: string[]
     maskFields: string[]
@@ -383,24 +405,50 @@ export interface LogAccessPolicy {
   }
 }
 
+export interface InternalLogAccessCapabilities {
+  isAdmin: boolean
+  canQuery: boolean
+  canTail: boolean
+  canExport: boolean
+}
+
 export interface LogCapacityEstimate {
   storageId: number
   storageName: string
   currentRows: number
   currentCompressedBytes: number
+  currentStoredBytes: number
   currentUncompressedBytes: number
   compressionRatio: number
   logsLast24Hours: number
   rawBytesLast24Hours: number
   averageRecordBytes: number
+  averageStoredRecordBytes: number
   dailyStoredBytes: number
+  forecastBasis: 'stored_bytes_per_row' | 'raw_bytes_compression' | 'retention_average' | 'insufficient_data'
+  safetyFactor: number
   retentionDays: number
   projectedStoredBytes: number
   recommendedBytes: number
   diskTotalBytes: number
   diskFreeBytes: number
+  diskReservedBytes: number
+  usableDiskBytes: number
+  usableFreeBytes: number
   projectedUsagePercent: number
   daysUntilFull: number
+	retention: LogRetentionHealth
+}
+
+export interface LogRetentionHealth {
+	status: 'healthy' | 'warning' | 'critical' | string
+	expiredRows: number
+	expiredParts: number
+	oldestExpiredAt?: string
+	ttlLagSeconds: number
+	ttlMergeActive: boolean
+	ttlMergeProgress: number
+	ttlMergeTimeoutSeconds: number
 }
 
 export interface LogPolicyTargetHost {
@@ -469,27 +517,31 @@ export interface LogKubernetesCollectorStatus {
 
 export interface LogCollectionPolicy {
   id: number
-  status: 'draft' | 'published' | 'disabled' | string
+  status: 'draft' | 'published' | 'disabled' | 'archived' | string
   version: number
   createdBy: number
   updatedBy: number
   createdAt: string
   updatedAt: string
   payload: LogCollectionPolicyPayload
+  draftPayload?: LogCollectionPolicyPayload
+  hasUnpublishedChanges?: boolean
   targetCount: number
-<<<<<<< HEAD
-  instanceTotal: number
-  instanceApplied: number
-=======
   targetExpected: number
   instanceTotal: number
   instanceOnline: number
   instanceApplied: number
   instancePending: number
->>>>>>> feat: update log
   errorInstances: number
 	targetHosts: LogPolicyTargetHost[]
 	targetClusters: LogPolicyTargetCluster[]
+  collectorShutdown?: Array<{
+    clusterId: number
+    clusterName: string
+    status: 'uninstalled' | 'skipped' | 'failed' | string
+    activePolicyCount: number
+    message: string
+  }>
 }
 
 export interface LogPolicyRevision {
@@ -501,6 +553,13 @@ export interface LogPolicyRevision {
   changeSummary: string
   createdBy: number
   createdAt: string
+}
+
+export interface LogPolicyRevisionPage {
+  total: number
+  page: number
+  pageSize: number
+  data: LogPolicyRevision[]
 }
 
 export interface LogCollectorAssignment {
@@ -516,13 +575,21 @@ export interface LogCollectorAssignment {
 
 export interface LogCollectorInstanceView {
   status: string
+  runtimeStatus?: string
+  lifecycleStatus?: 'active' | 'idle' | 'retired' | string
+  collectorCredentialStatus?: string
+  activePolicyCount?: number
   instance: {
     id: number
     instanceId: string
     agentId: string
     mode: string
     hostId: number
+    clusterId?: number
     hostname: string
+    podName?: string
+    namespace?: string
+    nodeName?: string
     collectorType: string
     version: string
     configVersion: number
@@ -539,7 +606,51 @@ export interface LogCollectorInstanceView {
   assignments: LogCollectorAssignment[]
 }
 
-export const getLogOverview = () => request.get('/api/v1/plugins/logcenter/overview')
+export interface LogOverviewPoint {
+  name: string
+  value: number
+}
+
+export interface LogOverviewTrendPoint {
+  time: string
+  count: number
+  bytes: number
+}
+
+export interface LogOverview {
+  logs24h: number
+  bytes24h: number
+  errors24h: number
+  averageEps5m: number
+  activeServices: number
+  trend: LogOverviewTrendPoint[]
+  levels: LogOverviewPoint[]
+  topServices: LogOverviewPoint[]
+  sources: LogOverviewPoint[]
+  collectors: {
+    total: number
+    online: number
+    errors: number
+    inputEps: number
+    outputEps: number
+    walBytes: number
+    droppedTotal: number
+    retryTotal: number
+    lastIngestAt?: string
+  }
+  storage: {
+    id?: number
+    name?: string
+    status?: string
+    available: boolean
+    error?: string
+  }
+  trendRange?: '24h' | '30d' | '12m'
+  updatedAt: string
+}
+
+export const getLogOverview = (params?: { trendRange?: '24h' | '30d' | '12m' }) =>
+  request.get<LogOverview>('/api/v1/plugins/logcenter/overview', { params })
 
 export const getLogIngestStatus = () => {
   return request.get<LogIngestStatus>('/api/v1/plugins/logcenter/ingest/status')
@@ -569,12 +680,16 @@ export const deleteLogCollectionPolicy = (id: number) => {
   return request.delete(`/api/v1/plugins/logcenter/policies/${id}`)
 }
 
+export const restoreLogCollectionPolicy = (id: number) => {
+  return request.post<LogCollectionPolicy>(`/api/v1/plugins/logcenter/policies/${id}/restore`)
+}
+
 export const publishLogCollectionPolicy = (id: number, changeSummary?: string) => {
   return request.post<LogCollectionPolicy>(`/api/v1/plugins/logcenter/policies/${id}/publish`, { changeSummary })
 }
 
-export const disableLogCollectionPolicy = (id: number) => {
-  return request.post<LogCollectionPolicy>(`/api/v1/plugins/logcenter/policies/${id}/disable`)
+export const disableLogCollectionPolicy = (id: number, uninstallCollectors = false) => {
+  return request.post<LogCollectionPolicy>(`/api/v1/plugins/logcenter/policies/${id}/disable`, { uninstallCollectors }, { timeout: 90000 })
 }
 
 export const rollbackLogCollectionPolicy = (id: number, version: number) => {
@@ -605,12 +720,16 @@ export const uninstallLogKubernetesCollector = (clusterId: number) => {
   return request.delete(`/api/v1/plugins/logcenter/kubernetes/clusters/${clusterId}/collector`, { timeout: 60000 })
 }
 
-export const getLogPolicyRevisions = (params?: { policyId?: number }) => {
-  return request.get<LogPolicyRevision[]>('/api/v1/plugins/logcenter/policies/revisions', { params })
+export const getLogPolicyRevisions = (params?: { policyId?: number; page?: number; pageSize?: number }) => {
+  return request.get<LogPolicyRevisionPage>('/api/v1/plugins/logcenter/policies/revisions', { params })
 }
 
 export const getLogCollectorInstances = () => {
   return request.get<LogCollectorInstanceView[]>('/api/v1/plugins/logcenter/collectors/instances')
+}
+
+export const deleteLogCollectorInstance = (instanceId: string) => {
+  return request.delete(`/api/v1/plugins/logcenter/collectors/instances/${encodeURIComponent(instanceId)}`)
 }
 
 export const restartLogCollectorInstance = (instanceId: string) => {
@@ -642,7 +761,11 @@ export const getLogAccessPolicies = () => {
 }
 
 export const getLogAccessPolicyOptions = () => {
-  return request.get<any, { users: Array<{ id: number; username: string; realName?: string }>; roles: Array<{ id: number; name: string; code: string }> }>('/api/v1/plugins/logcenter/access-policies/options')
+	return request.get<any, {
+		users: Array<{ id: number; username: string; realName?: string }>
+		roles: Array<{ id: number; name: string; code: string }>
+		collectionPolicies: Array<{ id: number; name: string; sourceMode: string; status: string; environment?: string }>
+	}>('/api/v1/plugins/logcenter/access-policies/options')
 }
 
 export const createLogAccessPolicy = (data: LogAccessPolicy['payload']) => {
@@ -716,6 +839,7 @@ export const queryInternalLogContext = (data: {
 }) => {
   return request.post<LogQueryResponse>('/api/v1/plugins/logcenter/internal/query/context', data, {
     timeout: LOG_QUERY_TIMEOUT_MS,
+    headers: { 'X-Silent-Error': '1' },
   })
 }
 
@@ -729,6 +853,12 @@ export const queryInternalLogResourceOptions = (data: InternalLogQueryRequest, s
 
 export const getInternalLogAssets = () => {
   return request.get<{ hosts: LogPolicyTargetHost[]; clusters: LogPolicyTargetCluster[] }>('/api/v1/plugins/logcenter/internal/assets')
+}
+
+export const getInternalLogAccessCapabilities = () => {
+  return request.get<InternalLogAccessCapabilities>('/api/v1/plugins/logcenter/internal/access-capabilities', {
+    headers: { 'X-Silent-Error': '1' },
+  })
 }
 
 export const createInternalLogExport = (data: InternalLogQueryRequest & { format: 'ndjson' | 'csv'; maxRows: number }) => {
@@ -775,7 +905,10 @@ export const streamInternalLogs = async (
   const contentType = response.headers.get('content-type') || ''
   if (!response.ok || !contentType.includes('text/event-stream')) {
     const payload = await response.json().catch(() => ({}))
-    throw new Error(payload?.message || `Tail 连接失败（HTTP ${response.status}）`)
+    const error = new Error(payload?.message || `Tail 连接失败（HTTP ${response.status}）`)
+    const typedError = error as Error & { status?: number }
+    typedError.status = response.status
+    throw typedError
   }
   if (!response.body) throw new Error('浏览器不支持流式日志响应')
   const reader = response.body.getReader()

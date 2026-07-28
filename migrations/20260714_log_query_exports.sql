@@ -8,6 +8,11 @@ CREATE TABLE IF NOT EXISTS log_export_tasks (
   progress INT NOT NULL DEFAULT 0,
   exported_rows BIGINT NOT NULL DEFAULT 0,
   max_rows INT NOT NULL DEFAULT 100000,
+  attempt_count INT NOT NULL DEFAULT 0,
+  max_attempts INT NOT NULL DEFAULT 3,
+  lease_owner VARCHAR(160) NOT NULL DEFAULT '',
+  lease_expires_at DATETIME NULL,
+  next_attempt_at DATETIME NULL,
   file_name VARCHAR(255) DEFAULT '',
   file_path TEXT,
   file_size BIGINT NOT NULL DEFAULT 0,
@@ -20,5 +25,7 @@ CREATE TABLE IF NOT EXISTS log_export_tasks (
   KEY idx_log_export_tasks_user_id (user_id),
   KEY idx_log_export_tasks_storage_id (storage_id),
   KEY idx_log_export_tasks_status (status),
+  KEY idx_log_export_tasks_claim (status, next_attempt_at),
+  KEY idx_log_export_tasks_lease_expires_at (lease_expires_at),
   KEY idx_log_export_tasks_expires_at (expires_at)
 );

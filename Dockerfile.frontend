@@ -9,14 +9,14 @@
   # 复制 package.json
   COPY web/package*.json ./
 
-  # 安装依赖
-  RUN npm i
+  # 使用锁文件安装依赖，保证部署构建可复现
+  RUN npm ci
 
   # 复制源代码
   COPY web/ .
 
-  # 构建（跳过类型检查，直接用 vite 构建）
-  RUN npx vite build
+  # 全仓历史类型错误由独立检查报告，部署镜像执行可产出的 Vite 构建
+  RUN npm exec -- vite build
 
   # Runtime stage
   FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/nginx:alpine

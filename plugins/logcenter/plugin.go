@@ -53,11 +53,17 @@ func (p *Plugin) Enable(db *gorm.DB) error {
 		&model.CollectorAssignment{},
 		&model.ClusterCollectorCredential{},
 		&model.AccessPolicy{},
+		&model.AccessPolicyScope{},
 		&model.RetentionPolicy{},
 	); err != nil {
 		return err
 	}
-	server.BootstrapStorageFromEnvironment(db)
+	if err := server.RotateStorageSecretsFromEnvironment(db); err != nil {
+		return err
+	}
+	if err := server.BootstrapStorageFromEnvironment(db); err != nil {
+		return err
+	}
 	server.SyncInternalMonitorDataSources(db)
 	return nil
 }

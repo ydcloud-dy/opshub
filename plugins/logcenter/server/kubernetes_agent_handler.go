@@ -93,9 +93,7 @@ func (h *agentControlHandler) GetKubernetesLogConfig(c *gin.Context) {
 		response.ErrorCode(c, http.StatusInternalServerError, "生成 Kubernetes 日志采集配置失败: "+err.Error())
 		return
 	}
-	raw, _ := json.Marshal(result)
-	sum := sha256.Sum256(raw)
-	etag := `"` + hex.EncodeToString(sum[:]) + `"`
+	etag := buildAgentConfigETag(result)
 	c.Header("ETag", etag)
 	c.Header("Cache-Control", "no-cache")
 	if c.GetHeader("If-None-Match") == etag {
@@ -130,7 +128,7 @@ func (h *agentControlHandler) ReportKubernetesLogConfigStatus(c *gin.Context) {
 			if assignment.PolicyVersion > 0 {
 				values["policy_version"] = assignment.PolicyVersion
 			}
-			if assignmentStatus == "applied" {
+			if assignmentStatus == "applied" || assignmentStatus == "disabled" {
 				values["applied_at"] = &now
 			} else {
 				values["applied_at"] = nil
@@ -268,6 +266,7 @@ func syncKubernetesAssignments(tx *gorm.DB, identity kubernetesCollectorIdentity
 	if len(activeIDs) > 0 {
 		disable = disable.Where("policy_id NOT IN ?", activeIDs)
 	}
+	disable = disable.Where("desired_state <> ?", "disabled")
 	if err := disable.Updates(map[string]any{"desired_state": "disabled", "apply_status": "pending", "applied_at": nil}).Error; err != nil {
 		return instance, err
 	}

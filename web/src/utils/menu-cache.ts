@@ -1,4 +1,4 @@
-const MENU_CACHE_VERSION = 'v4'
+const MENU_CACHE_VERSION = 'v6'
 const MENU_CACHE_TTL = 12 * 60 * 60 * 1000
 
 export const getMenuCacheUsername = (userInfo?: any) => {

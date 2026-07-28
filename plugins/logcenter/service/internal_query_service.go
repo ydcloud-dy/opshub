@@ -15,7 +15,7 @@ import (
 
 const (
 	defaultInternalLimit = 200
-	maxInternalLimit     = 500
+	maxInternalLimit     = 2000
 )
 
 type InternalQueryService struct {
@@ -41,6 +41,8 @@ type InternalQueryScope struct {
 	Workloads    []string `json:"workloads"`
 	Pods         []string `json:"pods"`
 	Containers   []string `json:"containers"`
+	Nodes        []string `json:"nodes"`
+	Levels       []string `json:"levels"`
 	Environments []string `json:"environments"`
 }
 
@@ -57,15 +59,18 @@ type InternalQueryRequest struct {
 	Query                   string                `json:"query"`
 	Scope                   InternalQueryScope    `json:"scope"`
 	Filters                 []InternalQueryFilter `json:"filters"`
+	FilterLogic             string                `json:"filterLogic"`
 	Sort                    string                `json:"sort"`
 	Limit                   int                   `json:"limit"`
 	Cursor                  string                `json:"cursor"`
 	SkipHistory             bool                  `json:"skipHistory"`
+	AllowedPolicyIDs        []uint64              `json:"-"`
 	AllowedHostIDs          []uint64              `json:"-"`
 	AllowedKubernetesScopes map[uint64][]string   `json:"-"`
 	DeniedFields            []string              `json:"-"`
 	MaskFields              []string              `json:"-"`
 	DenyAll                 bool                  `json:"-"`
+	RequiredFilters         []InternalQueryFilter `json:"-"`
 }
 
 type InternalContextRequest struct {
@@ -80,6 +85,7 @@ type InternalContextRequest struct {
 	BeforeSeconds           int                    `json:"beforeSeconds"`
 	AfterSeconds            int                    `json:"afterSeconds"`
 	Limit                   int                    `json:"limit"`
+	AllowedPolicyIDs        []uint64               `json:"-"`
 	AllowedHostIDs          []uint64               `json:"-"`
 	AllowedKubernetesScopes map[uint64][]string    `json:"-"`
 	DeniedFields            []string               `json:"-"`
@@ -87,9 +93,10 @@ type InternalContextRequest struct {
 }
 
 type internalCursor struct {
-	Timestamp   string `json:"timestamp"`
-	Fingerprint uint64 `json:"fingerprint"`
-	Sequence    uint64 `json:"sequence"`
+	Timestamp      string `json:"timestamp"`
+	TimestampNanos int64  `json:"timestampNanos,omitempty"`
+	Fingerprint    uint64 `json:"fingerprint"`
+	Sequence       uint64 `json:"sequence"`
 }
 
 type internalSQL struct {
@@ -100,15 +107,26 @@ type internalSQL struct {
 }
 
 type InternalResourceOptions struct {
-	HostIDs      []string `json:"hostIds"`
-	ClusterIDs   []string `json:"clusterIds"`
-	Environments []string `json:"environments"`
-	Services     []string `json:"services"`
-	Namespaces   []string `json:"namespaces"`
-	Workloads    []string `json:"workloads"`
-	Pods         []string `json:"pods"`
-	Containers   []string `json:"containers"`
-	Nodes        []string `json:"nodes"`
+	HostIDs             []string                           `json:"hostIds"`
+	ClusterIDs          []string                           `json:"clusterIds"`
+	Environments        []string                           `json:"environments"`
+	Services            []string                           `json:"services"`
+	Namespaces          []string                           `json:"namespaces"`
+	Workloads           []string                           `json:"workloads"`
+	Pods                []string                           `json:"pods"`
+	Containers          []string                           `json:"containers"`
+	Nodes               []string                           `json:"nodes"`
+	KubernetesResources []InternalKubernetesResourceOption `json:"kubernetesResources"`
+}
+
+type InternalKubernetesResourceOption struct {
+	ClusterID     string `json:"clusterId"`
+	Namespace     string `json:"namespace"`
+	WorkloadKind  string `json:"workloadKind"`
+	WorkloadName  string `json:"workloadName"`
+	PodName       string `json:"podName"`
+	ContainerName string `json:"containerName"`
+	NodeName      string `json:"nodeName"`
 }
 
 type InternalAlertSample struct {
@@ -141,6 +159,7 @@ func (s *InternalQueryService) Query(ctx context.Context, cluster logmodel.Stora
 	}
 	query := fmt.Sprintf(`SELECT
     formatDateTime(timestamp, '%%Y-%%m-%%dT%%H:%%i:%%S.%%fZ', 'UTC') AS timestampText,
+	toString(toUnixTimestamp64Nano(timestamp)) AS timestampNanos,
     formatDateTime(observed_at, '%%Y-%%m-%%dT%%H:%%i:%%S.%%fZ', 'UTC') AS observedAt,
     formatDateTime(ingested_at, '%%Y-%%m-%%dT%%H:%%i:%%S.%%fZ', 'UTC') AS ingestedAt,
     source_type AS sourceType,
@@ -189,7 +208,7 @@ LIMIT %d`, database, built.Where, sortDirection, sortDirection, sortDirection, l
 	items = applyLogFieldSecurity(items, req.DeniedFields, req.MaskFields)
 	result := &LogQueryResponse{
 		Items:      items,
-		Total:      len(items),
+		Total:      -1,
 		DurationMS: time.Since(started).Milliseconds(),
 		Fields:     summarizeFields(items),
 		HasMore:    hasMore,
@@ -197,9 +216,10 @@ LIMIT %d`, database, built.Where, sortDirection, sortDirection, sortDirection, l
 	if len(rows) > 0 {
 		last := rows[len(rows)-1]
 		result.NextCursor = encodeInternalCursor(internalCursor{
-			Timestamp:   asString(last["timestampText"]),
-			Fingerprint: parseInternalUint(last["fingerprint"]),
-			Sequence:    parseInternalUint(last["sequence"]),
+			Timestamp:      asString(last["timestampText"]),
+			TimestampNanos: parseInternalInt64(last["timestampNanos"]),
+			Fingerprint:    parseInternalUint(last["fingerprintText"]),
+			Sequence:       parseInternalUint(last["sequenceText"]),
 		})
 	}
 	return result, nil
@@ -255,14 +275,14 @@ func (s *InternalQueryService) AlertSamples(ctx context.Context, cluster logmode
 	for _, row := range rows {
 		labels := make(map[string]string, len(groupFields)+3)
 		sampleRequest := req
-		sampleRequest.Filters = append([]InternalQueryFilter(nil), req.Filters...)
+		sampleRequest.RequiredFilters = append([]InternalQueryFilter(nil), req.RequiredFilters...)
 		for _, field := range groupFields {
 			value := asString(row[field])
 			if value == "" || value == "0" {
 				continue
 			}
 			labels[field] = value
-			sampleRequest.Filters = append(sampleRequest.Filters, InternalQueryFilter{Field: field, Operator: "eq", Value: value})
+			sampleRequest.RequiredFilters = append(sampleRequest.RequiredFilters, InternalQueryFilter{Field: field, Operator: "eq", Value: value})
 		}
 		sampleRequest.Sort = "desc"
 		sampleRequest.Limit = sampleLimit
@@ -416,7 +436,7 @@ func (s *InternalQueryService) Context(ctx context.Context, cluster logmodel.Sto
 	beforeLimit := limit / 2
 	afterLimit := limit - beforeLimit - 1
 	base := InternalQueryRequest{
-		StorageID: req.StorageID, Filters: filters, SkipHistory: true, AllowedHostIDs: req.AllowedHostIDs,
+		StorageID: req.StorageID, Filters: filters, SkipHistory: true, AllowedPolicyIDs: req.AllowedPolicyIDs, AllowedHostIDs: req.AllowedHostIDs,
 		AllowedKubernetesScopes: req.AllowedKubernetesScopes, DeniedFields: req.DeniedFields, MaskFields: req.MaskFields,
 	}
 	beforeReq := base
@@ -466,9 +486,9 @@ func (s *InternalQueryService) Context(ctx context.Context, cluster logmodel.Sto
 		ContextSelected: true,
 	}
 	items := make([]LogItem, 0, len(beforeResult.Items)+1+len(afterResult.Items))
-	items = append(items, beforeResult.Items...)
+	items = appendInternalContextNeighbors(items, beforeResult.Items, selected)
 	items = append(items, selected)
-	items = append(items, afterResult.Items...)
+	items = appendInternalContextNeighbors(items, afterResult.Items, selected)
 	items = applyLogFieldSecurity(items, req.DeniedFields, req.MaskFields)
 	return &LogQueryResponse{
 		Items: items, Total: len(items), DurationMS: time.Since(started).Milliseconds(), Fields: summarizeFields(items),
@@ -485,16 +505,17 @@ func (s *InternalQueryService) ResourceOptions(ctx context.Context, cluster logm
 		return InternalResourceOptions{}, err
 	}
 	query := fmt.Sprintf(`SELECT
-    groupUniqArrayIf(200)(toString(host_id), asset_type = 'host' AND host_id > 0) AS hostIds,
-    groupUniqArrayIf(200)(toString(cluster_id), cluster_id > 0) AS clusterIds,
+	    groupUniqArrayIf(200)(toString(host_id), asset_type = 'host' AND host_id > 0) AS hostIds,
+	    groupUniqArrayIf(200)(toString(cluster_id), cluster_id > 0) AS clusterIds,
     groupUniqArrayIf(200)(environment, environment != '') AS environments,
     groupUniqArrayIf(200)(service, service != '') AS services,
     groupUniqArrayIf(200)(namespace, namespace != '') AS namespaces,
     groupUniqArrayIf(200)(workload_name, workload_name != '') AS workloads,
     groupUniqArrayIf(200)(pod_name, pod_name != '') AS pods,
-    groupUniqArrayIf(200)(container_name, container_name != '') AS containers,
-    groupUniqArrayIf(200)(node_name, node_name != '') AS nodes
-FROM %s.opshub_logs
+	    groupUniqArrayIf(200)(container_name, container_name != '') AS containers,
+	    groupUniqArrayIf(200)(node_name, node_name != '') AS nodes,
+	    groupUniqArrayIf(5000)(concat(toString(cluster_id), '|', namespace, '|', workload_kind, '|', workload_name, '|', pod_name, '|', container_name, '|', node_name), asset_type = 'kubernetes' AND cluster_id > 0 AND pod_name != '') AS kubernetesResources
+	FROM %s.opshub_logs
 WHERE %s`, database, built.Where)
 	rows, err := s.clickhouse.QueryJSONEachRow(ctx, cluster, password, query, built.Params)
 	if err != nil {
@@ -509,7 +530,7 @@ WHERE %s`, database, built.Where)
 		Environments: internalStringSlice(row["environments"]), Services: internalStringSlice(row["services"]),
 		Namespaces: internalStringSlice(row["namespaces"]), Workloads: internalStringSlice(row["workloads"]),
 		Pods: internalStringSlice(row["pods"]), Containers: internalStringSlice(row["containers"]),
-		Nodes: internalStringSlice(row["nodes"]),
+		Nodes: internalStringSlice(row["nodes"]), KubernetesResources: parseInternalKubernetesResources(row["kubernetesResources"]),
 	}, nil
 }
 
@@ -520,18 +541,27 @@ func InternalFieldOptions() []FieldOption {
 		{Name: "level", Type: "keyword", DisplayName: "日志级别", IsLevelField: true},
 		{Name: "sourceType", Type: "keyword", DisplayName: "来源类型"},
 		{Name: "assetType", Type: "keyword", DisplayName: "资产类型"},
-		{Name: "assetId", Type: "uint64", DisplayName: "资产 ID"},
-		{Name: "hostId", Type: "uint64", DisplayName: "主机 ID"},
-		{Name: "clusterId", Type: "uint64", DisplayName: "集群 ID"},
+		{Name: "assetId", Type: "uint64", DisplayName: "资产"},
+		{Name: "hostId", Type: "uint64", DisplayName: "主机"},
+		{Name: "clusterId", Type: "uint64", DisplayName: "集群"},
 		{Name: "environment", Type: "keyword", DisplayName: "环境"},
 		{Name: "service", Type: "keyword", DisplayName: "服务"},
 		{Name: "namespace", Type: "keyword", DisplayName: "命名空间"},
+		{Name: "workloadKind", Type: "keyword", DisplayName: "工作负载类型"},
 		{Name: "workloadName", Type: "keyword", DisplayName: "工作负载"},
 		{Name: "podName", Type: "keyword", DisplayName: "Pod"},
+		{Name: "podUid", Type: "keyword", DisplayName: "Pod UID"},
 		{Name: "containerName", Type: "keyword", DisplayName: "容器"},
+		{Name: "containerImage", Type: "keyword", DisplayName: "容器镜像"},
 		{Name: "nodeName", Type: "keyword", DisplayName: "节点"},
 		{Name: "filePath", Type: "keyword", DisplayName: "文件路径"},
+		{Name: "stream", Type: "keyword", DisplayName: "输出流"},
 		{Name: "traceId", Type: "keyword", DisplayName: "Trace ID"},
+		{Name: "spanId", Type: "keyword", DisplayName: "Span ID"},
+		{Name: "agentId", Type: "keyword", DisplayName: "Agent ID"},
+		{Name: "policyId", Type: "uint64", DisplayName: "策略 ID"},
+		{Name: "fingerprint", Type: "uint64", DisplayName: "日志指纹"},
+		{Name: "sequence", Type: "uint64", DisplayName: "日志序列"},
 	}
 }
 
@@ -583,6 +613,13 @@ func buildInternalWhere(req InternalQueryRequest) (internalSQL, error) {
 		conditions = append(conditions, fmt.Sprintf("%s IN (%s)", column, strings.Join(placeholders, ",")))
 	}
 	appendStringCondition("asset_type", req.Scope.AssetTypes)
+	if req.AllowedPolicyIDs != nil {
+		if len(req.AllowedPolicyIDs) == 0 {
+			conditions = append(conditions, "0 = 1")
+		} else {
+			appendUintCondition("policy_id", req.AllowedPolicyIDs)
+		}
+	}
 	appendUintCondition("asset_id", req.Scope.AssetIDs)
 	appendUintCondition("host_id", req.Scope.HostIDs)
 	appendUintCondition("cluster_id", req.Scope.ClusterIDs)
@@ -603,12 +640,14 @@ func buildInternalWhere(req InternalQueryRequest) (internalSQL, error) {
 	appendStringCondition("workload_name", req.Scope.Workloads)
 	appendStringCondition("pod_name", req.Scope.Pods)
 	appendStringCondition("container_name", req.Scope.Containers)
+	appendStringCondition("node_name", req.Scope.Nodes)
+	appendStringCondition("level", req.Scope.Levels)
 	appendStringCondition("environment", req.Scope.Environments)
 	if keyword := strings.TrimSpace(req.Query); keyword != "" && keyword != "*" {
 		params["keyword"] = keyword
 		conditions = append(conditions, "positionCaseInsensitiveUTF8(body, {keyword:String}) > 0")
 	}
-	for _, filter := range req.Filters {
+	for _, filter := range req.RequiredFilters {
 		condition, err := buildInternalFilter(filter, params, &paramIndex)
 		if err != nil {
 			return internalSQL{}, err
@@ -617,17 +656,29 @@ func buildInternalWhere(req InternalQueryRequest) (internalSQL, error) {
 			conditions = append(conditions, condition)
 		}
 	}
+	filterGroup, err := buildInternalFilterGroup(req.Filters, req.FilterLogic, params, &paramIndex)
+	if err != nil {
+		return internalSQL{}, err
+	}
+	if filterGroup != "" {
+		conditions = append(conditions, filterGroup)
+	}
 	if strings.TrimSpace(req.Cursor) != "" {
 		cursor, err := decodeInternalCursor(req.Cursor)
 		if err != nil {
 			return internalSQL{}, fmt.Errorf("分页游标无效")
 		}
-		params["cursor_time"] = cursor.Timestamp
 		operator := "<"
 		if strings.EqualFold(req.Sort, "asc") {
 			operator = ">"
 		}
-		conditions = append(conditions, fmt.Sprintf("(timestamp, fingerprint, sequence) %s (parseDateTime64BestEffort({cursor_time:String}, 9, 'UTC'), %d, %d)", operator, cursor.Fingerprint, cursor.Sequence))
+		if cursor.TimestampNanos > 0 {
+			params["cursor_nanos"] = strconv.FormatInt(cursor.TimestampNanos, 10)
+			conditions = append(conditions, fmt.Sprintf("(timestamp, fingerprint, sequence) %s (fromUnixTimestamp64Nano({cursor_nanos:Int64}), %d, %d)", operator, cursor.Fingerprint, cursor.Sequence))
+		} else {
+			params["cursor_time"] = cursor.Timestamp
+			conditions = append(conditions, fmt.Sprintf("(timestamp, fingerprint, sequence) %s (parseDateTime64BestEffort({cursor_time:String}, 9, 'UTC'), %d, %d)", operator, cursor.Fingerprint, cursor.Sequence))
+		}
 	}
 	return internalSQL{Where: strings.Join(conditions, " AND "), Params: params, Start: start.UTC(), End: end.UTC()}, nil
 }
@@ -641,7 +692,16 @@ func buildInternalMetricsWhere(req InternalQueryRequest) (internalSQL, bool, err
 	if keyword := strings.TrimSpace(req.Query); keyword != "" && keyword != "*" {
 		return internalSQL{}, false, nil
 	}
-	if req.Cursor != "" || len(req.Scope.Environments) > 0 || len(req.Scope.Workloads) > 0 || len(req.Scope.Pods) > 0 || len(req.Scope.Containers) > 0 {
+	// The minute metrics table has no policy_id dimension. Policy-scoped users
+	// must aggregate the raw table or the histogram could include denied logs.
+	if req.AllowedPolicyIDs != nil {
+		return internalSQL{}, false, nil
+	}
+	filterLogic, err := normalizeInternalFilterLogic(req.FilterLogic)
+	if err != nil {
+		return internalSQL{}, false, err
+	}
+	if req.Cursor != "" || len(req.Scope.Environments) > 0 || len(req.Scope.Workloads) > 0 || len(req.Scope.Pods) > 0 || len(req.Scope.Containers) > 0 || len(req.Scope.Nodes) > 0 {
 		return internalSQL{}, false, nil
 	}
 	params := map[string]string{
@@ -692,6 +752,7 @@ func buildInternalMetricsWhere(req InternalQueryRequest) (internalSQL, bool, err
 	appendUintCondition("cluster_id", req.Scope.ClusterIDs)
 	appendStringCondition("namespace", req.Scope.Namespaces)
 	appendStringCondition("service", req.Scope.Services)
+	appendStringCondition("level", req.Scope.Levels)
 	if req.AllowedHostIDs != nil {
 		if len(req.AllowedHostIDs) == 0 {
 			conditions = append(conditions, "asset_type != 'host'")
@@ -704,42 +765,102 @@ func buildInternalMetricsWhere(req InternalQueryRequest) (internalSQL, bool, err
 		}
 	}
 	appendKubernetesAccessCondition(&conditions, params, req.AllowedKubernetesScopes, "metric_acl")
-	metricColumns := map[string]string{
+	for _, filter := range req.RequiredFilters {
+		condition, supported := buildInternalMetricFilter(filter, params, &paramIndex)
+		if !supported {
+			return internalSQL{}, false, nil
+		}
+		if condition != "" {
+			conditions = append(conditions, condition)
+		}
+	}
+	filterConditions := make([]string, 0, len(req.Filters))
+	for _, filter := range req.Filters {
+		condition, supported := buildInternalMetricFilter(filter, params, &paramIndex)
+		if !supported {
+			return internalSQL{}, false, nil
+		}
+		if condition != "" {
+			filterConditions = append(filterConditions, condition)
+		}
+	}
+	if len(filterConditions) > 0 {
+		conditions = append(conditions, "("+strings.Join(filterConditions, " "+filterLogic+" ")+")")
+	}
+	return internalSQL{Where: strings.Join(conditions, " AND "), Params: params, Start: start.UTC(), End: end.UTC()}, true, nil
+}
+
+func normalizeInternalFilterLogic(value string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "and":
+		return "AND", nil
+	case "or":
+		return "OR", nil
+	default:
+		return "", fmt.Errorf("字段条件关系仅支持 AND 或 OR")
+	}
+}
+
+func buildInternalFilterGroup(filters []InternalQueryFilter, logic string, params map[string]string, index *int) (string, error) {
+	joiner, err := normalizeInternalFilterLogic(logic)
+	if err != nil {
+		return "", err
+	}
+	conditions := make([]string, 0, len(filters))
+	for _, filter := range filters {
+		condition, buildErr := buildInternalFilter(filter, params, index)
+		if buildErr != nil {
+			return "", buildErr
+		}
+		if condition != "" {
+			conditions = append(conditions, condition)
+		}
+	}
+	if len(conditions) == 0 {
+		return "", nil
+	}
+	return "(" + strings.Join(conditions, " "+joiner+" ") + ")", nil
+}
+
+func buildInternalMetricFilter(filter InternalQueryFilter, params map[string]string, index *int) (string, bool) {
+	columns := map[string]string{
 		"level": "level", "assetType": "asset_type", "assetId": "asset_id", "hostId": "asset_id",
 		"clusterId": "cluster_id", "namespace": "namespace", "service": "service",
 	}
-	for _, filter := range req.Filters {
-		column, supported := metricColumns[strings.TrimSpace(filter.Field)]
-		operator := strings.ToLower(strings.TrimSpace(filter.Operator))
-		if !supported || (operator != "" && operator != "eq" && operator != "in") {
-			return internalSQL{}, false, nil
-		}
-		values := normalizeInternalStrings(internalStringValues(filter.Value))
-		if len(values) == 0 {
-			continue
-		}
-		placeholders := make([]string, 0, len(values))
-		for _, value := range values {
-			name := fmt.Sprintf("metric_%d", paramIndex)
-			paramIndex++
-			params[name] = value
-			placeholders = append(placeholders, fmt.Sprintf("{%s:String}", name))
-		}
-		condition := fmt.Sprintf("toString(%s) IN (%s)", column, strings.Join(placeholders, ","))
-		if filter.Field == "hostId" {
-			condition = "asset_type = 'host' AND " + condition
-		}
-		conditions = append(conditions, condition)
+	column, supported := columns[strings.TrimSpace(filter.Field)]
+	operator := strings.ToLower(strings.TrimSpace(filter.Operator))
+	if !supported || (operator != "" && operator != "eq" && operator != "in") {
+		return "", false
 	}
-	return internalSQL{Where: strings.Join(conditions, " AND "), Params: params, Start: start.UTC(), End: end.UTC()}, true, nil
+	values := normalizeInternalStrings(internalStringValues(filter.Value))
+	if len(values) == 0 {
+		return "", true
+	}
+	if operator != "in" {
+		values = values[:1]
+	}
+	placeholders := make([]string, 0, len(values))
+	for _, value := range values {
+		name := fmt.Sprintf("metric_%d", *index)
+		(*index)++
+		params[name] = value
+		placeholders = append(placeholders, fmt.Sprintf("{%s:String}", name))
+	}
+	condition := fmt.Sprintf("toString(%s) IN (%s)", column, strings.Join(placeholders, ","))
+	if filter.Field == "hostId" {
+		condition = "(asset_type = 'host' AND " + condition + ")"
+	}
+	return condition, true
 }
 
 func buildInternalFilter(filter InternalQueryFilter, params map[string]string, index *int) (string, error) {
 	columns := map[string]string{
 		"body": "body", "level": "level", "sourceType": "source_type", "assetType": "asset_type",
 		"assetId": "asset_id", "hostId": "host_id", "clusterId": "cluster_id", "environment": "environment",
-		"service": "service", "namespace": "namespace", "workloadName": "workload_name", "podName": "pod_name",
-		"containerName": "container_name", "nodeName": "node_name", "filePath": "file_path", "traceId": "trace_id",
+		"service": "service", "namespace": "namespace", "workloadKind": "workload_kind", "workloadName": "workload_name",
+		"podName": "pod_name", "podUid": "pod_uid", "containerName": "container_name", "containerImage": "container_image",
+		"nodeName": "node_name", "filePath": "file_path", "stream": "stream", "traceId": "trace_id", "spanId": "span_id",
+		"agentId": "agent_id", "policyId": "policy_id", "fingerprint": "fingerprint", "sequence": "sequence",
 	}
 	column, ok := columns[strings.TrimSpace(filter.Field)]
 	if !ok {
@@ -778,6 +899,11 @@ func buildInternalFilter(filter InternalQueryFilter, params map[string]string, i
 }
 
 func internalRowToLogItem(row map[string]interface{}) LogItem {
+	normalized := make(map[string]interface{}, len(row)+2)
+	for key, value := range row {
+		normalized[key] = value
+	}
+	row = normalized
 	if value, ok := row["fingerprintText"]; ok {
 		row["fingerprint"] = value
 		delete(row, "fingerprintText")
@@ -786,6 +912,7 @@ func internalRowToLogItem(row map[string]interface{}) LogItem {
 		row["sequence"] = value
 		delete(row, "sequenceText")
 	}
+	delete(row, "timestampNanos")
 	labels := map[string]string{}
 	for _, key := range []string{"sourceType", "assetType", "assetId", "hostId", "clusterId", "environment", "service", "namespace", "workloadKind", "workloadName", "podName", "containerName", "nodeName", "filePath", "stream"} {
 		if value := asString(row[key]); value != "" && value != "0" {
@@ -817,6 +944,34 @@ func normalizeInternalLimit(limit int) int {
 		return maxInternalLimit
 	}
 	return limit
+}
+
+func appendInternalContextNeighbors(items []LogItem, neighbors []LogItem, selected LogItem) []LogItem {
+	for _, item := range neighbors {
+		if sameInternalContextLog(item, selected) {
+			continue
+		}
+		items = append(items, item)
+	}
+	return items
+}
+
+func sameInternalContextLog(left, right LogItem) bool {
+	leftTime := parseFlexibleTime(left.Timestamp)
+	rightTime := parseFlexibleTime(right.Timestamp)
+	sameTime := !leftTime.IsZero() && !rightTime.IsZero() && leftTime.Equal(rightTime)
+	if !sameTime {
+		return false
+	}
+	leftFingerprint := parseInternalUint(left.Fields["fingerprint"])
+	rightFingerprint := parseInternalUint(right.Fields["fingerprint"])
+	leftSequence := parseInternalUint(left.Fields["sequence"])
+	rightSequence := parseInternalUint(right.Fields["sequence"])
+	if leftFingerprint > 0 && rightFingerprint > 0 && leftSequence > 0 && rightSequence > 0 &&
+		leftFingerprint == rightFingerprint && leftSequence == rightSequence {
+		return true
+	}
+	return left.Message == right.Message && strings.EqualFold(left.Level, right.Level)
 }
 
 func chooseInternalBucket(duration time.Duration) time.Duration {
@@ -854,6 +1009,28 @@ func internalStringSlice(value interface{}) []string {
 	return values
 }
 
+func parseInternalKubernetesResources(value interface{}) []InternalKubernetesResourceOption {
+	encoded := internalStringSlice(value)
+	result := make([]InternalKubernetesResourceOption, 0, len(encoded))
+	for _, item := range encoded {
+		parts := strings.SplitN(item, "|", 7)
+		if len(parts) != 7 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[4]) == "" {
+			continue
+		}
+		result = append(result, InternalKubernetesResourceOption{
+			ClusterID: strings.TrimSpace(parts[0]), Namespace: strings.TrimSpace(parts[1]),
+			WorkloadKind: strings.TrimSpace(parts[2]), WorkloadName: strings.TrimSpace(parts[3]),
+			PodName: strings.TrimSpace(parts[4]), ContainerName: strings.TrimSpace(parts[5]), NodeName: strings.TrimSpace(parts[6]),
+		})
+	}
+	sort.Slice(result, func(left, right int) bool {
+		leftKey := result[left].ClusterID + "\x00" + result[left].Namespace + "\x00" + result[left].WorkloadKind + "\x00" + result[left].WorkloadName + "\x00" + result[left].PodName + "\x00" + result[left].ContainerName
+		rightKey := result[right].ClusterID + "\x00" + result[right].Namespace + "\x00" + result[right].WorkloadKind + "\x00" + result[right].WorkloadName + "\x00" + result[right].PodName + "\x00" + result[right].ContainerName
+		return leftKey < rightKey
+	})
+	return result
+}
+
 func normalizeInternalStrings(values []string) []string {
 	result := make([]string, 0, len(values))
 	seen := make(map[string]struct{}, len(values))
@@ -887,7 +1064,88 @@ func decodeInternalCursor(value string) (internalCursor, error) {
 }
 
 func parseInternalUint(value interface{}) uint64 {
-	parsed, _ := strconv.ParseUint(strings.TrimSpace(fmt.Sprint(value)), 10, 64)
+	switch typed := value.(type) {
+	case nil:
+		return 0
+	case uint64:
+		return typed
+	case uint:
+		return uint64(typed)
+	case uint32:
+		return uint64(typed)
+	case uint16:
+		return uint64(typed)
+	case uint8:
+		return uint64(typed)
+	case int64:
+		if typed < 0 {
+			return 0
+		}
+		return uint64(typed)
+	case int:
+		if typed < 0 {
+			return 0
+		}
+		return uint64(typed)
+	case int32:
+		if typed < 0 {
+			return 0
+		}
+		return uint64(typed)
+	case int16:
+		if typed < 0 {
+			return 0
+		}
+		return uint64(typed)
+	case int8:
+		if typed < 0 {
+			return 0
+		}
+		return uint64(typed)
+	case float64:
+		if typed <= 0 {
+			return 0
+		}
+		return uint64(typed + 0.5)
+	case float32:
+		if typed <= 0 {
+			return 0
+		}
+		return uint64(typed + 0.5)
+	case json.Number:
+		if parsed, err := strconv.ParseUint(strings.TrimSpace(typed.String()), 10, 64); err == nil {
+			return parsed
+		}
+		if parsed, err := strconv.ParseFloat(strings.TrimSpace(typed.String()), 64); err == nil && parsed > 0 {
+			return uint64(parsed + 0.5)
+		}
+		return 0
+	}
+	raw := strings.TrimSpace(fmt.Sprint(value))
+	if parsed, err := strconv.ParseUint(raw, 10, 64); err == nil {
+		return parsed
+	}
+	if parsed, err := strconv.ParseFloat(raw, 64); err == nil && parsed > 0 {
+		return uint64(parsed + 0.5)
+	}
+	return 0
+}
+
+func parseInternalInt64(value interface{}) int64 {
+	switch typed := value.(type) {
+	case nil:
+		return 0
+	case int64:
+		return typed
+	case int:
+		return int64(typed)
+	case json.Number:
+		if parsed, err := strconv.ParseInt(strings.TrimSpace(typed.String()), 10, 64); err == nil {
+			return parsed
+		}
+	}
+	raw := strings.TrimSpace(fmt.Sprint(value))
+	parsed, _ := strconv.ParseInt(raw, 10, 64)
 	return parsed
 }
 

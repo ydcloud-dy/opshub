@@ -61,6 +61,23 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      affinity:
+        podAntiAffinity:
+          {{- if eq (lower .Values.logCenter.ingest.queue.redpanda.antiAffinity) "hard" }}
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  {{- include "opshub.redpanda.selectorLabels" . | nindent 18 }}
+          {{- else }}
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    {{- include "opshub.redpanda.selectorLabels" . | nindent 20 }}
+          {{- end }}
       terminationGracePeriodSeconds: 90
       containers:
         - name: redpanda

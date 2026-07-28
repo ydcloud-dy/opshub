@@ -24,7 +24,7 @@ import (
 	"github.com/ydcloud-dy/opshub/internal/logagent"
 )
 
-const defaultVersion = "0.3.0"
+const defaultVersion = "0.3.1"
 
 var (
 	version = defaultVersion

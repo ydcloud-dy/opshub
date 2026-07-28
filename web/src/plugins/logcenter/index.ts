@@ -74,61 +74,37 @@ class LogCenterPlugin implements Plugin {
         path: '/logs',
         name: 'LogCenter',
         component: () => import('@/views/logcenter/Overview.vue'),
-<<<<<<< HEAD
-        meta: { title: '日志中心' },
-=======
         meta: { title: '日志中心', keepAlive: true },
->>>>>>> feat: update log
       },
       {
         path: '/logs/overview',
         name: 'LogCenterOverview',
         component: () => import('@/views/logcenter/Overview.vue'),
-<<<<<<< HEAD
-        meta: { title: '日志总览' },
-=======
         meta: { title: '日志总览', keepAlive: true },
->>>>>>> feat: update log
       },
       {
         path: '/logs/query',
         name: 'LogCenterQuery',
         component: () => import('@/views/logcenter/Query.vue'),
-<<<<<<< HEAD
-        meta: { title: '日志查询' },
-=======
         meta: { title: '日志查询', keepAlive: true },
->>>>>>> feat: update log
       },
       {
         path: '/logs/library',
         name: 'LogCenterLibrary',
         component: () => import('@/views/logcenter/Library.vue'),
-<<<<<<< HEAD
-        meta: { title: '日志库' },
-=======
         meta: { title: '日志库', keepAlive: true },
->>>>>>> feat: update log
       },
       {
         path: '/logs/templates',
         name: 'LogCenterTemplates',
         component: () => import('@/views/logcenter/Templates.vue'),
-<<<<<<< HEAD
-        meta: { title: '查询模板' },
-=======
         meta: { title: '查询模板', keepAlive: true },
->>>>>>> feat: update log
       },
       {
         path: '/logs/collectors',
         name: 'LogCenterCollectors',
         component: () => import('@/views/logcenter/Collectors.vue'),
-<<<<<<< HEAD
-        meta: { title: '采集接入' },
-=======
         meta: { title: '采集接入', keepAlive: true },
->>>>>>> feat: update log
       },
     ]
   }

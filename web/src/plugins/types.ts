@@ -12,6 +12,7 @@ export interface PluginRouteConfig {
   path: string
   name: string
   component: () => Promise<any>
+  redirect?: string
   meta?: {
     title?: string
     icon?: string

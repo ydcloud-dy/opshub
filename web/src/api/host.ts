@@ -23,15 +23,15 @@ export const deleteHost = (id: number) => {
 
 // 凭证管理
 export const getCredentialList = (params: any) => {
-  return request.get('/api/v1/credentials', { params })
+  return request.get<any, any>('/api/v1/credentials', { params })
 }
 
 export const getCredentials = () => {
-  return request.get('/api/v1/credentials/all')
+  return request.get<any, any[]>('/api/v1/credentials/all')
 }
 
 export const getCredential = (id: number) => {
-  return request.get(`/api/v1/credentials/${id}`)
+  return request.get<any, any>(`/api/v1/credentials/${id}`)
 }
 
 export const createCredential = (data: any) => {

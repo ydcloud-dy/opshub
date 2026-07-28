@@ -1,0 +1,94 @@
+# OpsHub 日志链路生产高可用覆盖配置。
+# 使用前请确认 Kubernetes 至少有 3 个可调度节点，并为所有密码和 Token 提供独立 Secret 值。
+
+backend:
+  replicaCount: 2
+
+frontend:
+  replicaCount: 2
+
+clickhouse:
+  enabled: true
+  persistence:
+    enabled: true
+    size: 500Gi
+  resources:
+    requests:
+      memory: 4Gi
+      cpu: "2"
+    limits:
+      memory: 8Gi
+      cpu: "4"
+  highAvailability:
+    enabled: true
+    clusterName: opshub_logs_cluster
+    replicaCount: 2
+    antiAffinity: hard
+    podDisruptionBudget:
+      enabled: true
+      minAvailable: 1
+    keeper:
+      replicaCount: 3
+      antiAffinity: hard
+      persistence:
+        enabled: true
+        size: 20Gi
+      resources:
+        requests:
+          memory: 512Mi
+          cpu: 250m
+        limits:
+          memory: 2Gi
+          cpu: "1"
+      podDisruptionBudget:
+        enabled: true
+        minAvailable: 2
+
+logCenter:
+  ingest:
+    enabled: true
+    highAvailability:
+      enabled: true
+    queue:
+      mode: kafka
+      partitions: 24
+      replicationFactor: 3
+      retentionHours: 72
+      redpanda:
+        enabled: true
+        replicaCount: 3
+        antiAffinity: hard
+        smp: 2
+        memory: 2G
+        persistence:
+          enabled: true
+          size: 200Gi
+        resources:
+          requests:
+            memory: 2Gi
+            cpu: "1"
+          limits:
+            memory: 4Gi
+            cpu: "2"
+        podDisruptionBudget:
+          enabled: true
+          minAvailable: 2
+    gateway:
+      replicaCount: 3
+      podDisruptionBudget:
+        enabled: true
+        minAvailable: 2
+    writer:
+      replicaCount: 3
+      podDisruptionBudget:
+        enabled: true
+        minAvailable: 2
+      deadletter:
+        persistence:
+          enabled: false
+  export:
+    persistence:
+      enabled: true
+      size: 50Gi
+      accessModes:
+        - ReadWriteMany

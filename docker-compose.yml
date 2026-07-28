@@ -1,14 +1,21 @@
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: ${DOCKER_LOG_MAX_SIZE:-50m}
+    max-file: ${DOCKER_LOG_MAX_FILE:-3}
+
 services:
   mysql:
     image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/mysql:8.0.44
     container_name: opshub-mysql
     restart: unless-stopped
+    logging: *default-logging
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-OpsHub@2026}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-opshub}
       TZ: Asia/Shanghai
     ports:
-      - "${MYSQL_PORT:-3306}:3306"
+      - "${MYSQL_BIND_ADDRESS:-127.0.0.1}:${MYSQL_PORT:-3306}:3306"
     volumes:
       - mysql-data:/var/lib/mysql
     command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
@@ -23,13 +30,18 @@ services:
   db-init:
     image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/mysql:8.0.44
     container_name: opshub-db-init
+    logging: *default-logging
     depends_on:
       mysql:
         condition: service_healthy
     volumes:
       - ./migrations/init.sql:/init.sql:ro,z
-    entrypoint: >
-      sh -c "mysql -h mysql -u root -p'OpsHub@2026' opshub < /init.sql && echo 'Database initialized successfully'"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-OpsHub@2026}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-opshub}
+    entrypoint: ["sh", "-ec"]
+    command:
+      - 'mysql -h mysql -u root -p"$${MYSQL_ROOT_PASSWORD}" "$${MYSQL_DATABASE}" < /init.sql && echo "Database initialized successfully"'
     networks:
       - opshub-network
 
@@ -37,13 +49,16 @@ services:
     image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/redis:7-alpine
     container_name: opshub-redis
     restart: unless-stopped
+    logging: *default-logging
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-OpsHub@Redis}
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "${REDIS_BIND_ADDRESS:-127.0.0.1}:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis-data:/data
-    command: redis-server --appendonly yes
+    command: ["sh", "-ec", "exec redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -54,8 +69,9 @@ services:
     image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/clickhouse/clickhouse-server:26.1
     container_name: opshub-clickhouse
     restart: unless-stopped
+    logging: *default-logging
     ports:
-      - "${CLICKHOUSE_HTTP_PORT:-18123}:8123"
+      - "${CLICKHOUSE_BIND_ADDRESS:-127.0.0.1}:${CLICKHOUSE_HTTP_PORT:-18123}:8123"
     environment:
       CLICKHOUSE_DB: ${CLICKHOUSE_DATABASE:-opshub_logs}
       CLICKHOUSE_USER: ${CLICKHOUSE_USERNAME:-opshub}
@@ -75,9 +91,10 @@ services:
 
   redpanda:
     profiles: ["standard"]
-    image: ${REDPANDA_IMAGE:-docker.redpanda.com/redpandadata/redpanda:v24.3.18}
+    image: ${REDPANDA_IMAGE:-docker.1ms.run/redpandadata/redpanda:v24.3.18}
     container_name: opshub-redpanda
     restart: unless-stopped
+    logging: *default-logging
     command:
       - redpanda
       - start
@@ -94,7 +111,7 @@ services:
     volumes:
       - redpanda-data:/var/lib/redpanda/data
     healthcheck:
-      test: ["CMD-SHELL", "rpk cluster health --brokers=127.0.0.1:9092 >/dev/null 2>&1"]
+      test: ["CMD-SHELL", "rpk cluster health -X brokers=127.0.0.1:9092 >/dev/null 2>&1"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -102,9 +119,10 @@ services:
       - opshub-network
 
   log-writer:
-    image: ${OPSHUB_LOG_WRITER_IMAGE:-docker.1ms.run/dyclouds/opshub-log-writer:v0.0.8}
+    image: ${OPSHUB_LOG_WRITER_IMAGE:-docker.1ms.run/dyclouds/opshub-log-writer:v0.0.9}
     container_name: opshub-log-writer
     restart: unless-stopped
+    logging: *default-logging
     environment:
       OPSHUB_LOG_QUEUE_MODE: ${OPSHUB_LOG_QUEUE_MODE:-direct}
       OPSHUB_LOG_WRITER_HTTP_ADDRESS: :9881
@@ -147,9 +165,10 @@ services:
       - opshub-network
 
   log-gateway:
-    image: ${OPSHUB_LOG_GATEWAY_IMAGE:-docker.1ms.run/dyclouds/opshub-log-gateway:v0.0.8}
+    image: ${OPSHUB_LOG_GATEWAY_IMAGE:-docker.1ms.run/dyclouds/opshub-log-gateway:v0.0.9}
     container_name: opshub-log-gateway
     restart: unless-stopped
+    logging: *default-logging
     ports:
       - "${LOG_GATEWAY_PORT:-19880}:9880"
       - "${LOG_GATEWAY_GRPC_PORT:-19882}:9882"
@@ -159,7 +178,7 @@ services:
       OPSHUB_LOG_GATEWAY_GRPC_ADDRESS: :9882
       OPSHUB_LOG_WRITER_URL: http://log-writer:9881
       OPSHUB_LOG_WRITER_TOKEN: ${OPSHUB_LOG_WRITER_TOKEN:-opshub-log-writer-token-change-in-production}
-      OPSHUB_LOG_INGEST_TOKENS: ${OPSHUB_LOG_INGEST_TOKEN:-opshub-log-ingest-token-change-in-production}
+      OPSHUB_LOG_INGEST_TOKENS: ${OPSHUB_LOG_INGEST_TOKENS:-${OPSHUB_LOG_INGEST_TOKEN:-opshub-log-ingest-token-change-in-production}}
       OPSHUB_LOG_GATEWAY_RATE_PER_SECOND: ${OPSHUB_LOG_GATEWAY_RATE_PER_SECOND:-5000}
       OPSHUB_LOG_GATEWAY_BURST_RECORDS: ${OPSHUB_LOG_GATEWAY_BURST_RECORDS:-10000}
       OPSHUB_LOG_GATEWAY_GLOBAL_RATE_PER_SECOND: ${OPSHUB_LOG_GATEWAY_GLOBAL_RATE_PER_SECOND:-50000}
@@ -190,15 +209,17 @@ services:
       - opshub-network
 
   backend:
-    image: docker.1ms.run/dyclouds/opshub-api:v0.0.8
+    image: docker.1ms.run/dyclouds/opshub-api:v0.0.9
     container_name: opshub-backend
     restart: unless-stopped
+    logging: *default-logging
     ports:
       - "${BACKEND_PORT:-9876}:9876"
     environment:
       OPSHUB_SERVER_MODE: ${OPSHUB_SERVER_MODE:-release}
       OPSHUB_SERVER_TIMEZONE: ${OPSHUB_SERVER_TIMEZONE:-Asia/Shanghai}
       OPSHUB_SERVER_HTTP_PORT: 9876
+      OPSHUB_SERVER_WRITE_TIMEOUT: ${OPSHUB_SERVER_WRITE_TIMEOUT:-0}
       OPSHUB_SERVER_JWT_SECRET: ${OPSHUB_SERVER_JWT_SECRET:-opshub-jwt-secret-change-in-production}
       OPSHUB_SERVER_JWT_EXPIRE: 24h
       OPSHUB_SERVER_EXTERNAL_URL: ${OPSHUB_SERVER_EXTERNAL_URL:-}  # OAuth2 SSO外部访问URL，如 http://10.122.24.67:9876
@@ -214,9 +235,10 @@ services:
       OPSHUB_DATABASE_PASSWORD: ${MYSQL_ROOT_PASSWORD:-OpsHub@2026}
       OPSHUB_REDIS_HOST: redis
       OPSHUB_REDIS_PORT: 6379
-      OPSHUB_REDIS_PASSWORD: ""
+      OPSHUB_REDIS_PASSWORD: ${REDIS_PASSWORD:-OpsHub@Redis}
       OPSHUB_REDIS_DB: 0
       OPSHUB_LOGCENTER_ENCRYPTION_KEY: ${OPSHUB_LOGCENTER_ENCRYPTION_KEY:-opshub-logcenter-encryption-key-change-in-production}
+      OPSHUB_LOGCENTER_DECRYPTION_KEYS: ${OPSHUB_LOGCENTER_DECRYPTION_KEYS:-}
       OPSHUB_LOGCENTER_CLICKHOUSE_ENDPOINT: http://clickhouse:8123
       OPSHUB_LOGCENTER_CLICKHOUSE_DATABASE: ${CLICKHOUSE_DATABASE:-opshub_logs}
       OPSHUB_LOGCENTER_CLICKHOUSE_USERNAME: ${CLICKHOUSE_USERNAME:-opshub}
@@ -224,17 +246,22 @@ services:
       OPSHUB_LOG_GATEWAY_STATUS_URL: http://log-gateway:9880
       OPSHUB_LOG_WRITER_STATUS_URL: http://log-writer:9881
       OPSHUB_LOG_QUEUE_MODE: ${OPSHUB_LOG_QUEUE_MODE:-direct}
+      OPSHUB_LOG_KAFKA_BROKERS: ${OPSHUB_LOG_KAFKA_BROKERS:-redpanda:9092}
       OPSHUB_LOG_INGEST_TEST_TOKEN: ${OPSHUB_LOG_INGEST_TOKEN:-opshub-log-ingest-token-change-in-production}
       OPSHUB_LOG_AGENT_INGEST_TOKEN: ${OPSHUB_LOG_INGEST_TOKEN:-opshub-log-ingest-token-change-in-production}
       OPSHUB_LOG_GATEWAY_PUBLIC_URL: ${OPSHUB_LOG_GATEWAY_PUBLIC_URL:-}
-      OPSHUB_LOG_AGENT_IMAGE: ${OPSHUB_LOG_AGENT_IMAGE:-docker.1ms.run/dyclouds/opshub-log-agent:v0.0.8}
+      OPSHUB_LOG_AGENT_IMAGE: ${OPSHUB_LOG_AGENT_IMAGE:-docker.1ms.run/dyclouds/opshub-log-agent:v0.0.9}
       OPSHUB_LOG_TAIL_MAX_CONNECTIONS: ${OPSHUB_LOG_TAIL_MAX_CONNECTIONS:-50}
       OPSHUB_LOG_TAIL_POLL_MILLISECONDS: ${OPSHUB_LOG_TAIL_POLL_MILLISECONDS:-1000}
-      OPSHUB_LOG_TAIL_MAX_MINUTES: ${OPSHUB_LOG_TAIL_MAX_MINUTES:-60}
+      OPSHUB_LOG_TAIL_MAX_MINUTES: ${OPSHUB_LOG_TAIL_MAX_MINUTES:-1440}
+      OPSHUB_LOG_TAIL_REAUTH_SECONDS: ${OPSHUB_LOG_TAIL_REAUTH_SECONDS:-15}
+      OPSHUB_LOG_TTL_MERGE_TIMEOUT_SECONDS: ${OPSHUB_LOG_TTL_MERGE_TIMEOUT_SECONDS:-3600}
       OPSHUB_LOG_EXPORT_DIR: /app/data/log-exports
       OPSHUB_LOG_EXPORT_MAX_ROWS: ${OPSHUB_LOG_EXPORT_MAX_ROWS:-1000000}
       OPSHUB_LOG_EXPORT_WORKERS: ${OPSHUB_LOG_EXPORT_WORKERS:-2}
       OPSHUB_LOG_EXPORT_QUEUE_CAPACITY: ${OPSHUB_LOG_EXPORT_QUEUE_CAPACITY:-100}
+      OPSHUB_LOG_EXPORT_MAX_ATTEMPTS: ${OPSHUB_LOG_EXPORT_MAX_ATTEMPTS:-3}
+      OPSHUB_LOG_EXPORT_LEASE_SECONDS: ${OPSHUB_LOG_EXPORT_LEASE_SECONDS:-300}
       OPSHUB_LOG_EXPORT_RETENTION_HOURS: ${OPSHUB_LOG_EXPORT_RETENTION_HOURS:-24}
       OPSHUB_LOG_EXPORT_TIMEOUT_MINUTES: ${OPSHUB_LOG_EXPORT_TIMEOUT_MINUTES:-120}
       TZ: Asia/Shanghai
@@ -252,9 +279,10 @@ services:
       - opshub-network
 
   frontend:
-    image: docker.1ms.run/dyclouds/opshub-web:v0.0.8
+    image: docker.1ms.run/dyclouds/opshub-web:v0.0.9
     container_name: opshub-frontend
     restart: unless-stopped
+    logging: *default-logging
     ports:
       - "${FRONTEND_PORT:-80}:80"
     environment:

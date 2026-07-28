@@ -14,6 +14,8 @@ type ParsedRecord struct {
 	Body       string
 	Level      string
 	Attributes map[string]string
+	TraceID    string
+	SpanID     string
 }
 
 type LineParser interface {
@@ -40,7 +42,11 @@ func NewLineParser(config ParserConfig) (LineParser, error) {
 type rawParser struct{}
 
 func (rawParser) Parse(line string, observedAt time.Time) (ParsedRecord, error) {
-	return ParsedRecord{Timestamp: observedAt, Body: line, Level: detectLevel(line), Attributes: map[string]string{}}, nil
+	traceID, spanID := extractTraceContext(line)
+	return ParsedRecord{
+		Timestamp: observedAt, Body: line, Level: detectLevel(line), Attributes: map[string]string{},
+		TraceID: traceID, SpanID: spanID,
+	}, nil
 }
 
 type jsonParser struct {
@@ -60,7 +66,7 @@ func (parser jsonParser) Parse(line string, observedAt time.Time) (ParsedRecord,
 		body = line
 	}
 	timestamp := parseTimestamp(firstMapString(value, timestampField, "timestamp", "time", "@timestamp"), parser.config.TimestampLayout, observedAt)
-	level := strings.ToUpper(firstMapString(value, levelField, "level", "severity"))
+	level := normalizeLevel(firstMapString(value, levelField, "level", "severity"))
 	if level == "" {
 		level = detectLevel(body)
 	}
@@ -76,7 +82,15 @@ func (parser jsonParser) Parse(line string, observedAt time.Time) (ParsedRecord,
 			attributes[key] = fmt.Sprint(typed)
 		}
 	}
-	return ParsedRecord{Timestamp: timestamp, Body: body, Level: level, Attributes: attributes}, nil
+	traceID := normalizeTraceContextID(firstMapString(value, "traceId", "trace_id", "trace.id", "traceID"))
+	spanID := normalizeTraceContextID(firstMapString(value, "spanId", "span_id", "span.id", "spanID"))
+	textTraceID, textSpanID := extractTraceContext(line)
+	traceID = firstNonEmptyString(traceID, textTraceID)
+	spanID = firstNonEmptyString(spanID, textSpanID)
+	return ParsedRecord{
+		Timestamp: timestamp, Body: body, Level: level, Attributes: attributes,
+		TraceID: traceID, SpanID: spanID,
+	}, nil
 }
 
 type regexParser struct {
@@ -99,7 +113,7 @@ func (parser regexParser) Parse(line string, observedAt time.Time) (ParsedRecord
 	timestampField := firstNonEmptyString(parser.config.TimestampField, "timestamp")
 	levelField := firstNonEmptyString(parser.config.LevelField, "level")
 	body := firstNonEmptyString(values[messageField], line)
-	level := strings.ToUpper(values[levelField])
+	level := normalizeLevel(values[levelField])
 	if level == "" {
 		level = detectLevel(body)
 	}
@@ -109,12 +123,46 @@ func (parser regexParser) Parse(line string, observedAt time.Time) (ParsedRecord
 			attributes[key] = value
 		}
 	}
+	traceID := normalizeTraceContextID(firstNonEmptyString(values["traceId"], values["trace_id"], values["trace.id"], values["traceID"]))
+	spanID := normalizeTraceContextID(firstNonEmptyString(values["spanId"], values["span_id"], values["span.id"], values["spanID"]))
+	textTraceID, textSpanID := extractTraceContext(line)
+	traceID = firstNonEmptyString(traceID, textTraceID)
+	spanID = firstNonEmptyString(spanID, textSpanID)
 	return ParsedRecord{
 		Timestamp:  parseTimestamp(values[timestampField], parser.config.TimestampLayout, observedAt),
 		Body:       body,
 		Level:      level,
 		Attributes: attributes,
+		TraceID:    traceID,
+		SpanID:     spanID,
 	}, nil
+}
+
+var (
+	traceIDTextPattern    = regexp.MustCompile(`(?i)(?:^|[\s,;{\[(])["']?(?:trace[_\-.]?id|traceid)["']?\s*[:=]\s*["']?([A-Za-z0-9][A-Za-z0-9._~:/+\-]{7,127})`)
+	spanIDTextPattern     = regexp.MustCompile(`(?i)(?:^|[\s,;{\[(])["']?(?:span[_\-.]?id|spanid)["']?\s*[:=]\s*["']?([A-Za-z0-9][A-Za-z0-9._~:/+\-]{7,127})`)
+	traceContextIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._~:/+\-]{7,127}$`)
+	logLevelPattern       = regexp.MustCompile(`(?i)(?:^|[^A-Za-z0-9_.-])(FATAL|ERROR|WARNING|WARN|INFO|DEBUG|TRACE)(?:$|[^A-Za-z0-9_.-])`)
+)
+
+func extractTraceContext(value string) (string, string) {
+	return extractTraceContextValue(traceIDTextPattern, value), extractTraceContextValue(spanIDTextPattern, value)
+}
+
+func extractTraceContextValue(pattern *regexp.Regexp, value string) string {
+	match := pattern.FindStringSubmatch(value)
+	if len(match) < 2 {
+		return ""
+	}
+	return normalizeTraceContextID(match[1])
+}
+
+func normalizeTraceContextID(value string) string {
+	value = strings.Trim(strings.TrimSpace(value), `"'[]{}(),;`)
+	if !traceContextIDPattern.MatchString(value) {
+		return ""
+	}
+	return value
 }
 
 func parseTimestamp(value, layout string, fallback time.Time) time.Time {
@@ -145,13 +193,42 @@ func parseTimestamp(value, layout string, fallback time.Time) time.Time {
 }
 
 func detectLevel(line string) string {
-	upper := strings.ToUpper(line)
-	for _, level := range []string{"FATAL", "ERROR", "WARN", "DEBUG", "TRACE", "INFO"} {
-		if strings.Contains(upper, level) {
-			return level
-		}
+	match := logLevelPattern.FindStringSubmatch(line)
+	if len(match) > 1 {
+		return canonicalLevel(match[1])
 	}
 	return "INFO"
+}
+
+func normalizeLevel(value string) string {
+	value = strings.ToUpper(strings.TrimSpace(value))
+	switch value {
+	case "FATAL", "CRITICAL", "CRIT", "EMERGENCY", "EMERG", "ALERT":
+		return "FATAL"
+	case "ERROR", "ERR", "SEVERE":
+		return "ERROR"
+	case "WARNING", "WARN":
+		return "WARN"
+	case "NOTICE", "INFORMATION", "INFO":
+		return "INFO"
+	case "DEBUG":
+		return "DEBUG"
+	case "VERBOSE", "TRACE":
+		return "TRACE"
+	}
+	match := logLevelPattern.FindStringSubmatch(value)
+	if len(match) > 1 {
+		return canonicalLevel(match[1])
+	}
+	return ""
+}
+
+func canonicalLevel(value string) string {
+	value = strings.ToUpper(strings.TrimSpace(value))
+	if value == "WARNING" {
+		return "WARN"
+	}
+	return value
 }
 
 func firstMapString(values map[string]interface{}, keys ...string) string {

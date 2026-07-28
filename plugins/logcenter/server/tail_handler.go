@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	rbacsvc "github.com/ydcloud-dy/opshub/internal/service/rbac"
 	"github.com/ydcloud-dy/opshub/pkg/response"
 	logsvc "github.com/ydcloud-dy/opshub/plugins/logcenter/service"
 )
@@ -59,19 +60,27 @@ func (h *Handler) TailInternalLogs(c *gin.Context) {
 	if pollInterval < 500*time.Millisecond {
 		pollInterval = 500 * time.Millisecond
 	}
-	maxDuration := time.Duration(positiveEnvInt("OPSHUB_LOG_TAIL_MAX_MINUTES", 60)) * time.Minute
-	deadline := time.NewTimer(maxDuration)
+	maxDuration := time.Duration(positiveEnvInt("OPSHUB_LOG_TAIL_MAX_MINUTES", 1440)) * time.Minute
+	deadlineDuration, deadlineReason := tailStreamDeadline(maxDuration, rbacsvc.GetTokenExpiresAt(c), time.Now())
+	deadline := time.NewTimer(deadlineDuration)
 	defer deadline.Stop()
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 	heartbeat := time.NewTicker(15 * time.Second)
 	defer heartbeat.Stop()
+	reauthorize := time.NewTicker(tailReauthorizationInterval())
+	defer reauthorize.Stop()
 
 	req.Sort = "asc"
 	req.Limit = tailBatchSize
-	req.Cursor = ""
 	req.SkipHistory = true
 	tailStart := startedAt.Add(-2 * time.Second)
+	// Reconnects carry the last cursor and timestamp so a short interruption does not create a gap.
+	if strings.TrimSpace(req.Cursor) != "" {
+		if requestedStart := parseTailTime(req.Start); !requestedStart.IsZero() {
+			tailStart = requestedStart
+		}
+	}
 	consecutiveErrors := 0
 	for {
 		now := time.Now().UTC()
@@ -101,8 +110,24 @@ func (h *Handler) TailInternalLogs(c *gin.Context) {
 		case <-c.Request.Context().Done():
 			return
 		case <-deadline.C:
-			_ = writeTailEvent(c, flusher, "end", gin.H{"reason": "max_duration"})
+			if deadlineReason == "token_expired" {
+				_ = writeTailEvent(c, flusher, "error", gin.H{"message": "登录凭证已过期", "status": http.StatusUnauthorized, "retrying": false})
+			}
+			_ = writeTailEvent(c, flusher, "end", gin.H{"reason": deadlineReason})
 			return
+		case <-reauthorize.C:
+			decision, failure := h.resolveInternalAction(c, "tail", req.StorageID)
+			if failure != nil {
+				_ = writeTailEvent(c, flusher, "error", gin.H{"message": failure.Message, "status": failure.Status, "retrying": false})
+				_ = writeTailEvent(c, flusher, "end", gin.H{"reason": "authorization_changed"})
+				return
+			}
+			if message := queryFieldAccessError(req, decision.DeniedFields); message != "" {
+				_ = writeTailEvent(c, flusher, "error", gin.H{"message": message, "status": http.StatusForbidden, "retrying": false})
+				_ = writeTailEvent(c, flusher, "end", gin.H{"reason": "authorization_changed"})
+				return
+			}
+			applyTailAccessDecision(&req, decision)
 		case <-heartbeat.C:
 			if _, err := fmt.Fprintf(c.Writer, ": heartbeat %d\n\n", time.Now().Unix()); err != nil {
 				return
@@ -111,6 +136,46 @@ func (h *Handler) TailInternalLogs(c *gin.Context) {
 		case <-ticker.C:
 		}
 	}
+}
+
+func applyTailAccessDecision(req *logsvc.InternalQueryRequest, decision logAccessDecision) {
+	if decision.IsAdmin {
+		req.AllowedPolicyIDs = nil
+		req.AllowedHostIDs = nil
+		req.AllowedKubernetesScopes = nil
+		req.DeniedFields = nil
+		req.MaskFields = nil
+		return
+	}
+	req.AllowedPolicyIDs = decision.AllowedPolicyIDs
+	req.AllowedHostIDs = decision.AllowedHostIDs
+	req.AllowedKubernetesScopes = decision.AllowedKubernetesScopes
+	req.DeniedFields = decision.DeniedFields
+	req.MaskFields = decision.MaskFields
+}
+
+func tailReauthorizationInterval() time.Duration {
+	seconds := positiveEnvInt("OPSHUB_LOG_TAIL_REAUTH_SECONDS", 15)
+	if seconds < 5 {
+		seconds = 5
+	}
+	if seconds > 300 {
+		seconds = 300
+	}
+	return time.Duration(seconds) * time.Second
+}
+
+func tailStreamDeadline(maxDuration time.Duration, expiresAt, now time.Time) (time.Duration, string) {
+	if !expiresAt.IsZero() {
+		remaining := expiresAt.Sub(now)
+		if remaining <= 0 {
+			return time.Millisecond, "token_expired"
+		}
+		if remaining < maxDuration {
+			return remaining, "token_expired"
+		}
+	}
+	return maxDuration, "max_duration"
 }
 
 func writeTailEvent(c *gin.Context, flusher http.Flusher, event string, value interface{}) bool {
@@ -131,4 +196,17 @@ func positiveEnvInt(name string, fallback int) int {
 		return fallback
 	}
 	return value
+}
+
+func parseTailTime(value string) time.Time {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}
+	}
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02 15:04:05", "2006-01-02T15:04:05"} {
+		if parsed, err := time.Parse(layout, value); err == nil {
+			return parsed.UTC()
+		}
+	}
+	return time.Time{}
 }

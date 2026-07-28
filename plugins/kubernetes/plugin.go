@@ -227,7 +227,6 @@ type Cluster struct {
 	Provider    string `gorm:"size:50"`
 	Description string `gorm:"size:500"`
 	CreatedBy   uint
-	IsDeleted   bool `gorm:"default:false;index"`
 }
 
 // TableName 指定表名

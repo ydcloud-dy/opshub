@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -24,38 +25,81 @@ import (
 	"gorm.io/gorm"
 )
 
-const encryptedStorageSecretPrefix = "enc:v1:"
+const (
+	encryptedStorageSecretPrefix = "enc:v1:"
+	builtinStorageName           = "OpsHub 内置日志存储"
+)
 
 // BootstrapStorageFromEnvironment provisions the built-in storage for Compose and Helm installs.
-func BootstrapStorageFromEnvironment(db *gorm.DB) {
+func BootstrapStorageFromEnvironment(db *gorm.DB) error {
 	endpoint := strings.TrimSpace(os.Getenv("OPSHUB_LOGCENTER_CLICKHOUSE_ENDPOINT"))
 	if endpoint == "" || db == nil {
-		return
-	}
-	var count int64
-	if err := db.Model(&logmodel.StorageCluster{}).Count(&count).Error; err != nil || count > 0 {
-		return
+		return nil
 	}
 	payload := storageClusterPayload{
-		Name:                 "OpsHub 内置日志存储",
+		Name:                 builtinStorageName,
 		StorageType:          "clickhouse",
 		Endpoints:            endpoint,
 		DatabaseName:         firstNonEmpty(os.Getenv("OPSHUB_LOGCENTER_CLICKHOUSE_DATABASE"), "opshub_logs"),
 		Username:             os.Getenv("OPSHUB_LOGCENTER_CLICKHOUSE_USERNAME"),
 		Password:             os.Getenv("OPSHUB_LOGCENTER_CLICKHOUSE_PASSWORD"),
-		Timeout:              60,
-		QueueMode:            "direct",
+		Timeout:              300,
+		QueueMode:            firstNonEmpty(strings.ToLower(strings.TrimSpace(os.Getenv("OPSHUB_LOG_QUEUE_MODE"))), "direct"),
+		QueueEndpoints:       strings.TrimSpace(os.Getenv("OPSHUB_LOG_KAFKA_BROKERS")),
 		DefaultRetentionDays: 30,
 		Enabled:              true,
 	}
-	item, err := storageClusterFromPayload(payload)
+	desired, err := storageClusterFromPayload(payload)
 	if err != nil {
-		return
+		return fmt.Errorf("解析内置日志存储配置失败: %w", err)
 	}
-	item.IsPrimary = true
-	item.PasswordEncrypted, err = encryptStorageSecret(payload.Password)
-	if err != nil || db.Create(&item).Error != nil {
-		return
+	desired.IsPrimary = true
+	var item logmodel.StorageCluster
+	findErr := db.Where("name = ? OR (is_primary = ? AND endpoints = ?)", builtinStorageName, true, desired.Endpoints).First(&item).Error
+	switch {
+	case findErr == nil:
+		updates := map[string]interface{}{
+			"name": desired.Name, "storage_type": desired.StorageType, "endpoints": desired.Endpoints,
+			"database_name": desired.DatabaseName, "username": desired.Username, "skip_tls_verify": desired.SkipTLSVerify,
+			"timeout": desired.Timeout, "queue_mode": desired.QueueMode, "queue_endpoints": desired.QueueEndpoints,
+			"default_retention_days": desired.DefaultRetentionDays, "enabled": true, "is_primary": true,
+		}
+		if payload.Password != "" {
+			currentPassword, decryptErr := decryptStorageSecret(item.PasswordEncrypted)
+			if decryptErr != nil {
+				return fmt.Errorf("读取内置日志存储凭据失败: %w", decryptErr)
+			}
+			if currentPassword != payload.Password {
+				updates["password_encrypted"], err = encryptStorageSecret(payload.Password)
+				if err != nil {
+					return fmt.Errorf("加密内置日志存储凭据失败: %w", err)
+				}
+			}
+		}
+		if err := db.Model(&item).Updates(updates).Error; err != nil {
+			return fmt.Errorf("更新内置日志存储失败: %w", err)
+		}
+		if err := db.First(&item, item.ID).Error; err != nil {
+			return fmt.Errorf("重新读取内置日志存储失败: %w", err)
+		}
+	case errors.Is(findErr, gorm.ErrRecordNotFound):
+		var count int64
+		if err := db.Model(&logmodel.StorageCluster{}).Count(&count).Error; err != nil {
+			return fmt.Errorf("统计日志存储失败: %w", err)
+		}
+		if count > 0 {
+			return nil
+		}
+		item = desired
+		item.PasswordEncrypted, err = encryptStorageSecret(payload.Password)
+		if err != nil {
+			return fmt.Errorf("加密内置日志存储凭据失败: %w", err)
+		}
+		if err := db.Create(&item).Error; err != nil {
+			return fmt.Errorf("创建内置日志存储失败: %w", err)
+		}
+	default:
+		return fmt.Errorf("读取内置日志存储失败: %w", findErr)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -63,12 +107,15 @@ func BootstrapStorageFromEnvironment(db *gorm.DB) {
 	if err := clickhouse.Initialize(ctx, item, payload.Password); err != nil {
 		now := time.Now()
 		_ = db.Model(&item).Updates(map[string]interface{}{"status": "error", "last_test_at": &now, "last_error": err.Error()}).Error
-		return
+		return nil
 	}
 	now := time.Now()
-	_ = db.Model(&item).Updates(map[string]interface{}{
+	if err := db.Model(&item).Updates(map[string]interface{}{
 		"status": "healthy", "last_test_at": &now, "last_error": "", "initialized_at": &now,
-	}).Error
+	}).Error; err != nil {
+		return fmt.Errorf("更新内置日志存储状态失败: %w", err)
+	}
+	return nil
 }
 
 type storageClusterPayload struct {
@@ -87,6 +134,10 @@ type storageClusterPayload struct {
 }
 
 func (h *Handler) ListStorageClusters(c *gin.Context) {
+	isAdmin, ok := h.logAdminStatus(c)
+	if !ok {
+		return
+	}
 	var items []logmodel.StorageCluster
 	query := h.db.Order("is_primary DESC, created_at ASC")
 	if c.Query("enabled") != "" {
@@ -98,20 +149,33 @@ func (h *Handler) ListStorageClusters(c *gin.Context) {
 	}
 	for index := range items {
 		prepareStorageForResponse(&items[index])
+		if !isAdmin {
+			prepareStorageForQueryResponse(&items[index])
+		}
 	}
 	response.Success(c, items)
 }
 
 func (h *Handler) GetStorageCluster(c *gin.Context) {
+	isAdmin, ok := h.logAdminStatus(c)
+	if !ok {
+		return
+	}
 	item, ok := h.loadStorageCluster(c, parseUint(c.Param("id")))
 	if !ok {
 		return
 	}
 	prepareStorageForResponse(&item)
+	if !isAdmin {
+		prepareStorageForQueryResponse(&item)
+	}
 	response.Success(c, item)
 }
 
 func (h *Handler) CreateStorageCluster(c *gin.Context) {
+	if !h.requireLogAdmin(c, "只有管理员可以管理日志存储") {
+		return
+	}
 	var payload storageClusterPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
 		response.ErrorCode(c, http.StatusBadRequest, "参数错误: "+err.Error())
@@ -143,6 +207,9 @@ func (h *Handler) CreateStorageCluster(c *gin.Context) {
 }
 
 func (h *Handler) UpdateStorageCluster(c *gin.Context) {
+	if !h.requireLogAdmin(c, "只有管理员可以管理日志存储") {
+		return
+	}
 	existing, ok := h.loadStorageCluster(c, parseUint(c.Param("id")))
 	if !ok {
 		return
@@ -193,6 +260,9 @@ func (h *Handler) UpdateStorageCluster(c *gin.Context) {
 }
 
 func (h *Handler) DeleteStorageCluster(c *gin.Context) {
+	if !h.requireLogAdmin(c, "只有管理员可以管理日志存储") {
+		return
+	}
 	item, ok := h.loadStorageCluster(c, parseUint(c.Param("id")))
 	if !ok {
 		return
@@ -210,6 +280,9 @@ func (h *Handler) DeleteStorageCluster(c *gin.Context) {
 }
 
 func (h *Handler) TestStorageCluster(c *gin.Context) {
+	if !h.requireLogAdmin(c, "只有管理员可以管理日志存储") {
+		return
+	}
 	item, ok := h.loadStorageCluster(c, parseUint(c.Param("id")))
 	if !ok {
 		return
@@ -239,6 +312,9 @@ func (h *Handler) TestStorageCluster(c *gin.Context) {
 }
 
 func (h *Handler) InitializeStorageCluster(c *gin.Context) {
+	if !h.requireLogAdmin(c, "只有管理员可以管理日志存储") {
+		return
+	}
 	item, ok := h.loadStorageCluster(c, parseUint(c.Param("id")))
 	if !ok {
 		return
@@ -300,7 +376,7 @@ func (h *Handler) QueryInternalLogs(c *gin.Context) {
 		return
 	}
 	if !req.SkipHistory {
-		h.saveInternalQueryHistory(c, req, result.DurationMS, result.Total, "success", "")
+		h.saveInternalQueryHistory(c, req, result.DurationMS, len(result.Items), "success", "")
 	}
 	response.Success(c, result)
 }
@@ -412,16 +488,16 @@ func storageClusterFromPayload(payload storageClusterPayload) (logmodel.StorageC
 		item.DatabaseName = "opshub_logs"
 	}
 	if item.Timeout <= 0 {
-		item.Timeout = 30
+		item.Timeout = 300
 	}
-	if item.Timeout > 600 {
-		return item, fmt.Errorf("请求超时时间不能超过 600 秒")
+	if item.Timeout > 1800 {
+		return item, fmt.Errorf("请求超时时间不能超过 1800 秒")
 	}
 	if item.QueueMode == "" {
 		item.QueueMode = "direct"
 	}
-	if item.QueueMode != "direct" && item.QueueMode != "redpanda" {
-		return item, fmt.Errorf("队列模式仅支持 direct 或 redpanda")
+	if item.QueueMode != "direct" && item.QueueMode != "redpanda" && item.QueueMode != "kafka" {
+		return item, fmt.Errorf("队列模式仅支持 direct、redpanda 或 kafka")
 	}
 	if item.DefaultRetentionDays <= 0 {
 		item.DefaultRetentionDays = 30
@@ -436,6 +512,18 @@ func prepareStorageForResponse(item *logmodel.StorageCluster) {
 	item.PasswordConfigured = item.PasswordEncrypted != ""
 	item.PasswordEncrypted = ""
 	item.QueueAuthEncrypted = ""
+}
+
+func prepareStorageForQueryResponse(item *logmodel.StorageCluster) {
+	item.Endpoints = ""
+	item.DatabaseName = ""
+	item.Username = ""
+	item.PasswordConfigured = false
+	item.SkipTLSVerify = false
+	item.Timeout = 0
+	item.QueueMode = ""
+	item.QueueEndpoints = ""
+	item.LastError = ""
 }
 
 func (h *Handler) loadStorageCluster(c *gin.Context, id uint) (logmodel.StorageCluster, bool) {
@@ -490,7 +578,7 @@ func (h *Handler) saveInternalQueryHistory(c *gin.Context, req logsvc.InternalQu
 		return
 	}
 	start, end := parseRangeForHistory(req.Start, req.End)
-	queryJSON, _ := json.Marshal(gin.H{"query": req.Query, "scope": req.Scope, "filters": req.Filters, "cursor": req.Cursor})
+	queryJSON, _ := json.Marshal(gin.H{"query": req.Query, "scope": req.Scope, "filters": req.Filters, "filterLogic": req.FilterLogic, "cursor": req.Cursor})
 	scopeJSON, _ := json.Marshal(req.Scope)
 	_ = h.db.Create(&logmodel.QueryHistory{
 		UserID: rbacsvc.GetUserID(c), DataSourceID: 0, DataSourceType: "internal_clickhouse",
@@ -560,39 +648,51 @@ func encryptStorageSecret(plainText string) (string, error) {
 }
 
 func decryptStorageSecret(value string) (string, error) {
+	plainText, _, err := decryptStorageSecretWithKeyIndex(value)
+	return plainText, err
+}
+
+func decryptStorageSecretWithKeyIndex(value string) (string, int, error) {
 	if value == "" {
-		return "", nil
+		return "", 0, nil
 	}
 	if !strings.HasPrefix(value, encryptedStorageSecretPrefix) {
-		return value, nil
+		return value, -1, nil
 	}
-	key, err := storageEncryptionKey()
+	keys, err := storageEncryptionKeys()
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	raw, err := base64.RawStdEncoding.DecodeString(strings.TrimPrefix(value, encryptedStorageSecretPrefix))
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return "", err
+	for index, key := range keys {
+		block, blockErr := aes.NewCipher(key)
+		if blockErr != nil {
+			continue
+		}
+		gcm, gcmErr := cipher.NewGCM(block)
+		if gcmErr != nil || len(raw) < gcm.NonceSize() {
+			continue
+		}
+		plainText, openErr := gcm.Open(nil, raw[:gcm.NonceSize()], raw[gcm.NonceSize():], nil)
+		if openErr == nil {
+			return string(plainText), index, nil
+		}
 	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", err
-	}
-	if len(raw) < gcm.NonceSize() {
-		return "", fmt.Errorf("加密内容长度无效")
-	}
-	plainText, err := gcm.Open(nil, raw[:gcm.NonceSize()], raw[gcm.NonceSize():], nil)
-	if err != nil {
-		return "", err
-	}
-	return string(plainText), nil
+	return "", 0, fmt.Errorf("日志存储凭据解密失败，请检查当前密钥和旧密钥列表")
 }
 
 func storageEncryptionKey() ([]byte, error) {
+	keys, err := storageEncryptionKeys()
+	if err != nil {
+		return nil, err
+	}
+	return keys[0], nil
+}
+
+func storageEncryptionKeys() ([][]byte, error) {
 	secret := strings.TrimSpace(os.Getenv("OPSHUB_LOGCENTER_ENCRYPTION_KEY"))
 	if secret == "" && conf.Get() != nil {
 		secret = strings.TrimSpace(conf.Get().Server.JWTSecret)
@@ -600,8 +700,62 @@ func storageEncryptionKey() ([]byte, error) {
 	if secret == "" {
 		return nil, fmt.Errorf("未配置 OPSHUB_LOGCENTER_ENCRYPTION_KEY 或 JWT Secret")
 	}
-	sum := sha256.Sum256([]byte(secret))
-	return sum[:], nil
+	secrets := []string{secret}
+	secrets = append(secrets, splitStorageEncryptionSecrets(os.Getenv("OPSHUB_LOGCENTER_DECRYPTION_KEYS"))...)
+	seen := make(map[string]struct{}, len(secrets))
+	keys := make([][]byte, 0, len(secrets))
+	for _, candidate := range secrets {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			continue
+		}
+		if _, ok := seen[candidate]; ok {
+			continue
+		}
+		seen[candidate] = struct{}{}
+		sum := sha256.Sum256([]byte(candidate))
+		key := make([]byte, len(sum))
+		copy(key, sum[:])
+		keys = append(keys, key)
+	}
+	return keys, nil
+}
+
+func splitStorageEncryptionSecrets(value string) []string {
+	return strings.FieldsFunc(value, func(character rune) bool {
+		return character == ',' || character == '\n' || character == '\r'
+	})
+}
+
+// RotateStorageSecretsFromEnvironment rewrites plaintext or legacy-key credentials
+// with the current key. It is idempotent and safe when multiple API replicas start.
+func RotateStorageSecretsFromEnvironment(db *gorm.DB) error {
+	if db == nil {
+		return nil
+	}
+	var items []logmodel.StorageCluster
+	if err := db.Where("password_encrypted IS NOT NULL AND password_encrypted <> ?", "").Find(&items).Error; err != nil {
+		return err
+	}
+	for _, item := range items {
+		plainText, keyIndex, err := decryptStorageSecretWithKeyIndex(item.PasswordEncrypted)
+		if err != nil {
+			return fmt.Errorf("日志存储 %d 凭据迁移失败: %w", item.ID, err)
+		}
+		if keyIndex == 0 {
+			continue
+		}
+		encrypted, err := encryptStorageSecret(plainText)
+		if err != nil {
+			return fmt.Errorf("日志存储 %d 凭据重新加密失败: %w", item.ID, err)
+		}
+		if err := db.Model(&logmodel.StorageCluster{}).
+			Where("id = ? AND password_encrypted = ?", item.ID, item.PasswordEncrypted).
+			Update("password_encrypted", encrypted).Error; err != nil {
+			return fmt.Errorf("日志存储 %d 凭据保存失败: %w", item.ID, err)
+		}
+	}
+	return nil
 }
 
 func maxInt(left, right int) int {

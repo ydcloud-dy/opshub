@@ -9,7 +9,7 @@ import (
 var multilineContinuationPatterns = map[string]*regexp.Regexp{
 	"java":   regexp.MustCompile(`^(\s+at\s|\s*Caused by:|\s*Suppressed:|\s*\.\.\. \d+ more|\s+)`),
 	"go":     regexp.MustCompile(`^(\s|goroutine \d+ \[|created by |panic:|runtime\.|[a-zA-Z0-9_./-]+\([^)]*\))`),
-	"python": regexp.MustCompile(`^(\s|Traceback \(most recent call last\):|During handling of the above exception|The above exception was the direct cause)`),
+	"python": regexp.MustCompile(`^(\s|Traceback \(most recent call last\):|During handling of the above exception|The above exception was the direct cause|(?:[A-Za-z_][A-Za-z0-9_.]*(?:Error|Exception|Warning|Interrupt|Exit)|ExceptionGroup|BaseExceptionGroup|StopIteration)(?::|$))`),
 }
 
 type MultilineAssembler struct {

@@ -1,17 +1,71 @@
 <template>
   <div class="users-container">
-    <!-- 页面标题和操作按钮 -->
     <div class="page-header">
-      <h2 class="page-title">用户管理</h2>
-      <el-button class="black-button" @click="handleAdd">新增用户</el-button>
+      <div class="page-title-group">
+        <div class="page-title-icon">
+          <el-icon><User /></el-icon>
+        </div>
+        <div>
+          <h2 class="page-title">用户管理</h2>
+          <p class="page-subtitle">统一维护平台账号、组织归属、岗位与角色权限</p>
+        </div>
+      </div>
+      <el-button class="black-button" @click="handleAdd">
+        <el-icon><Plus /></el-icon>
+        新增用户
+      </el-button>
     </div>
 
-    <div class="content-wrapper">
-      <!-- 左侧部门树 -->
-      <div class="dept-tree-panel">
-        <div class="panel-header">
-          <span>部门组织</span>
+    <div class="search-bar">
+      <div class="search-inputs">
+        <el-input
+          v-model="searchForm.keyword"
+          placeholder="搜索用户名、姓名或邮箱..."
+          clearable
+          class="search-input"
+          @keyup.enter="handleSearch"
+          @clear="handleSearch"
+        >
+          <template #prefix>
+            <el-icon class="search-icon"><Search /></el-icon>
+          </template>
+        </el-input>
+        <div v-if="selectedDepartment" class="active-filter">
+          <span>组织范围</span>
+          <strong>{{ selectedDepartmentPath }}</strong>
+          <el-button link :icon="Close" aria-label="清除部门筛选" @click="clearDepartmentSelection" />
         </div>
+      </div>
+      <div class="search-actions">
+        <el-button class="black-button query-button" @click="handleSearch">
+          <el-icon><Search /></el-icon>
+          查询
+        </el-button>
+        <el-button class="reset-btn" @click="resetSearch">
+          <el-icon><RefreshLeft /></el-icon>
+          重置
+        </el-button>
+      </div>
+    </div>
+
+    <div class="users-workspace">
+      <aside class="dept-filter-panel">
+        <div class="panel-header">
+          <div>
+            <strong>部门组织</strong>
+            <span>按组织快速筛选用户</span>
+          </div>
+          <el-icon><OfficeBuilding /></el-icon>
+        </div>
+        <button
+          type="button"
+          class="all-users-button"
+          :class="{ active: !selectedDepartment }"
+          @click="clearDepartmentSelection"
+        >
+          <span><el-icon><UserFilled /></el-icon>全部用户</span>
+          <strong>{{ allUserTotal }}</strong>
+        </button>
         <el-tree
           ref="treeRef"
           :data="departmentTree"
@@ -24,106 +78,127 @@
         >
           <template #default="{ node, data }">
             <span class="custom-tree-node">
-              <span class="node-label">{{ node.label }}</span>
-              <span class="node-count">({{ data.userCount || 0 }})</span>
+              <span class="node-main">
+                <el-icon class="node-type-icon">
+                  <OfficeBuilding v-if="data.deptType === 1" />
+                  <Location v-else-if="data.deptType === 2" />
+                  <Folder v-else />
+                </el-icon>
+                <span class="node-label">{{ node.label }}</span>
+              </span>
+              <span class="node-count">{{ data.userCount || 0 }}</span>
             </span>
           </template>
         </el-tree>
-      </div>
+      </aside>
 
-      <!-- 右侧用户列表 -->
-      <div class="user-list-panel">
-        <!-- 当前选中的部门显示 -->
-        <div v-if="selectedDepartment" class="selected-dept-bar">
-          <span class="dept-path-text">
-            <span class="label">当前部门：</span>
-            <span class="path">{{ selectedDepartmentPath }}</span>
-          </span>
-          <el-button link type="primary" @click="clearDepartmentSelection" v-if="selectedDepartment">
-            查看全部用户
-          </el-button>
+      <section class="table-wrapper">
+        <div class="table-toolbar">
+          <div>
+            <strong>{{ selectedDepartment ? selectedDepartmentPath : '全部用户' }}</strong>
+            <span>{{ selectedDepartment ? '当前组织及下级组织账号' : '平台全部账号' }}</span>
+          </div>
+          <el-tag effect="plain" type="info">共 {{ pagination.total }} 人</el-tag>
         </div>
 
-        <!-- 搜索表单 -->
-        <el-form :inline="true" :model="searchForm" class="search-form">
-          <el-form-item label="关键词">
-            <el-input v-model="searchForm.keyword" placeholder="用户名/邮箱" clearable />
-          </el-form-item>
-          <el-form-item>
-            <el-button class="black-button" @click="loadUsers">查询</el-button>
-            <el-button @click="resetSearch">重置</el-button>
-          </el-form-item>
-        </el-form>
+        <el-table
+          :data="userList"
+          v-loading="loading"
+          class="modern-table"
+          :header-cell-style="{ background: '#fafbfc', color: '#606266', fontWeight: '600' }"
+        >
+          <el-table-column label="用户" min-width="230">
+            <template #default="{ row }">
+              <div class="user-identity">
+                <el-avatar v-if="row.avatar" :src="row.avatar" :size="38" />
+                <el-avatar v-else :size="38" class="user-avatar">{{ userInitial(row) }}</el-avatar>
+                <div class="user-identity-text">
+                  <div>
+                    <strong>{{ row.realName || row.username }}</strong>
+                    <el-tag v-if="row.source === 'ldap'" size="small" type="info" effect="plain">LDAP</el-tag>
+                  </div>
+                  <span>@{{ row.username }}</span>
+                </div>
+              </div>
+            </template>
+          </el-table-column>
 
-        <!-- 表格 -->
-        <el-table :data="userList" border stripe v-loading="loading" style="width: 100%">
-          <el-table-column label="头像" width="80">
+          <el-table-column label="联系方式" min-width="220">
             <template #default="{ row }">
-              <el-avatar v-if="row.avatar" :src="row.avatar" :size="50" />
-              <el-avatar v-else :size="50">{{ row.realName?.substring(0, 1) || row.username.substring(0, 1) }}</el-avatar>
+              <div class="contact-cell">
+                <span><el-icon><Message /></el-icon>{{ row.email || '-' }}</span>
+                <span><el-icon><Phone /></el-icon>{{ row.phone || '未填写手机号' }}</span>
+              </div>
             </template>
           </el-table-column>
-          <el-table-column prop="username" label="用户名" min-width="140">
-            <template #default="{ row }">
-              <span>{{ row.username }}</span>
-              <el-tag v-if="row.source === 'ldap'" size="small" type="info" style="margin-left: 6px;">LDAP</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="realName" label="真实姓名" min-width="120" />
-          <el-table-column prop="email" label="邮箱" min-width="180" />
-          <el-table-column prop="phone" label="手机号" min-width="130" />
+
           <el-table-column label="部门" min-width="150">
             <template #default="{ row }">
-              {{ row.department?.name || row.department?.deptName || '-' }}
+              <div class="department-cell">
+                <el-icon><OfficeBuilding /></el-icon>
+                <span>{{ row.department?.name || row.department?.deptName || '未分配部门' }}</span>
+              </div>
             </template>
           </el-table-column>
-          <el-table-column label="状态" width="100">
+
+          <el-table-column label="角色与岗位" min-width="220">
             <template #default="{ row }">
-              <el-tag v-if="row.isLocked" type="warning">
-                锁定中
-              </el-tag>
-              <el-tag v-else :type="row.status === 1 ? 'success' : 'danger'">
+              <div class="assignment-cell">
+                <div v-if="roleNames(row).length > 0">
+                  <span class="assignment-label">角色</span>
+                  <el-tag v-for="name in roleNames(row).slice(0, 2)" :key="`role-${name}`" size="small" effect="plain">{{ name }}</el-tag>
+                  <small v-if="roleNames(row).length > 2">+{{ roleNames(row).length - 2 }}</small>
+                </div>
+                <div v-if="positionNames(row).length > 0">
+                  <span class="assignment-label">岗位</span>
+                  <span>{{ positionNames(row).join('、') }}</span>
+                </div>
+                <span v-if="roleNames(row).length === 0 && positionNames(row).length === 0" class="empty-text">未分配</span>
+              </div>
+            </template>
+          </el-table-column>
+
+          <el-table-column label="状态" width="100" align="center">
+            <template #default="{ row }">
+              <el-tag v-if="row.isLocked" type="warning" effect="dark">锁定中</el-tag>
+              <el-tag v-else :type="row.status === 1 ? 'success' : 'danger'" effect="dark">
                 {{ row.status === 1 ? '启用' : '禁用' }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="160" fixed="right">
+
+          <el-table-column label="操作" width="190" fixed="right" align="center">
             <template #default="{ row }">
-              <el-tooltip v-if="row.isLocked" content="解锁" placement="top">
-                <el-button type="warning" size="small" :icon="Unlock" circle @click="handleUnlock(row)" />
-              </el-tooltip>
-              <el-tooltip content="编辑" placement="top">
-                <el-button type="primary" size="small" :icon="Edit" circle @click="handleEdit(row)" />
-              </el-tooltip>
-              <el-tooltip :content="row.source === 'ldap' ? 'LDAP用户无法重置密码' : '重置密码'" placement="top">
-                <el-button
-                  type="info"
-                  size="small"
-                  :icon="Key"
-                  circle
-                  @click="handleResetPassword(row)"
-                  :disabled="row.source === 'ldap'"
-                />
-              </el-tooltip>
-              <el-tooltip content="删除" placement="top">
-                <el-button type="danger" size="small" :icon="Delete" circle @click="handleDelete(row)" />
-              </el-tooltip>
+              <div class="action-buttons">
+                <el-tooltip v-if="row.isLocked" content="解锁" placement="top">
+                  <el-button link class="action-btn action-unlock" @click="handleUnlock(row)"><el-icon><Unlock /></el-icon></el-button>
+                </el-tooltip>
+                <el-tooltip content="编辑" placement="top">
+                  <el-button link class="action-btn action-edit" @click="handleEdit(row)"><el-icon><Edit /></el-icon></el-button>
+                </el-tooltip>
+                <el-tooltip :content="row.source === 'ldap' ? 'LDAP 用户无法重置密码' : '重置密码'" placement="top">
+                  <el-button link class="action-btn action-key" :disabled="row.source === 'ldap'" @click="handleResetPassword(row)"><el-icon><Key /></el-icon></el-button>
+                </el-tooltip>
+                <el-tooltip content="删除" placement="top">
+                  <el-button link class="action-btn action-delete" @click="handleDelete(row)"><el-icon><Delete /></el-icon></el-button>
+                </el-tooltip>
+              </div>
             </template>
           </el-table-column>
         </el-table>
 
-        <!-- 分页 -->
-        <el-pagination
-          v-model:current-page="pagination.page"
-          v-model:page-size="pagination.pageSize"
-          :total="pagination.total"
-          :page-sizes="[10, 20, 50, 100]"
-          layout="total, sizes, prev, pager, next, jumper"
-          @size-change="loadUsers"
-          @current-change="loadUsers"
-          style="margin-top: 20px; justify-content: center"
-        />
-      </div>
+        <div class="pagination-container">
+          <el-pagination
+            v-model:current-page="pagination.page"
+            v-model:page-size="pagination.pageSize"
+            :total="pagination.total"
+            :page-sizes="[10, 20, 50, 100]"
+            layout="total, sizes, prev, pager, next, jumper"
+            @size-change="loadUsers"
+            @current-change="loadUsers"
+          />
+        </div>
+      </section>
     </div>
 
     <!-- 新增/编辑对话框 -->
@@ -132,6 +207,7 @@
       :title="dialogTitle"
       width="55%"
       class="user-dialog responsive-dialog"
+      :close-on-click-modal="false"
       @close="handleDialogClose"
     >
       <el-form :model="userForm" :rules="rules" ref="formRef" label-width="104px" class="user-form">
@@ -320,7 +396,7 @@
       <template #footer>
         <div class="dialog-footer">
           <el-button @click="dialogVisible = false">取消</el-button>
-          <el-button type="primary" @click="handleSubmit" :loading="submitLoading">
+          <el-button class="black-button" @click="handleSubmit" :loading="submitLoading">
             <el-icon><Check /></el-icon>
             确定
           </el-button>
@@ -333,7 +409,8 @@
       v-model="resetPasswordVisible"
       title="重置密码"
       width="40%"
-      class="responsive-dialog"
+      class="user-password-dialog responsive-dialog"
+      :close-on-click-modal="false"
       @close="handleResetPasswordClose"
     >
       <el-form :model="resetPasswordForm" :rules="resetPasswordRules" ref="resetPasswordFormRef" label-width="100px">
@@ -349,19 +426,22 @@
       </el-form>
 
       <template #footer>
-        <el-button @click="resetPasswordVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleResetPasswordSubmit" :loading="resetPasswordLoading">确定</el-button>
+        <div class="dialog-footer">
+          <el-button @click="resetPasswordVisible = false">取消</el-button>
+          <el-button class="black-button" @click="handleResetPasswordSubmit" :loading="resetPasswordLoading">确定</el-button>
+        </div>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed, watch } from 'vue'
-import { ElMessage, ElMessageBox, FormInstance } from 'element-plus'
+import { ref, reactive, onMounted, computed } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import type { FormInstance } from 'element-plus'
 import {
-  User, Postcard, Message, Phone, Lock,
-  OfficeBuilding, Key, Document, Check, Edit, Delete, Unlock
+  User, UserFilled, Postcard, Message, Phone, Lock, Plus, Search, RefreshLeft, Close,
+  OfficeBuilding, Location, Folder, Key, Document, Check, Edit, Delete, Unlock
 } from '@element-plus/icons-vue'
 import { getUserList, createUser, updateUser, deleteUser, resetUserPassword, assignUserRoles, assignUserPositions, unlockUser } from '@/api/user'
 import { getDepartmentTree } from '@/api/department'
@@ -382,7 +462,7 @@ const treeProps = {
   children: 'children',
   label: 'deptName'
 }
-const selectedDepartment = ref(null)
+const selectedDepartment = ref<any>(null)
 const selectedDepartmentPath = ref('')
 
 // 角色和岗位选项
@@ -424,7 +504,21 @@ const pagination = reactive({
   total: 0
 })
 
+const allUserTotal = ref(0)
 const userList = ref([])
+
+const userInitial = (row: any) => {
+  const name = row.realName || row.username || '?'
+  return name.substring(0, 1).toUpperCase()
+}
+
+const roleNames = (row: any): string[] => {
+  return (row.roles || []).map((role: any) => role.name).filter(Boolean)
+}
+
+const positionNames = (row: any): string[] => {
+  return (row.positions || []).map((position: any) => position.postName || position.name).filter(Boolean)
+}
 
 const userForm = reactive({
   id: 0,
@@ -485,6 +579,9 @@ const loadUsers = async () => {
     })
     userList.value = res.list || []
     pagination.total = res.total || 0
+    if (!searchForm.departmentId && !searchForm.keyword) {
+      allUserTotal.value = pagination.total
+    }
   } catch (error) {
   } finally {
     loading.value = false
@@ -523,14 +620,10 @@ const loadPositionOptions = async () => {
   }
 }
 
-// 岗位选择变化
-const handlePositionChange = (value: any) => {
-}
-
 // 构建部门路径
 const buildDepartmentPath = (node: any, path: string[] = []): string => {
   path.unshift(node.deptName || node.name)
-  if (node.parent && departmentTree.value) {
+  if (node.parentId && departmentTree.value) {
     const findParent = (nodes: any[], id: number): any => {
       for (const n of nodes) {
         if (n.id === id) return n
@@ -568,10 +661,14 @@ const clearDepartmentSelection = () => {
   loadUsers()
 }
 
-const resetSearch = () => {
-  searchForm.keyword = ''
+const handleSearch = () => {
   pagination.page = 1
   loadUsers()
+}
+
+const resetSearch = () => {
+  searchForm.keyword = ''
+  clearDepartmentSelection()
 }
 
 const handleAdd = () => {
@@ -583,16 +680,6 @@ const handleAdd = () => {
 const handleEdit = (row: any) => {
   isEdit.value = true
   dialogTitle.value = '编辑用户'
-
-  // 调试：打印原始数据
-  if (row.roles && Array.isArray(row.roles)) {
-    row.roles.forEach((r: any, index: number) => {
-    })
-  }
-  if (row.positions && Array.isArray(row.positions)) {
-    row.positions.forEach((p: any, index: number) => {
-    })
-  }
 
   // 正确处理ID字段，兼容大小写
   userForm.id = Number(row.ID || row.id)
@@ -780,13 +867,6 @@ const handleDialogClose = () => {
   })
 }
 
-// 监控岗位选项和选择的变化
-watch(positionOptions, (newVal) => {
-}, { deep: true })
-
-watch(() => userForm.positionIds, (newVal) => {
-})
-
 onMounted(() => {
   loadDepartmentTree()
   loadRoleOptions()
@@ -797,59 +877,255 @@ onMounted(() => {
 
 <style scoped>
 .users-container {
-  padding: 20px;
-  background-color: #fff;
-  min-height: 100%;
+  padding: 0;
+  background: transparent;
 }
 
 .page-header {
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+  padding: 16px 20px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+.page-title-group {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.page-title-icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
   align-items: center;
-  margin-bottom: 20px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid #e6e6e6;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #d4af37;
+  font-size: 22px;
+  background: #111;
+  border: 1px solid #d4af37;
+  border-radius: 8px;
 }
 
 .page-title {
   margin: 0;
-  font-size: 18px;
-  font-weight: 500;
+  font-size: 20px;
+  font-weight: 600;
   color: #303133;
+  line-height: 1.3;
 }
 
-.content-wrapper {
+.page-subtitle {
+  margin: 4px 0 0;
+  color: #909399;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.black-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 18px;
+  color: #fff !important;
+  font-weight: 500;
+  background: #000 !important;
+  border-color: #000 !important;
+  border-radius: 6px;
+}
+
+.black-button:hover,
+.black-button:focus {
+  color: #fff !important;
+  background: #333 !important;
+  border-color: #333 !important;
+}
+
+.search-bar {
   display: flex;
-  gap: 20px;
-  min-height: calc(100vh - 200px);
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+  padding: 12px 16px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
 }
 
-/* 左侧部门树面板 */
-.dept-tree-panel {
-  width: 280px;
-  min-width: 280px;
-  background: #fafafa;
-  border: 1px solid #e6e6e6;
-  border-radius: 4px;
+.search-inputs {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+
+.search-input {
+  width: 360px;
+  max-width: 100%;
+}
+
+.search-icon {
+  color: #d4af37;
+}
+
+.active-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 32px;
+  padding: 0 6px 0 12px;
+  color: #606266;
+  font-size: 12px;
+  background: #fff9e8;
+  border: 1px solid #ead58b;
+  border-radius: 6px;
+}
+
+.active-filter strong {
+  max-width: 260px;
+  overflow: hidden;
+  color: #303133;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.query-button {
+  padding: 8px 16px;
+}
+
+.reset-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #606266;
+  background: #f5f7fa;
+  border-color: #dcdfe6;
+}
+
+.users-workspace {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  align-items: stretch;
+  gap: 12px;
+}
+
+.dept-filter-panel {
+  min-height: 520px;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
 }
 
 .panel-header {
-  padding: 12px 16px;
-  font-weight: 500;
+  min-height: 66px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.panel-header > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.panel-header strong {
   color: #303133;
-  border-bottom: 1px solid #e6e6e6;
-  background-color: #fff;
-  border-radius: 4px 4px 0 0;
+  font-size: 15px;
+}
+
+.panel-header span {
+  color: #909399;
+  font-size: 12px;
+}
+
+.panel-header > .el-icon {
+  color: #d4af37;
+  font-size: 20px;
+}
+
+.all-users-button {
+  width: calc(100% - 20px);
+  min-height: 40px;
+  margin: 10px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #606266;
+  font: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.all-users-button span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.all-users-button strong {
+  min-width: 24px;
+  color: #909399;
+  font-size: 12px;
+  text-align: right;
+}
+
+.all-users-button:hover {
+  background: #f5f7fa;
+}
+
+.all-users-button.active {
+  color: #1f1f1f;
+  font-weight: 600;
+  background: #fff7df;
 }
 
 .dept-tree {
   flex: 1;
-  padding: 12px;
+  padding: 0 10px 12px;
   overflow-y: auto;
-  background-color: #fafafa;
-  font-size: 15px;
+  background: transparent;
+  font-size: 14px;
+}
+
+.dept-tree :deep(.el-tree-node__content) {
+  height: 38px;
+  margin-bottom: 2px;
+  border-radius: 6px;
+}
+
+.dept-tree :deep(.el-tree-node__content:hover) {
+  background: #f5f7fa;
+}
+
+.dept-tree :deep(.el-tree-node.is-current > .el-tree-node__content) {
+  color: #1f1f1f;
+  font-weight: 600;
+  background: #fff7df;
 }
 
 .custom-tree-node {
@@ -857,82 +1133,254 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  padding-right: 8px;
+  min-width: 0;
+  padding-right: 6px;
+}
+
+.node-main {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.node-type-icon {
+  flex-shrink: 0;
+  color: #7d8795;
 }
 
 .node-label {
-  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 15px;
 }
 
 .node-count {
+  min-width: 24px;
   color: #909399;
-  font-size: 14px;
+  font-size: 12px;
+  text-align: right;
 }
 
-/* 右侧用户列表面板 */
-.user-list-panel {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
+.table-wrapper {
+  min-width: 0;
   overflow: hidden;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
 }
 
-.selected-dept-bar {
+.table-toolbar {
+  min-height: 66px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 16px;
-  margin-bottom: 16px;
-  background-color: #f0f9ff;
-  border: 1px solid #b3d8ff;
-  border-radius: 4px;
+  gap: 16px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #f0f0f0;
 }
 
-.dept-path-text {
+.table-toolbar > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.table-toolbar strong {
+  color: #303133;
+  font-size: 15px;
+}
+
+.table-toolbar span {
+  color: #909399;
+  font-size: 12px;
+}
+
+.modern-table {
+  width: 100%;
+}
+
+.modern-table :deep(.el-table__inner-wrapper::before) {
+  display: none;
+}
+
+.modern-table :deep(.el-table__row) {
+  transition: background-color 0.2s ease;
+}
+
+.modern-table :deep(.el-table__row:hover > td.el-table__cell) {
+  background: #fafbfc !important;
+}
+
+.user-identity {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
-.dept-path-text .label {
+.user-avatar {
+  color: #d4af37;
+  font-weight: 600;
+  background: #171717;
+}
+
+.user-identity-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.user-identity-text > div {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.user-identity-text strong {
+  overflow: hidden;
+  color: #303133;
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-identity-text > span {
+  color: #909399;
+  font-size: 12px;
+}
+
+.contact-cell,
+.assignment-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.contact-cell span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
   color: #606266;
-  font-weight: 500;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.dept-path-text .path {
+.contact-cell .el-icon,
+.department-cell .el-icon {
+  flex-shrink: 0;
+  color: #9aa3af;
+}
+
+.department-cell {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #606266;
+}
+
+.assignment-cell > div {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #606266;
+  font-size: 12px;
+}
+
+.assignment-label {
+  width: 30px;
+  flex-shrink: 0;
+  color: #909399;
+}
+
+.assignment-cell small {
+  color: #909399;
+}
+
+.empty-text {
+  color: #b2b8c2;
+  font-size: 13px;
+}
+
+.action-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.action-btn {
+  width: 30px;
+  height: 30px;
+  margin: 0 !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #7d8795;
+  border-radius: 6px;
+  transition: color 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
+}
+
+.action-btn:not(.is-disabled):hover {
+  transform: translateY(-1px);
+}
+
+.action-edit:hover {
   color: #409eff;
+  background: #ecf5ff;
 }
 
-.search-form {
-  margin-bottom: 16px;
+.action-key:hover,
+.action-unlock:hover {
+  color: #b88218;
+  background: #fdf6ec;
 }
 
-/* 黑色按钮样式 */
-.black-button {
-  background-color: #000000 !important;
-  color: #ffffff !important;
-  border-color: #000000 !important;
+.action-delete:hover {
+  color: #f56c6c;
+  background: #fef0f0;
 }
 
-.black-button:hover {
-  background-color: #333333 !important;
-  border-color: #333333 !important;
+.pagination-container {
+  min-height: 58px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  border-top: 1px solid #f0f0f0;
 }
 
-.black-button:focus {
-  background-color: #000000 !important;
-  border-color: #000000 !important;
+:deep(.user-dialog),
+:deep(.user-password-dialog) {
+  border-radius: 8px;
 }
 
-/* 用户对话框样式 */
-.user-dialog :deep(.el-dialog__body) {
-  padding: 20px 30px;
-  max-height: 60vh;
+:deep(.user-dialog .el-dialog__header),
+:deep(.user-password-dialog .el-dialog__header) {
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+:deep(.user-dialog .el-dialog__body) {
+  max-height: 68vh;
+  padding: 20px 24px 24px;
   overflow-y: auto;
+}
+
+:deep(.user-password-dialog .el-dialog__body) {
+  padding: 24px;
+}
+
+:deep(.user-dialog .el-dialog__footer),
+:deep(.user-password-dialog .el-dialog__footer) {
+  padding: 14px 24px 18px;
+  border-top: 1px solid #f0f0f0;
 }
 
 .user-form {
@@ -943,45 +1391,42 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 20px;
-  padding-bottom: 12px;
-  border-bottom: 2px solid #f0f0f0;
+  margin: 24px 0 18px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #ebeef5;
   font-size: 15px;
   font-weight: 600;
   color: #303133;
 }
 
+.form-section-title:first-child {
+  margin-top: 0;
+}
+
 .form-section-title .el-icon {
-  font-size: 18px;
-  color: #409eff;
+  color: #d4af37;
+  font-size: 17px;
 }
 
 .form-tip {
   margin-top: 6px;
   color: #909399;
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.6;
 }
 
-.form-section-title + .el-form {
-  margin-top: 16px;
-}
-
-/* 树形选择器节点样式 */
 .tree-node-count {
   margin-left: 8px;
   color: #909399;
   font-size: 12px;
 }
 
-/* 角色选择器选项样式 */
 .role-code {
   margin-left: 12px;
   color: #909399;
   font-size: 12px;
 }
 
-/* 对话框底部 */
 .dialog-footer {
   display: flex;
   justify-content: flex-end;
@@ -994,21 +1439,87 @@ onMounted(() => {
   gap: 6px;
 }
 
-/* 输入框图标样式 */
 .user-form :deep(.el-input__prefix) {
   color: #a8abb2;
 }
 
-/* 响应式对话框 */
+:deep(.el-input__wrapper),
+:deep(.el-textarea__inner),
+:deep(.el-select__wrapper) {
+  border-radius: 6px;
+}
+
+:deep(.el-tag) {
+  border-radius: 5px;
+  font-weight: 500;
+}
+
 :deep(.responsive-dialog) {
-  max-width: 1200px;
-  min-width: 400px;
+  max-width: 960px;
+  min-width: 620px;
+}
+
+:deep(.user-password-dialog) {
+  max-width: 520px;
+}
+
+@media (max-width: 1200px) {
+  .users-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .dept-filter-panel {
+    min-height: 0;
+  }
+
+  .dept-tree {
+    max-height: 240px;
+  }
 }
 
 @media (max-width: 768px) {
+  .page-header,
+  .search-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .page-header .black-button {
+    align-self: flex-end;
+  }
+
+  .search-inputs {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .search-input,
+  .active-filter {
+    width: 100%;
+  }
+
+  .active-filter strong {
+    max-width: none;
+    flex: 1;
+  }
+
+  .search-actions {
+    justify-content: flex-end;
+  }
+
+  .pagination-container {
+    overflow-x: auto;
+    justify-content: flex-start;
+  }
+
   :deep(.responsive-dialog .el-dialog) {
     width: 95% !important;
     max-width: none;
+    min-width: auto;
+  }
+
+  :deep(.responsive-dialog) {
+    width: 95% !important;
     min-width: auto;
   }
 }

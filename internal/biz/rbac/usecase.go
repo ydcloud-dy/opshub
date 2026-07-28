@@ -166,6 +166,14 @@ type DepartmentUseCase struct {
 	deptRepo DepartmentRepo
 }
 
+type DepartmentValidationError struct {
+	Message string
+}
+
+func (e *DepartmentValidationError) Error() string {
+	return e.Message
+}
+
 func NewDepartmentUseCase(deptRepo DepartmentRepo) *DepartmentUseCase {
 	return &DepartmentUseCase{
 		deptRepo: deptRepo,
@@ -173,11 +181,78 @@ func NewDepartmentUseCase(deptRepo DepartmentRepo) *DepartmentUseCase {
 }
 
 func (uc *DepartmentUseCase) Create(ctx context.Context, dept *SysDepartment) error {
+	if err := uc.validateHierarchy(ctx, dept); err != nil {
+		return err
+	}
 	return uc.deptRepo.Create(ctx, dept)
 }
 
 func (uc *DepartmentUseCase) Update(ctx context.Context, dept *SysDepartment) error {
+	if err := uc.validateHierarchy(ctx, dept); err != nil {
+		return err
+	}
 	return uc.deptRepo.Update(ctx, dept)
+}
+
+func (uc *DepartmentUseCase) validateHierarchy(ctx context.Context, dept *SysDepartment) error {
+	if dept.DeptType < 1 || dept.DeptType > 3 {
+		return &DepartmentValidationError{Message: "部门类型无效"}
+	}
+
+	if dept.DeptType == 1 {
+		if dept.ParentID != 0 {
+			return &DepartmentValidationError{Message: "公司不能设置上级部门"}
+		}
+		return nil
+	}
+
+	if dept.ParentID == 0 {
+		if dept.DeptType == 2 {
+			return &DepartmentValidationError{Message: "中心必须选择公司作为上级部门"}
+		}
+		return &DepartmentValidationError{Message: "部门必须选择公司或中心作为上级部门"}
+	}
+
+	departments, err := uc.deptRepo.GetAll(ctx)
+	if err != nil {
+		return err
+	}
+
+	departmentByID := make(map[uint]*SysDepartment, len(departments))
+	for _, item := range departments {
+		departmentByID[item.ID] = item
+	}
+
+	parent, exists := departmentByID[dept.ParentID]
+	if !exists {
+		return &DepartmentValidationError{Message: "上级部门不存在"}
+	}
+
+	if dept.DeptType == 2 && parent.DeptType != 1 {
+		return &DepartmentValidationError{Message: "中心的上级只能是公司"}
+	}
+	if dept.DeptType == 3 && parent.DeptType != 1 && parent.DeptType != 2 {
+		return &DepartmentValidationError{Message: "部门的上级只能是公司或中心"}
+	}
+
+	visited := make(map[uint]struct{})
+	for parentID := dept.ParentID; parentID != 0; {
+		if parentID == dept.ID {
+			return &DepartmentValidationError{Message: "上级部门不能选择自身或其下级部门"}
+		}
+		if _, seen := visited[parentID]; seen {
+			return &DepartmentValidationError{Message: "部门层级存在循环引用"}
+		}
+		visited[parentID] = struct{}{}
+
+		ancestor, found := departmentByID[parentID]
+		if !found {
+			break
+		}
+		parentID = ancestor.ParentID
+	}
+
+	return nil
 }
 
 func (uc *DepartmentUseCase) Delete(ctx context.Context, id uint) error {
@@ -208,6 +283,7 @@ func (uc *DepartmentUseCase) buildParentOptions(departments []*SysDepartment, pa
 			option := &DepartmentParentOptionVO{
 				ID:       dept.ID,
 				ParentID: dept.ParentID,
+				DeptType: dept.DeptType,
 				Label:    dept.Name,
 			}
 			children := uc.buildParentOptions(departments, dept.ID)

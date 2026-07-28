@@ -1,3 +1,4 @@
+{{- include "opshub.validate.logCenterHA" . }}
 {{- if .Values.logCenter.ingest.enabled }}
 apiVersion: apps/v1
 kind: Deployment
@@ -27,6 +28,13 @@ spec:
       {{- end }}
       affinity:
         podAntiAffinity:
+          {{- if .Values.logCenter.ingest.highAvailability.enabled }}
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  {{- include "opshub.logWriter.selectorLabels" . | nindent 18 }}
+          {{- else }}
           preferredDuringSchedulingIgnoredDuringExecution:
             - weight: 100
               podAffinityTerm:
@@ -34,6 +42,7 @@ spec:
                 labelSelector:
                   matchLabels:
                     {{- include "opshub.logWriter.selectorLabels" . | nindent 20 }}
+          {{- end }}
       initContainers:
         - name: wait-for-clickhouse
           image: "{{ .Values.global.busybox.repository }}:{{ .Values.global.busybox.tag }}"
@@ -105,6 +114,8 @@ spec:
                   key: log-kafka-password
             - name: OPSHUB_LOGCENTER_CLICKHOUSE_ENDPOINT
               value: {{ include "opshub.clickhouse.endpoint" . | quote }}
+            - name: OPSHUB_LOGCENTER_CLICKHOUSE_CLUSTER
+              value: {{ include "opshub.clickhouse.clusterName" . | quote }}
             - name: OPSHUB_LOGCENTER_CLICKHOUSE_DATABASE
               value: {{ include "opshub.clickhouse.database" . | quote }}
             - name: OPSHUB_LOGCENTER_CLICKHOUSE_USERNAME
@@ -181,6 +192,13 @@ spec:
       {{- end }}
       affinity:
         podAntiAffinity:
+          {{- if .Values.logCenter.ingest.highAvailability.enabled }}
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  {{- include "opshub.logGateway.selectorLabels" . | nindent 18 }}
+          {{- else }}
           preferredDuringSchedulingIgnoredDuringExecution:
             - weight: 100
               podAffinityTerm:
@@ -188,6 +206,7 @@ spec:
                 labelSelector:
                   matchLabels:
                     {{- include "opshub.logGateway.selectorLabels" . | nindent 20 }}
+          {{- end }}
       containers:
         - name: log-gateway
           image: "{{ .Values.logCenter.ingest.gateway.image.repository }}:{{ .Values.logCenter.ingest.gateway.image.tag }}"
@@ -215,7 +234,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ include "opshub.fullname" . }}-secrets
-                  key: log-ingest-token
+                  key: log-ingest-tokens
             - name: OPSHUB_LOG_GATEWAY_RATE_PER_SECOND
               value: {{ .Values.logCenter.ingest.gateway.ratePerSecond | quote }}
             - name: OPSHUB_LOG_GATEWAY_BURST_RECORDS
@@ -318,7 +337,8 @@ metadata:
   name: {{ include "opshub.fullname" . }}-log-deadletter
   namespace: {{ .Release.Namespace }}
 spec:
-  accessModes: ["ReadWriteOnce"]
+  accessModes:
+    {{- toYaml .Values.logCenter.ingest.writer.deadletter.persistence.accessModes | nindent 4 }}
   {{- if .Values.logCenter.ingest.writer.deadletter.persistence.storageClass }}
   storageClassName: {{ .Values.logCenter.ingest.writer.deadletter.persistence.storageClass | quote }}
   {{- end }}

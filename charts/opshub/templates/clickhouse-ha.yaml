@@ -1,0 +1,446 @@
+{{- if and .Values.clickhouse.enabled .Values.clickhouse.highAvailability.enabled }}
+{{- $ha := .Values.clickhouse.highAvailability -}}
+{{- $keeper := $ha.keeper -}}
+{{- if lt (int $ha.replicaCount) 2 -}}
+{{- fail "clickhouse.highAvailability.replicaCount 至少为 2" -}}
+{{- end -}}
+{{- if or (lt (int $keeper.replicaCount) 3) (eq (mod (int $keeper.replicaCount) 2) 0) -}}
+{{- fail "ClickHouse Keeper 副本数必须是大于等于 3 的奇数" -}}
+{{- end -}}
+{{- if not .Values.clickhouse.persistence.enabled -}}
+{{- fail "ClickHouse 高可用模式必须启用 clickhouse.persistence" -}}
+{{- end -}}
+{{- if not $keeper.persistence.enabled -}}
+{{- fail "ClickHouse 高可用模式必须启用 Keeper 持久化" -}}
+{{- end -}}
+{{- if not (has (lower $ha.antiAffinity) (list "hard" "soft")) -}}
+{{- fail "clickhouse.highAvailability.antiAffinity 只能为 hard 或 soft" -}}
+{{- end -}}
+{{- if not (has (lower $keeper.antiAffinity) (list "hard" "soft")) -}}
+{{- fail "clickhouse.highAvailability.keeper.antiAffinity 只能为 hard 或 soft" -}}
+{{- end -}}
+{{- if not (regexMatch "^[A-Za-z_][A-Za-z0-9_]*$" $ha.clusterName) -}}
+{{- fail "clickhouse.highAvailability.clusterName 只能包含字母、数字和下划线，且不能以数字开头" -}}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "opshub.fullname" . }}-clickhouse-ha-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "opshub.clickhouse.haLabels" . | nindent 4 }}
+data:
+  cluster.xml: |
+    <clickhouse>
+      <zookeeper>
+        {{- range $i := until (int $keeper.replicaCount) }}
+        <node index="{{ add1 $i }}">
+          <host>{{ include "opshub.fullname" $ }}-clickhouse-keeper-{{ $i }}.{{ include "opshub.fullname" $ }}-clickhouse-keeper-headless.{{ $.Release.Namespace }}.svc.cluster.local</host>
+          <port>2181</port>
+        </node>
+        {{- end }}
+      </zookeeper>
+      <remote_servers>
+        <{{ $ha.clusterName }}>
+          <shard>
+            <internal_replication>true</internal_replication>
+            {{- range $i := until (int $ha.replicaCount) }}
+            <replica>
+              <host>{{ include "opshub.fullname" $ }}-clickhouse-ha-{{ $i }}.{{ include "opshub.fullname" $ }}-clickhouse-ha-headless.{{ $.Release.Namespace }}.svc.cluster.local</host>
+              <port>9000</port>
+              <user>{{ $.Values.clickhouse.auth.username }}</user>
+              <password from_env="CLICKHOUSE_PASSWORD" />
+            </replica>
+            {{- end }}
+          </shard>
+        </{{ $ha.clusterName }}>
+      </remote_servers>
+      <distributed_ddl>
+        <path>/clickhouse/task_queue/ddl</path>
+      </distributed_ddl>
+      <macros>
+        <shard>01</shard>
+        <replica from_env="HOSTNAME" />
+      </macros>
+    </clickhouse>
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "opshub.fullname" . }}-clickhouse-keeper-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "opshub.labels" . | nindent 4 }}
+    app.kubernetes.io/component: clickhouse-keeper
+data:
+  keeper_config.xml.tpl: |
+    <clickhouse>
+      <logger>
+        <level>information</level>
+        <console>true</console>
+      </logger>
+      <listen_host>0.0.0.0</listen_host>
+      <keeper_server>
+        <tcp_port>2181</tcp_port>
+        <server_id>__SERVER_ID__</server_id>
+        <log_storage_path>/var/lib/clickhouse-keeper/coordination/log</log_storage_path>
+        <snapshot_storage_path>/var/lib/clickhouse-keeper/coordination/snapshots</snapshot_storage_path>
+        <coordination_settings>
+          <operation_timeout_ms>10000</operation_timeout_ms>
+          <session_timeout_ms>30000</session_timeout_ms>
+          <raft_logs_level>information</raft_logs_level>
+        </coordination_settings>
+        <raft_configuration>
+          {{- range $i := until (int $keeper.replicaCount) }}
+          <server>
+            <id>{{ add1 $i }}</id>
+            <hostname>{{ include "opshub.fullname" $ }}-clickhouse-keeper-{{ $i }}.{{ include "opshub.fullname" $ }}-clickhouse-keeper-headless.{{ $.Release.Namespace }}.svc.cluster.local</hostname>
+            <port>9234</port>
+          </server>
+          {{- end }}
+        </raft_configuration>
+      </keeper_server>
+    </clickhouse>
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "opshub.fullname" . }}-clickhouse-keeper-headless
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "opshub.labels" . | nindent 4 }}
+    app.kubernetes.io/component: clickhouse-keeper
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "opshub.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: clickhouse-keeper
+  ports:
+    - name: client
+      port: 2181
+      targetPort: client
+    - name: raft
+      port: 9234
+      targetPort: raft
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "opshub.fullname" . }}-clickhouse-keeper
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "opshub.labels" . | nindent 4 }}
+    app.kubernetes.io/component: clickhouse-keeper
+spec:
+  selector:
+    {{- include "opshub.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: clickhouse-keeper
+  ports:
+    - name: client
+      port: 2181
+      targetPort: client
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "opshub.fullname" . }}-clickhouse-keeper
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "opshub.labels" . | nindent 4 }}
+    app.kubernetes.io/component: clickhouse-keeper
+spec:
+  serviceName: {{ include "opshub.fullname" . }}-clickhouse-keeper-headless
+  podManagementPolicy: Parallel
+  replicas: {{ $keeper.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "opshub.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: clickhouse-keeper
+  template:
+    metadata:
+      labels:
+        {{- include "opshub.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: clickhouse-keeper
+    spec:
+      terminationGracePeriodSeconds: 30
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      affinity:
+        podAntiAffinity:
+          {{- if eq (lower $keeper.antiAffinity) "hard" }}
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  {{- include "opshub.selectorLabels" . | nindent 18 }}
+                  app.kubernetes.io/component: clickhouse-keeper
+          {{- else }}
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    {{- include "opshub.selectorLabels" . | nindent 20 }}
+                    app.kubernetes.io/component: clickhouse-keeper
+          {{- end }}
+      initContainers:
+        - name: render-config
+          image: "{{ .Values.clickhouse.image.repository }}:{{ .Values.clickhouse.image.tag }}"
+          imagePullPolicy: {{ .Values.clickhouse.image.pullPolicy | default .Values.global.imagePullPolicy }}
+          command: ["/bin/bash", "-ec"]
+          args:
+            - |
+              ordinal="${POD_NAME##*-}"
+              server_id="$((ordinal + 1))"
+              sed "s/__SERVER_ID__/${server_id}/g" /config-template/keeper_config.xml.tpl > /config/keeper_config.xml
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          volumeMounts:
+            - name: config-template
+              mountPath: /config-template
+            - name: rendered-config
+              mountPath: /config
+      containers:
+        - name: clickhouse-keeper
+          image: "{{ .Values.clickhouse.image.repository }}:{{ .Values.clickhouse.image.tag }}"
+          imagePullPolicy: {{ .Values.clickhouse.image.pullPolicy | default .Values.global.imagePullPolicy }}
+          command: ["clickhouse-keeper"]
+          args: ["--config-file=/etc/clickhouse-keeper/keeper_config.xml"]
+          ports:
+            - name: client
+              containerPort: 2181
+            - name: raft
+              containerPort: 9234
+          volumeMounts:
+            - name: rendered-config
+              mountPath: /etc/clickhouse-keeper/keeper_config.xml
+              subPath: keeper_config.xml
+            - name: data
+              mountPath: /var/lib/clickhouse-keeper
+          readinessProbe:
+            tcpSocket:
+              port: client
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: client
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          resources:
+            {{- toYaml $keeper.resources | nindent 12 }}
+      volumes:
+        - name: config-template
+          configMap:
+            name: {{ include "opshub.fullname" . }}-clickhouse-keeper-config
+        - name: rendered-config
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- if or $keeper.persistence.storageClass .Values.global.storageClass }}
+        storageClassName: {{ $keeper.persistence.storageClass | default .Values.global.storageClass | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ $keeper.persistence.size }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "opshub.fullname" . }}-clickhouse-ha-headless
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "opshub.clickhouse.haLabels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "opshub.clickhouse.haSelectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: 8123
+      targetPort: http
+    - name: native
+      port: 9000
+      targetPort: native
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "opshub.fullname" . }}-clickhouse
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "opshub.clickhouse.haLabels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "opshub.clickhouse.haSelectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: 8123
+      targetPort: http
+    - name: native
+      port: 9000
+      targetPort: native
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "opshub.fullname" . }}-clickhouse-ha
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "opshub.clickhouse.haLabels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "opshub.fullname" . }}-clickhouse-ha-headless
+  podManagementPolicy: Parallel
+  replicas: {{ $ha.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "opshub.clickhouse.haSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "opshub.clickhouse.haSelectorLabels" . | nindent 8 }}
+    spec:
+      terminationGracePeriodSeconds: 60
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      affinity:
+        podAntiAffinity:
+          {{- if eq (lower $ha.antiAffinity) "hard" }}
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  {{- include "opshub.clickhouse.haSelectorLabels" . | nindent 18 }}
+          {{- else }}
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    {{- include "opshub.clickhouse.haSelectorLabels" . | nindent 20 }}
+          {{- end }}
+      initContainers:
+        - name: wait-for-keeper
+          image: "{{ .Values.global.busybox.repository }}:{{ .Values.global.busybox.tag }}"
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z {{ include "opshub.fullname" . }}-clickhouse-keeper 2181; do
+                echo "Waiting for ClickHouse Keeper quorum..."
+                sleep 2
+              done
+      containers:
+        - name: clickhouse
+          image: "{{ .Values.clickhouse.image.repository }}:{{ .Values.clickhouse.image.tag }}"
+          imagePullPolicy: {{ .Values.clickhouse.image.pullPolicy | default .Values.global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8123
+            - name: native
+              containerPort: 9000
+          env:
+            - name: CLICKHOUSE_DB
+              value: {{ .Values.clickhouse.auth.database | quote }}
+            - name: CLICKHOUSE_USER
+              value: {{ .Values.clickhouse.auth.username | quote }}
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "opshub.fullname" . }}-secrets
+                  key: clickhouse-password
+            - name: CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT
+              value: "1"
+            - name: TZ
+              value: "UTC"
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/clickhouse
+            - name: cluster-config
+              mountPath: /etc/clickhouse-server/config.d/opshub-cluster.xml
+              subPath: cluster.xml
+          startupProbe:
+            httpGet:
+              path: /ping
+              port: http
+            failureThreshold: 30
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.clickhouse.resources | nindent 12 }}
+      volumes:
+        - name: cluster-config
+          configMap:
+            name: {{ include "opshub.fullname" . }}-clickhouse-ha-config
+      {{- with .Values.clickhouse.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.clickhouse.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          {{- toYaml .Values.clickhouse.persistence.accessModes | nindent 10 }}
+        {{- if or .Values.clickhouse.persistence.storageClass .Values.global.storageClass }}
+        storageClassName: {{ .Values.clickhouse.persistence.storageClass | default .Values.global.storageClass | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.clickhouse.persistence.size }}
+{{- if and $ha.podDisruptionBudget.enabled (gt (int $ha.replicaCount) 1) }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "opshub.fullname" . }}-clickhouse-ha
+  namespace: {{ .Release.Namespace }}
+spec:
+  minAvailable: {{ $ha.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "opshub.clickhouse.haSelectorLabels" . | nindent 6 }}
+{{- end }}
+{{- if and $keeper.podDisruptionBudget.enabled (gt (int $keeper.replicaCount) 1) }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "opshub.fullname" . }}-clickhouse-keeper
+  namespace: {{ .Release.Namespace }}
+spec:
+  minAvailable: {{ $keeper.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "opshub.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: clickhouse-keeper
+{{- end }}
+{{- end }}

@@ -66,6 +66,38 @@ type HTTPServer struct {
 	uploadSrv *UploadServer
 }
 
+func disableAppInventoryModule(db *gorm.DB) {
+	if db == nil {
+		return
+	}
+
+	if db.Migrator().HasTable(&plugin.PluginState{}) {
+		if err := db.Model(&plugin.PluginState{}).
+			Where("name = ?", "app-inventory").
+			Update("enabled", false).Error; err != nil {
+			appLogger.Warn("停用应用资产插件状态失败", zap.Error(err))
+		}
+	}
+
+	if !db.Migrator().HasTable("sys_menu") {
+		return
+	}
+
+	result := db.Exec(`
+		UPDATE sys_menu
+		SET visible = 0, status = 0
+		WHERE path = ? OR path LIKE ?`,
+		"/app-inventory", "/app-inventory/%",
+	)
+	if result.Error != nil {
+		appLogger.Warn("隐藏应用资产菜单失败", zap.Error(result.Error))
+		return
+	}
+	if result.RowsAffected > 0 {
+		appLogger.Info("应用资产模块已隐藏", zap.Int64("menus", result.RowsAffected))
+	}
+}
+
 // NewHTTPServer 创建HTTP服务器
 func NewHTTPServer(conf *conf.Config, svc *service.Service, db *gorm.DB) *HTTPServer {
 	// 设置Gin模式
@@ -83,6 +115,7 @@ func NewHTTPServer(conf *conf.Config, svc *service.Service, db *gorm.DB) *HTTPSe
 
 	// 创建插件管理器
 	pluginMgr := plugin.NewManager(db)
+	disableAppInventoryModule(db)
 
 	// 创建上传服务
 	uploadDir := "./web/public/uploads"

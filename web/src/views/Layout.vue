@@ -1,11 +1,26 @@
 <template>
   <el-container class="layout-container">
-    <el-aside width="260px" v-if="!hideSidebar">
+    <el-aside
+      v-if="!hideSidebar"
+      width="260px"
+      class="app-sidebar"
+      :class="{ 'mobile-open': mobileSidebarOpen }"
+    >
       <div class="logo">
         <!-- 始终显示文字Logo（系统名称） -->
         <span class="logo-text">
           <span class="logo-ops">{{ systemNameFirst }}</span><span class="logo-hub">{{ systemNameSecond }}</span>
         </span>
+        <el-button
+          v-if="isMobile"
+          class="mobile-sidebar-close"
+          text
+          circle
+          :icon="Close"
+          aria-label="关闭导航"
+          title="关闭导航"
+          @click="closeMobileSidebar"
+        />
       </div>
 
       <el-menu
@@ -16,6 +31,7 @@
         background-color="#001529"
         text-color="#fff"
         active-text-color="#fff"
+        @select="closeMobileSidebar"
       >
         <template v-for="menu in menuList" :key="menu.ID">
           <!-- 有子菜单的情况 -->
@@ -99,9 +115,26 @@
       </div>
     </el-aside>
 
-    <el-container :class="{ 'fullscreen-content': hideSidebar }">
+    <div
+      v-if="!hideSidebar && isMobile && mobileSidebarOpen"
+      class="mobile-sidebar-backdrop"
+      aria-hidden="true"
+      @click="closeMobileSidebar"
+    />
+
+    <el-container class="content-container" :class="{ 'fullscreen-content': hideSidebar }">
       <el-header v-if="!hideSidebar">
         <div class="header-content">
+          <el-button
+            v-if="isMobile"
+            class="mobile-menu-toggle"
+            text
+            circle
+            :icon="Menu"
+            aria-label="打开导航"
+            title="打开导航"
+            @click="openMobileSidebar"
+          />
           <div class="header-logo">
             <img :src="headerImage" alt="Header" class="header-image" />
           </div>
@@ -122,15 +155,9 @@
         <!-- 有权限时显示正常内容 -->
         <router-view v-else v-slot="{ Component, route }">
           <keep-alive>
-<<<<<<< HEAD
-            <component :is="Component" v-if="route.path.startsWith('/aiops')" :key="route.name || route.path" />
-          </keep-alive>
-          <component :is="Component" v-if="!route.path.startsWith('/aiops')" />
-=======
             <component :is="Component" v-if="route.path.startsWith('/aiops') || route.meta.keepAlive" :key="route.name || route.path" />
           </keep-alive>
           <component :is="Component" v-if="!route.path.startsWith('/aiops') && !route.meta.keepAlive" />
->>>>>>> feat: update log
         </router-view>
       </el-main>
     </el-container>
@@ -138,7 +165,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useSystemStore } from '@/stores/system'
@@ -152,6 +179,7 @@ import {
   Avatar,
   OfficeBuilding,
   Menu,
+  Close,
   SwitchButton,
   Switch,
   ArrowDown,
@@ -203,6 +231,7 @@ import {
   CircleCheck
 } from '@element-plus/icons-vue'
 import { getUserMenu } from '@/api/menu'
+import { getInternalLogAccessCapabilities } from '@/api/logcenter'
 
 // Header 图片路径（来自 public 文件夹）
 const headerImage = '/header.png'
@@ -280,6 +309,27 @@ const userRoleDisplay = computed(() => {
 
 const menuList = ref<any[]>([])
 const hasNoPermission = ref(false) // 用户是否没有任何权限
+const canAccessLogQuery = ref(false)
+const isMobile = ref(false)
+const mobileSidebarOpen = ref(false)
+
+const syncViewport = () => {
+  const nextIsMobile = window.innerWidth <= 900
+  isMobile.value = nextIsMobile
+  if (!nextIsMobile) {
+    mobileSidebarOpen.value = false
+  }
+}
+
+const openMobileSidebar = () => {
+  mobileSidebarOpen.value = true
+}
+
+const closeMobileSidebar = () => {
+  mobileSidebarOpen.value = false
+}
+
+watch(() => route.fullPath, closeMobileSidebar)
 
 // 图标映射
 const iconMap: Record<string, any> = {
@@ -679,8 +729,22 @@ const flattenMenus = (menus: any[], result: any[] = []) => {
   return result
 }
 
+const applyLogCenterMenuAccess = (menus: any[]) => {
+  const roles = userStore.userInfo?.roles || []
+  if (roles.some((role: any) => role.code === 'admin')) return menus
+
+  const otherMenus = menus.filter(menu => !String(menu.path || '').startsWith('/logs'))
+  if (!canAccessLogQuery.value) return otherMenus
+  return [
+    ...otherMenus,
+    { ID: '/logs', name: '日志中心', path: '/logs', icon: 'Histogram', sort: 25, parentPath: '', visible: 1, status: 1 },
+    { ID: '/logs/query', name: '日志查询', path: '/logs/query', icon: 'Search', sort: 1, parentPath: '/logs', visible: 1, status: 1 },
+    { ID: '/logs/templates', name: '查询模板', path: '/logs/templates', icon: 'CollectionTag', sort: 2, parentPath: '/logs', visible: 1, status: 1 },
+  ]
+}
+
 const prepareMenuList = (menus: any[]) => {
-  const flatMenus = normalizeMonitorMenuEntries(flattenMenus(menus).filter(menu => !shouldHideMenuEntry(menu)))
+  const flatMenus = normalizeMonitorMenuEntries(applyLogCenterMenuAccess(flattenMenus(menus)).filter(menu => !shouldHideMenuEntry(menu)))
   return buildMenuTree(flatMenus)
 }
 
@@ -691,6 +755,10 @@ const getMenuCacheKey = () => {
 const restoreCachedMenu = () => {
   const cachedMenus = readUserMenuCache(getMenuCacheKey())
   if (Array.isArray(cachedMenus) && cachedMenus.length > 0) {
+    const roles = userStore.userInfo?.roles || []
+    if (!roles.some((role: any) => role.code === 'admin')) {
+      canAccessLogQuery.value = cachedMenus.some(menu => menu.path === '/logs/query')
+    }
     menuList.value = prepareMenuList(cachedMenus)
     hasNoPermission.value = false
   }
@@ -705,16 +773,25 @@ const loadMenu = async () => {
   try {
     // 从后端获取用户菜单（后端已根据用户权限过滤，包括插件菜单）
     const systemMenus = await getUserMenu() || []
+    const roles = userStore.userInfo?.roles || []
+    const isSuperAdmin = roles.some((role: any) => role.code === 'admin')
+    if (!isSuperAdmin) {
+      try {
+        const capabilities = await getInternalLogAccessCapabilities() as any
+        canAccessLogQuery.value = Boolean(capabilities?.canQuery)
+      } catch {
+        // 保留缓存结果，瞬时网络故障不应让菜单闪烁消失
+      }
+    }
+    const authorizedMenus = applyLogCenterMenuAccess(flattenMenus(systemMenus))
 
     // 构建菜单树
-    const nextMenuList = prepareMenuList(systemMenus)
+    const nextMenuList = prepareMenuList(authorizedMenus)
     menuList.value = nextMenuList
-    saveMenuCache(systemMenus)
+    saveMenuCache(authorizedMenus)
 
     // 检查用户是否有权限
     // 如果不是超级管理员且没有任何菜单，则显示无权限页面
-    const roles = userStore.userInfo?.roles || []
-    const isSuperAdmin = roles.some((r: any) => r.code === 'admin')
     if (!isSuperAdmin && menuList.value.length === 0) {
       hasNoPermission.value = true
     } else {
@@ -741,6 +818,8 @@ const handleLogout = () => {
 }
 
 onMounted(async () => {
+  syncViewport()
+  window.addEventListener('resize', syncViewport)
   restoreCachedMenu()
 
   // 加载系统配置，不阻塞菜单显示
@@ -775,10 +854,21 @@ onMounted(async () => {
     window.removeEventListener('plugins-changed', handlePluginChange)
   })
 })
+
+onUnmounted(() => {
+  window.removeEventListener('resize', syncViewport)
+})
 </script>
 
 <style scoped>
 .layout-container {
+  height: 100vh;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.content-container {
+  min-width: 0;
   height: 100vh;
 }
 
@@ -831,6 +921,12 @@ onMounted(async () => {
   border-radius: 6px;
   margin-left: 2px;
   line-height: 1;
+}
+
+.mobile-menu-toggle,
+.mobile-sidebar-close,
+.mobile-sidebar-backdrop {
+  display: none;
 }
 
 /* 用户信息区域 */
@@ -1196,6 +1292,116 @@ onMounted(async () => {
   padding: 0;
   overflow: hidden;
   background: #0b1120;
+}
+
+@media (max-width: 900px) {
+  .app-sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 2002;
+    width: min(82vw, 300px) !important;
+    max-width: 300px;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    box-shadow: 12px 0 32px rgba(3, 7, 18, 0.32);
+  }
+
+  .app-sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  .mobile-sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 2001;
+    display: block;
+    background: rgba(3, 7, 18, 0.5);
+  }
+
+  .mobile-menu-toggle,
+  .mobile-sidebar-close {
+    display: inline-flex;
+    flex: 0 0 auto;
+  }
+
+  .mobile-menu-toggle {
+    width: 36px;
+    height: 36px;
+    color: #111827;
+  }
+
+  .mobile-menu-toggle :deep(.el-icon) {
+    font-size: 20px;
+  }
+
+  .mobile-sidebar-close {
+    position: absolute;
+    right: 10px;
+    width: 34px;
+    height: 34px;
+    color: rgba(255, 255, 255, 0.72);
+  }
+
+  .mobile-sidebar-close:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .content-container {
+    width: 100%;
+    max-width: 100vw;
+  }
+
+  .user-section,
+  .user-info-wrapper {
+    min-width: 0;
+    max-width: none;
+    width: 100%;
+  }
+
+  .el-header {
+    height: 56px;
+    padding: 0 10px;
+  }
+
+  .header-content {
+    min-width: 0;
+    gap: 8px;
+  }
+
+  .header-logo {
+    height: 56px;
+  }
+
+  .header-image {
+    max-width: 44px;
+    max-height: 40px;
+  }
+
+  .breadcrumb {
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .breadcrumb :deep(.el-breadcrumb) {
+    min-width: 0;
+    white-space: nowrap;
+  }
+
+  .breadcrumb :deep(.el-breadcrumb__item:last-child .el-breadcrumb__inner) {
+    display: inline-block;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: bottom;
+    white-space: nowrap;
+  }
+
+  .el-main {
+    min-width: 0;
+    width: 100%;
+    padding: 12px;
+  }
 }
 
 </style>

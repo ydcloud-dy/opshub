@@ -12,6 +12,7 @@
 - [方式三：源码部署](#方式三源码部署)
 - [环境变量说明](#环境变量说明)
 - [常见问题](#常见问题)
+- [生产发布与恢复手册](production-release.md)
 
 ---
 
@@ -57,7 +58,7 @@ docker-compose logs -f
 
 | 服务 | 地址 |
 |:-----|:-----|
-| 前端 | http://localhost:5173 |
+| 前端 | http://localhost:80 |
 | 后端 API | http://localhost:9876 |
 | Swagger 文档 | http://localhost:9876/swagger/index.html |
 
@@ -71,10 +72,10 @@ docker-compose down
 docker-compose down -v
 
 # 重启单个服务
-docker-compose restart opshub-backend
+docker-compose restart backend
 
 # 查看服务日志
-docker-compose logs -f opshub-backend
+docker-compose logs -f backend
 ```
 
 ---

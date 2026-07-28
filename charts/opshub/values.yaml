@@ -16,12 +16,18 @@ global:
 
 # ==================== 后端配置 ====================
 backend:
-  # 副本数
-  replicaCount: 2
+  # 默认单副本可直接使用本地导出目录。扩为多副本时必须同时启用
+  # logCenter.export.persistence，并使用支持 ReadWriteMany 的存储类。
+  replicaCount: 1
+  revisionHistoryLimit: 10
+
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
 
   image:
     repository: docker.1ms.run/dyclouds/opshub-api
-    tag: v0.0.8
+    tag: v0.0.9
     pullPolicy: Always
 
   # 服务配置
@@ -81,10 +87,15 @@ backend:
 frontend:
   # 副本数
   replicaCount: 2
+  revisionHistoryLimit: 10
+
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
 
   image:
     repository: docker.1ms.run/dyclouds/opshub-web
-    tag: v0.0.8
+    tag: v0.0.9
     pullPolicy: Always
 
   # 服务配置
@@ -240,6 +251,33 @@ clickhouse:
       cpu: "2000m"
   nodeSelector: {}
   tolerations: []
+  highAvailability:
+    # 新建生产环境可开启。现有单节点实例切换前必须先迁移数据，不能直接复用旧 PVC。
+    enabled: false
+    clusterName: opshub_logs_cluster
+    replicaCount: 2
+    # hard 要求副本分布在不同 Kubernetes 节点；节点不足时可临时改为 soft。
+    antiAffinity: hard
+    podDisruptionBudget:
+      enabled: true
+      minAvailable: 1
+    keeper:
+      replicaCount: 3
+      antiAffinity: hard
+      persistence:
+        enabled: true
+        size: 10Gi
+        storageClass: ""
+      resources:
+        requests:
+          memory: "256Mi"
+          cpu: "100m"
+        limits:
+          memory: "1Gi"
+          cpu: "1000m"
+      podDisruptionBudget:
+        enabled: true
+        minAvailable: 2
 
 externalClickHouse:
   endpoint: ""
@@ -250,9 +288,17 @@ externalClickHouse:
 logCenter:
   # 用于加密 ClickHouse 等日志中心凭据，生产环境必须修改
   encryptionKey: "opshub-logcenter-encryption-key-change-in-production"
+  # 轮换 encryptionKey 时临时填写旧密钥，启动后凭据会自动使用当前密钥重加密。
+  # 确认所有副本升级并验证后应清空此项。
+  decryptionKeys: ""
   ingest:
     enabled: true
+    highAvailability:
+      # 开启后会校验 Gateway/Writer、Kafka/Redpanda 和 ClickHouse 是否满足生产最小拓扑。
+      enabled: false
     ingestToken: "opshub-log-ingest-token-change-in-production"
+    # Token 轮换期间保留旧 Token；所有 Agent 更新后应清空。
+    ingestPreviousTokens: []
     writerToken: "opshub-log-writer-token-change-in-production"
     queue:
       # direct 适合演示/小规模；生产环境使用 kafka
@@ -278,8 +324,9 @@ logCenter:
       redpanda:
         enabled: false
         replicaCount: 1
+        antiAffinity: soft
         image:
-          repository: docker.redpanda.com/redpandadata/redpanda
+          repository: docker.1ms.run/redpandadata/redpanda
           tag: v24.3.18
           pullPolicy: IfNotPresent
         smp: 1
@@ -302,7 +349,7 @@ logCenter:
       replicaCount: 2
       image:
         repository: docker.1ms.run/dyclouds/opshub-log-gateway
-        tag: v0.0.8
+        tag: v0.0.9
         pullPolicy: Always
       # Agent 可访问地址；留空时自动使用 server.frontendURL 或 Ingress 域名
       publicURL: ""
@@ -329,7 +376,7 @@ logCenter:
       replicaCount: 2
       image:
         repository: docker.1ms.run/dyclouds/opshub-log-writer
-        tag: v0.0.8
+        tag: v0.0.9
         pullPolicy: Always
       servicePort: 9881
       queueCapacity: 2048
@@ -343,6 +390,8 @@ logCenter:
           enabled: false
           size: 5Gi
           storageClass: ""
+          accessModes:
+            - ReadWriteMany
       resources:
         requests:
           memory: "256Mi"
@@ -352,19 +401,26 @@ logCenter:
           cpu: "1000m"
   kubernetesCollector:
     # Kubernetes 节点日志采集器使用独立镜像，版本应与当前控制面兼容
-    image: docker.1ms.run/dyclouds/opshub-log-agent:v0.0.8
+    image: docker.1ms.run/dyclouds/opshub-log-agent:v0.0.9
   tail:
     maxConnections: 50
     pollMilliseconds: 1000
     maxMinutes: 60
+    # 长连接周期性重验用户与日志访问策略，程序会限制在 5-300 秒
+    reauthorizeSeconds: 15
+  retention:
+    # ClickHouse 检查并执行 TTL 清理的调度周期，生产建议 1 小时
+    ttlMergeTimeoutSeconds: 3600
   export:
     maxRows: 1000000
     workers: 2
     queueCapacity: 100
+    maxAttempts: 3
+    leaseSeconds: 300
     retentionHours: 24
     timeoutMinutes: 120
     persistence:
-      # 后端多副本时建议启用，并使用支持 ReadWriteMany 的存储类
+      # 后端多副本时必须启用，并使用支持 ReadWriteMany 的存储类
       enabled: false
       size: 20Gi
       storageClass: ""

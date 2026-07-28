@@ -1,0 +1,125 @@
+global:
+  storageClass: your-rwx-storage-class
+
+backend:
+  replicaCount: 2
+  image:
+    repository: registry.example.com/opshub-api
+    tag: v0.0.10
+    pullPolicy: IfNotPresent
+  terminalRecordings:
+    persistence:
+      enabled: true
+      storageClass: your-rwx-storage-class
+      accessModes:
+        - ReadWriteMany
+
+frontend:
+  replicaCount: 2
+  image:
+    repository: registry.example.com/opshub-web
+    tag: v0.0.10
+    pullPolicy: IfNotPresent
+
+mysql:
+  enabled: false
+externalDatabase:
+  host: mysql-ha.example.internal
+  port: 3306
+  database: opshub
+  username: opshub
+  password: REPLACE_WITH_MYSQL_PASSWORD
+
+redis:
+  enabled: false
+externalRedis:
+  host: redis-ha.example.internal
+  port: 6379
+  password: REPLACE_WITH_REDIS_PASSWORD
+  db: 0
+
+clickhouse:
+  enabled: false
+externalClickHouse:
+  endpoint: https://clickhouse-ha.example.internal:8443
+  username: opshub
+  password: REPLACE_WITH_CLICKHOUSE_PASSWORD
+  database: opshub_logs
+
+logCenter:
+  encryptionKey: REPLACE_WITH_32_BYTE_LOGCENTER_KEY
+  ingest:
+    enabled: true
+    ingestToken: REPLACE_WITH_LOG_INGEST_TOKEN
+    writerToken: REPLACE_WITH_LOG_WRITER_TOKEN
+    queue:
+      mode: kafka
+      brokers:
+        - kafka-1.example.internal:9092
+        - kafka-2.example.internal:9092
+        - kafka-3.example.internal:9092
+      partitions: 12
+      replicationFactor: 3
+      retentionHours: 72
+      redpanda:
+        enabled: false
+    gateway:
+      replicaCount: 2
+      image:
+        repository: registry.example.com/opshub-log-gateway
+        tag: v0.0.10
+        pullPolicy: IfNotPresent
+      publicURL: https://opshub.example.com
+    writer:
+      replicaCount: 2
+      image:
+        repository: registry.example.com/opshub-log-writer
+        tag: v0.0.10
+        pullPolicy: IfNotPresent
+  kubernetesCollector:
+    image: registry.example.com/opshub-log-agent:v0.0.10
+  tail:
+    maxConnections: 200
+    pollMilliseconds: 1000
+    maxMinutes: 60
+    reauthorizeSeconds: 15
+  retention:
+    ttlMergeTimeoutSeconds: 3600
+  export:
+    maxRows: 1000000
+    workers: 4
+    queueCapacity: 200
+    maxAttempts: 3
+    leaseSeconds: 300
+    retentionHours: 24
+    timeoutMinutes: 120
+    persistence:
+      enabled: true
+      size: 100Gi
+      storageClass: your-rwx-storage-class
+      accessModes:
+        - ReadWriteMany
+
+server:
+  mode: release
+  jwtSecret: REPLACE_WITH_JWT_SECRET
+  externalURL: https://opshub.example.com
+  frontendURL: https://opshub.example.com
+
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: opshub.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: opshub-tls
+      hosts:
+        - opshub.example.com
+
+serviceMonitor:
+  enabled: true
+  interval: 30s
+  scrapeTimeout: 10s

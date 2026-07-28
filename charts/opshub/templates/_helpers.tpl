@@ -165,6 +165,20 @@ app.kubernetes.io/component: clickhouse
 app.kubernetes.io/component: clickhouse
 {{- end }}
 
+{{/*
+HA ClickHouse labels are intentionally distinct from standalone ClickHouse.
+This prevents HA Services and PDBs from selecting the old Pod during migration.
+*/}}
+{{- define "opshub.clickhouse.haLabels" -}}
+{{ include "opshub.clickhouse.labels" . }}
+opshub.io/clickhouse-mode: ha
+{{- end }}
+
+{{- define "opshub.clickhouse.haSelectorLabels" -}}
+{{ include "opshub.clickhouse.selectorLabels" . }}
+opshub.io/clickhouse-mode: ha
+{{- end }}
+
 {{- define "opshub.clickhouse.endpoint" -}}
 {{- if .Values.clickhouse.enabled -}}
 {{- printf "http://%s-clickhouse:8123" (include "opshub.fullname" .) -}}
@@ -195,6 +209,12 @@ app.kubernetes.io/component: clickhouse
 {{- else -}}
 {{- $endpoint := .Values.externalClickHouse.endpoint | trimPrefix "http://" | trimPrefix "https://" -}}
 {{- first (splitList ":" $endpoint) -}}
+{{- end -}}
+{{- end }}
+
+{{- define "opshub.clickhouse.clusterName" -}}
+{{- if and .Values.clickhouse.enabled .Values.clickhouse.highAvailability.enabled -}}
+{{- .Values.clickhouse.highAvailability.clusterName -}}
 {{- end -}}
 {{- end }}
 
@@ -235,6 +255,59 @@ app.kubernetes.io/component: redpanda
 {{- printf "%s-redpanda:9092" (include "opshub.fullname" .) -}}
 {{- else if eq (lower .Values.logCenter.ingest.queue.mode) "kafka" -}}
 {{- fail "logCenter.ingest.queue.mode=kafka 时必须配置 queue.brokers 或启用 queue.redpanda" -}}
+{{- end -}}
+{{- end }}
+
+{{- define "opshub.validate.logCenterHA" -}}
+{{- $ingest := .Values.logCenter.ingest -}}
+{{- if and $ingest.queue.redpanda.enabled (ne (lower $ingest.queue.mode) "kafka") -}}
+{{- fail "启用内置 Redpanda 时 logCenter.ingest.queue.mode 必须为 kafka" -}}
+{{- end -}}
+{{- if $ingest.highAvailability.enabled -}}
+{{- if ne (lower $ingest.queue.mode) "kafka" -}}
+{{- fail "日志中心高可用模式必须使用 kafka 队列，不能使用 direct" -}}
+{{- end -}}
+{{- if lt (int $ingest.gateway.replicaCount) 2 -}}
+{{- fail "日志中心高可用模式要求 Gateway 至少 2 个副本" -}}
+{{- end -}}
+{{- if lt (int $ingest.writer.replicaCount) 2 -}}
+{{- fail "日志中心高可用模式要求 LogWriter 至少 2 个副本" -}}
+{{- end -}}
+{{- if lt (int $ingest.queue.partitions) (int $ingest.writer.replicaCount) -}}
+{{- fail "日志中心高可用模式要求 Kafka 分区数不少于 LogWriter 副本数" -}}
+{{- end -}}
+{{- if $ingest.queue.redpanda.enabled -}}
+{{- if lt (int $ingest.queue.redpanda.replicaCount) 3 -}}
+{{- fail "日志中心高可用模式要求 Redpanda 至少 3 个 Broker" -}}
+{{- end -}}
+{{- if ne (lower $ingest.queue.redpanda.antiAffinity) "hard" -}}
+{{- fail "日志中心高可用模式要求 Redpanda 使用 hard 反亲和" -}}
+{{- end -}}
+{{- if lt (int $ingest.queue.replicationFactor) 3 -}}
+{{- fail "日志中心高可用模式要求 Kafka/Redpanda replicationFactor 至少为 3" -}}
+{{- end -}}
+{{- if gt (int $ingest.queue.replicationFactor) (int $ingest.queue.redpanda.replicaCount) -}}
+{{- fail "Kafka replicationFactor 不能大于 Redpanda Broker 数" -}}
+{{- end -}}
+{{- if not $ingest.queue.redpanda.persistence.enabled -}}
+{{- fail "日志中心高可用模式必须为 Redpanda 启用持久化" -}}
+{{- end -}}
+{{- end -}}
+{{- if and .Values.clickhouse.enabled (not .Values.clickhouse.highAvailability.enabled) -}}
+{{- fail "日志中心高可用模式使用内置 ClickHouse 时，必须启用 clickhouse.highAvailability" -}}
+{{- end -}}
+{{- if and .Values.clickhouse.enabled (ne (lower .Values.clickhouse.highAvailability.antiAffinity) "hard") -}}
+{{- fail "日志中心高可用模式要求 ClickHouse 使用 hard 反亲和" -}}
+{{- end -}}
+{{- if and .Values.clickhouse.enabled (ne (lower .Values.clickhouse.highAvailability.keeper.antiAffinity) "hard") -}}
+{{- fail "日志中心高可用模式要求 ClickHouse Keeper 使用 hard 反亲和" -}}
+{{- end -}}
+{{- if and (not .Values.clickhouse.enabled) (not .Values.externalClickHouse.endpoint) -}}
+{{- fail "日志中心高可用模式必须启用内置 ClickHouse HA 或配置外部 ClickHouse 集群" -}}
+{{- end -}}
+{{- if and $ingest.writer.deadletter.persistence.enabled (not (has "ReadWriteMany" $ingest.writer.deadletter.persistence.accessModes)) -}}
+{{- fail "LogWriter 多副本共享 deadletter PVC 时必须使用 ReadWriteMany" -}}
+{{- end -}}
 {{- end -}}
 {{- end }}
 

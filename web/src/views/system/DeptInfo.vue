@@ -136,7 +136,7 @@
       @close="handleDialogClose"
     >
       <el-form :model="deptForm" :rules="rules" ref="formRef" label-width="100px">
-        <el-form-item label="上级部门" prop="parentId" v-if="showParentSelect && !isRootDept">
+        <el-form-item label="上级部门" prop="parentId" v-if="showParentSelect">
           <el-cascader
             v-model="parentPath"
             :options="filteredParentOptions"
@@ -220,7 +220,6 @@ const submitting = ref(false)
 const dialogVisible = ref(false)
 const dialogTitle = ref('')
 const isEdit = ref(false)
-const isRootDept = ref(false)
 
 // 表单引用
 const formRef = ref<FormInstance>()
@@ -275,6 +274,22 @@ const filterTree = (nodes: any[]): any[] => {
 const parentOptions = ref([])
 const parentPath = ref<number[]>([])
 
+const findParentPath = (nodes: any[], targetId: number, path: number[] = []): number[] => {
+  for (const node of nodes) {
+    const currentPath = [...path, Number(node.id)]
+    if (Number(node.id) === targetId) {
+      return currentPath
+    }
+    if (node.children) {
+      const childPath = findParentPath(node.children, targetId, currentPath)
+      if (childPath.length > 0) {
+        return childPath
+      }
+    }
+  }
+  return []
+}
+
 // 根据部门类型过滤上级选项
 const filteredParentOptions = computed(() => {
   const currentType = deptForm.deptType
@@ -291,34 +306,27 @@ const filteredParentOptions = computed(() => {
   }
   buildMap(deptTree.value)
 
-  // 递归过滤树节点
+  const allowedTypes = currentType === 2 ? new Set([1]) : new Set([1, 2])
+
+  // 递归过滤并保留合法父级。历史数据中的顶级中心也需要展示。
   const filterNodes = (nodes: any[]): any[] => {
     const result: any[] = []
     for (const node of nodes) {
-      const nodeType = deptTypeMap.get(node.id)
+      if (isEdit.value && Number(node.id) === deptForm.id) {
+        continue
+      }
 
-      if (currentType === 2) {
-        // 中心的上级只能是公司
-        if (nodeType === 1) {
-          result.push({ ...node, children: undefined })
-        }
-      } else if (currentType === 3) {
-        // 部门的上级可以是公司或中心
-        if (nodeType === 1) {
-          // 公司：保留并展开显示其下的中心
-          const filteredNode = { ...node }
-          if (node.children && node.children.length > 0) {
-            filteredNode.children = node.children.map((child: any) => {
-              const childType = deptTypeMap.get(child.id)
-              // 只保留中心作为子选项，部门不能作为上级
-              if (childType === 2) {
-                return { ...child, children: undefined }
-              }
-              return null
-            }).filter((c: any) => c !== null)
-          }
-          result.push(filteredNode)
-        }
+      const nodeType = Number(node.deptType ?? deptTypeMap.get(Number(node.id)))
+      const filteredChildren = node.children ? filterNodes(node.children) : []
+
+      if (allowedTypes.has(nodeType)) {
+        result.push({
+          ...node,
+          deptType: nodeType,
+          children: filteredChildren.length > 0 ? filteredChildren : undefined
+        })
+      } else if (filteredChildren.length > 0) {
+        result.push(...filteredChildren)
       }
     }
     return result
@@ -359,6 +367,16 @@ const showParentSelect = computed(() => {
 
 // 表单验证规则
 const rules: FormRules = {
+  parentId: [{
+    validator: (_rule: any, value: number, callback: (error?: Error) => void) => {
+      if (deptForm.deptType !== 1 && !value) {
+        callback(new Error(deptForm.deptType === 2 ? '请选择上级公司' : '请选择上级公司或中心'))
+        return
+      }
+      callback()
+    },
+    trigger: 'change'
+  }],
   deptType: [{ required: true, message: '请选择部门类型', trigger: 'change' }],
   deptName: [
     { required: true, message: '请输入部门名称', trigger: 'blur' },
@@ -475,6 +493,9 @@ const loadParentOptions = async () => {
     const data = await getParentOptions()
     // 后端已经返回树形结构，直接使用
     parentOptions.value = data || []
+    if (isEdit.value && deptForm.parentId) {
+      parentPath.value = findParentPath(parentOptions.value, deptForm.parentId)
+    }
   } catch (error) {
   }
 }
@@ -489,7 +510,6 @@ const resetForm = () => {
   deptForm.sort = 0
   deptForm.deptStatus = 1
   parentPath.value = []
-  isRootDept.value = false
   formRef.value?.clearValidate()
 }
 
@@ -499,7 +519,6 @@ const handleAdd = () => {
   loadParentOptions()
   dialogTitle.value = '新增部门'
   isEdit.value = false
-  isRootDept.value = false
   dialogVisible.value = true
 }
 
@@ -516,9 +535,8 @@ const handleEdit = (row: any) => {
   })
   dialogTitle.value = '编辑部门'
   isEdit.value = true
-  isRootDept.value = !row.parentId || row.parentId === 0
   if (row.parentId && row.parentId !== 0) {
-    parentPath.value = [row.parentId]
+    parentPath.value = findParentPath(parentOptions.value, row.parentId)
   } else {
     parentPath.value = []
   }
@@ -553,6 +571,7 @@ const handleDeptTypeChange = () => {
   // 部门类型改变时，重置上级部门选择
   parentPath.value = []
   deptForm.parentId = 0
+  formRef.value?.clearValidate('parentId')
 }
 
 const handleParentChange = (value: number[]) => {
@@ -562,6 +581,7 @@ const handleParentChange = (value: number[]) => {
   } else {
     deptForm.parentId = 0
   }
+  formRef.value?.validateField('parentId')
 }
 
 // 提交表单

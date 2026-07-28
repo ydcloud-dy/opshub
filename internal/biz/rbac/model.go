@@ -122,6 +122,7 @@ type DepartmentInfoVO struct {
 type DepartmentParentOptionVO struct {
 	ID       uint                        `json:"id"`
 	ParentID uint                        `json:"parentId"`
+	DeptType int                         `json:"deptType"`
 	Label    string                      `json:"label"`
 	Children []*DepartmentParentOptionVO `json:"children,omitempty"`
 }

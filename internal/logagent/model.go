@@ -23,6 +23,8 @@ type Event struct {
 	ObservedAt         time.Time         `json:"observedAt"`
 	Body               string            `json:"body"`
 	Level              string            `json:"level"`
+	TraceID            string            `json:"traceId,omitempty"`
+	SpanID             string            `json:"spanId,omitempty"`
 	RetentionDays      int               `json:"retentionDays"`
 	Attributes         map[string]string `json:"attributes"`
 	ResourceAttributes map[string]string `json:"resourceAttributes"`

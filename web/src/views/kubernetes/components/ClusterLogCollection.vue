@@ -90,6 +90,10 @@ const downloadManifest = async () => {
 }
 
 const uninstallCollector = async () => {
+  if (status.value?.policyCount) {
+    ElMessage.warning(`该集群仍有 ${status.value.policyCount} 条已发布采集策略，请先在日志中心停用策略`)
+    return
+  }
   await ElMessageBox.confirm('卸载后集群节点将停止采集，节点 WAL 数据不会自动删除。', '卸载日志采集器', { type: 'warning', confirmButtonText: '确认卸载' })
   uninstalling.value = true
   try { await uninstallLogKubernetesCollector(props.clusterId); ElMessage.success('日志采集器已卸载'); await loadStatus() } finally { uninstalling.value = false }

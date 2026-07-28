@@ -20,6 +20,7 @@
 package rbac
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -58,6 +59,11 @@ func (s *DepartmentService) CreateDepartment(c *gin.Context) {
 
 	dept := req.ToModel()
 	if err := s.deptUseCase.Create(c.Request.Context(), dept); err != nil {
+		var validationError *rbac.DepartmentValidationError
+		if errors.As(err, &validationError) {
+			response.ErrorCode(c, http.StatusBadRequest, validationError.Error())
+			return
+		}
 		response.ErrorCode(c, http.StatusInternalServerError, "创建失败: "+err.Error())
 		return
 	}
@@ -94,6 +100,11 @@ func (s *DepartmentService) UpdateDepartment(c *gin.Context) {
 	dept := req.ToModel()
 	dept.ID = uint(id)
 	if err := s.deptUseCase.Update(c.Request.Context(), dept); err != nil {
+		var validationError *rbac.DepartmentValidationError
+		if errors.As(err, &validationError) {
+			response.ErrorCode(c, http.StatusBadRequest, validationError.Error())
+			return
+		}
 		response.ErrorCode(c, http.StatusInternalServerError, "更新失败: "+err.Error())
 		return
 	}

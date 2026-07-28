@@ -79,6 +79,12 @@ func (metrics *Metrics) recordSuccess(records int) {
 	metrics.lastMu.Unlock()
 }
 
+func (metrics *Metrics) recordDropped(records int) {
+	if records > 0 {
+		metrics.droppedRecords.Add(uint64(records))
+	}
+}
+
 func (metrics *Metrics) recordError(err error) {
 	metrics.lastMu.Lock()
 	metrics.lastError = err.Error()

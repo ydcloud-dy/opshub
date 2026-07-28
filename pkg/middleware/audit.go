@@ -291,6 +291,11 @@ func getOperationInfo(path string, method string) (module, action, description s
 		module = "监控中心"
 		action = getActionFromMethod(method)
 		description = getMonitorOperationDescription(path, method)
+	// 应用资产中心
+	case strings.HasPrefix(path, "/api/v1/plugins/app-inventory"):
+		module = "应用资产中心"
+		action = getActionFromMethod(method)
+		description = "应用资产与依赖拓扑操作"
 	// 资产管理
 	case strings.HasPrefix(path, "/api/v1/hosts") || strings.HasPrefix(path, "/api/v1/asset") || strings.HasPrefix(path, "/api/v1/terminal") || strings.HasPrefix(path, "/api/v1/cloud-accounts") || strings.HasPrefix(path, "/api/v1/credentials"):
 		module = "资产管理"
@@ -468,6 +473,7 @@ func isSensitiveAuditField(field string) bool {
 	exact := map[string]struct{}{
 		"password": {}, "passwd": {}, "pwd": {}, "secret": {}, "token": {}, "key": {},
 		"authorization": {}, "cookie": {}, "credential": {}, "privatekey": {}, "apikey": {}, "accesskey": {},
+		"secretdata": {}, "connectionstring": {}, "dsn": {}, "clientsecret": {}, "passphrase": {},
 	}
 	if _, ok := exact[normalized]; ok {
 		return true

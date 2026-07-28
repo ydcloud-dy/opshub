@@ -58,3 +58,42 @@ func TestApplyLogFieldSecurityHandlesNestedArrays(t *testing.T) {
 		t.Fatalf("nested array field was not masked: %#v", second)
 	}
 }
+
+func TestBuildInternalWhereAppliesCollectionPolicyScope(t *testing.T) {
+	built, err := buildInternalWhere(InternalQueryRequest{
+		Start: "2026-07-24T00:00:00Z", End: "2026-07-24T01:00:00Z",
+		AllowedPolicyIDs: []uint64{12, 7, 12},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(built.Where, "policy_id IN (12,7,12)") {
+		t.Fatalf("collection policy ACL missing from query: %s", built.Where)
+	}
+}
+
+func TestBuildInternalWhereDeniesEmptyCollectionPolicyScope(t *testing.T) {
+	built, err := buildInternalWhere(InternalQueryRequest{
+		Start: "2026-07-24T00:00:00Z", End: "2026-07-24T01:00:00Z",
+		AllowedPolicyIDs: []uint64{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(built.Where, "0 = 1") {
+		t.Fatalf("empty collection policy ACL did not deny the query: %s", built.Where)
+	}
+}
+
+func TestBuildInternalMetricsWhereFallsBackForCollectionPolicyScope(t *testing.T) {
+	_, useMetrics, err := buildInternalMetricsWhere(InternalQueryRequest{
+		Start: "2026-07-24T00:00:00Z", End: "2026-07-24T01:00:00Z",
+		AllowedPolicyIDs: []uint64{7},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if useMetrics {
+		t.Fatal("policy-scoped histogram unexpectedly used metrics without policy_id")
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"path/filepath"
@@ -21,6 +22,23 @@ type Sender struct {
 	identity   AgentIdentity
 	client     *http.Client
 	metrics    *Metrics
+}
+
+type batchError struct {
+	code    string
+	message string
+}
+
+func (err *batchError) Error() string {
+	if err == nil {
+		return ""
+	}
+	return fmt.Sprintf("Gateway 拒绝批次: %s %s", err.code, err.message)
+}
+
+func isPermanentBatchError(err error) bool {
+	var batchErr *batchError
+	return errors.As(err, &batchErr) && batchErr.code == "INVALID_BATCH"
 }
 
 func NewSender(gatewayURL, token string, identity AgentIdentity, metrics *Metrics) *Sender {
@@ -43,10 +61,23 @@ func (sender *Sender) ProcessReady(ctx context.Context, wal *WAL) error {
 		if err != nil {
 			return err
 		}
+		events, dropped := filterUnsendableEvents(events, time.Now())
+		sender.metrics.recordDropped(dropped)
+		if len(events) == 0 {
+			if err := wal.DeleteSegment(segment); err != nil {
+				return err
+			}
+			continue
+		}
 		groups := groupEvents(events)
 		for index, group := range groups {
 			batch := sender.buildBatch(filepath.Base(segment), index, group)
 			if err := sender.sendBatch(ctx, batch); err != nil {
+				if isPermanentBatchError(err) {
+					sender.metrics.recordDropped(len(group))
+					sender.metrics.recordError(err)
+					continue
+				}
 				sender.metrics.retryTotal.Add(1)
 				sender.metrics.recordError(err)
 				return err
@@ -58,6 +89,32 @@ func (sender *Sender) ProcessReady(ctx context.Context, wal *WAL) error {
 		}
 	}
 	return nil
+}
+
+func filterUnsendableEvents(events []Event, now time.Time) ([]Event, int) {
+	limits := loggingest.DefaultLimits()
+	kept := make([]Event, 0, len(events))
+	dropped := 0
+	for _, event := range events {
+		if event.Timestamp.IsZero() || len(event.Body) > limits.MaxRecordBytes {
+			dropped++
+			continue
+		}
+		if limits.MaxFutureSkew > 0 && event.Timestamp.After(now.Add(limits.MaxFutureSkew)) {
+			dropped++
+			continue
+		}
+		if limits.MaxPastAge > 0 && event.Timestamp.Before(now.Add(-limits.MaxPastAge)) {
+			dropped++
+			continue
+		}
+		if event.RetentionDays > 0 && event.Timestamp.Before(now.Add(-time.Duration(event.RetentionDays)*24*time.Hour)) {
+			dropped++
+			continue
+		}
+		kept = append(kept, event)
+	}
+	return kept, dropped
 }
 
 func (sender *Sender) buildBatch(segment string, groupIndex int, events []Event) loggingest.LogBatch {
@@ -81,6 +138,7 @@ func (sender *Sender) buildBatch(segment string, groupIndex int, events []Event)
 			Sequence: event.Sequence, TimestampUnixNano: event.Timestamp.UnixNano(),
 			ObservedTimestampUnixNano: event.ObservedAt.UnixNano(), Body: event.Body,
 			SeverityText: event.Level, SeverityNumber: severityNumber(event.Level),
+			TraceID: event.TraceID, SpanID: event.SpanID,
 			RetentionDays: event.RetentionDays,
 			Attributes:    attributes, ResourceAttributes: cloneStringMap(event.ResourceAttributes),
 		})
@@ -109,7 +167,11 @@ func (sender *Sender) sendBatch(ctx context.Context, batch loggingest.LogBatch) 
 		return fmt.Errorf("解析 Gateway ACK 失败: %w", err)
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 || ack.ErrorCode != "" {
-		return fmt.Errorf("Gateway 拒绝批次 %s: %s %s", batch.BatchID, ack.ErrorCode, ack.ErrorMessage)
+		code := ack.ErrorCode
+		if code == "" {
+			code = fmt.Sprintf("HTTP_%d", response.StatusCode)
+		}
+		return &batchError{code: code, message: ack.ErrorMessage}
 	}
 	return nil
 }

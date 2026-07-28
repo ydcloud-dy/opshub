@@ -13,7 +13,7 @@ type StorageCluster struct {
 	PasswordEncrypted    string     `gorm:"type:text" json:"-"`
 	PasswordConfigured   bool       `gorm:"-" json:"passwordConfigured"`
 	SkipTLSVerify        bool       `gorm:"type:tinyint(1);not null;default:0" json:"skipTlsVerify"`
-	Timeout              int        `gorm:"type:int;not null;default:30" json:"timeout"`
+	Timeout              int        `gorm:"type:int;not null;default:300" json:"timeout"`
 	QueueMode            string     `gorm:"type:varchar(32);not null;default:'direct'" json:"queueMode"`
 	QueueEndpoints       string     `gorm:"type:text" json:"queueEndpoints"`
 	QueueAuthEncrypted   string     `gorm:"type:text" json:"-"`
@@ -60,24 +60,29 @@ func (QueryHistory) TableName() string {
 
 // LogExportTask stores asynchronous ClickHouse export progress and artifacts.
 type LogExportTask struct {
-	ID           uint       `gorm:"primarykey" json:"id"`
-	UserID       uint       `gorm:"not null;index" json:"userId"`
-	StorageID    uint       `gorm:"not null;index" json:"storageId"`
-	Format       string     `gorm:"type:varchar(16);not null;default:'ndjson'" json:"format"`
-	QueryPayload string     `gorm:"type:longtext;not null" json:"-"`
-	Status       string     `gorm:"type:varchar(20);not null;default:'pending';index" json:"status"`
-	Progress     int        `gorm:"type:int;not null;default:0" json:"progress"`
-	ExportedRows int64      `gorm:"type:bigint;not null;default:0" json:"exportedRows"`
-	MaxRows      int        `gorm:"type:int;not null;default:100000" json:"maxRows"`
-	FileName     string     `gorm:"type:varchar(255)" json:"fileName"`
-	FilePath     string     `gorm:"type:text" json:"-"`
-	FileSize     int64      `gorm:"type:bigint;not null;default:0" json:"fileSize"`
-	ErrorMessage string     `gorm:"type:text" json:"errorMessage"`
-	StartedAt    *time.Time `gorm:"type:datetime" json:"startedAt"`
-	CompletedAt  *time.Time `gorm:"type:datetime" json:"completedAt"`
-	ExpiresAt    *time.Time `gorm:"type:datetime;index" json:"expiresAt"`
-	CreatedAt    time.Time  `json:"createdAt"`
-	UpdatedAt    time.Time  `json:"updatedAt"`
+	ID             uint       `gorm:"primarykey" json:"id"`
+	UserID         uint       `gorm:"not null;index" json:"userId"`
+	StorageID      uint       `gorm:"not null;index" json:"storageId"`
+	Format         string     `gorm:"type:varchar(16);not null;default:'ndjson'" json:"format"`
+	QueryPayload   string     `gorm:"type:longtext;not null" json:"-"`
+	Status         string     `gorm:"type:varchar(20);not null;default:'pending';index;index:idx_log_export_claim,priority:1" json:"status"`
+	Progress       int        `gorm:"type:int;not null;default:0" json:"progress"`
+	ExportedRows   int64      `gorm:"type:bigint;not null;default:0" json:"exportedRows"`
+	MaxRows        int        `gorm:"type:int;not null;default:100000" json:"maxRows"`
+	AttemptCount   int        `gorm:"type:int;not null;default:0" json:"attemptCount"`
+	MaxAttempts    int        `gorm:"type:int;not null;default:3" json:"maxAttempts"`
+	LeaseOwner     string     `gorm:"type:varchar(160);not null;default:''" json:"-"`
+	LeaseExpiresAt *time.Time `gorm:"type:datetime;index" json:"-"`
+	NextAttemptAt  *time.Time `gorm:"type:datetime;index;index:idx_log_export_claim,priority:2" json:"nextAttemptAt,omitempty"`
+	FileName       string     `gorm:"type:varchar(255)" json:"fileName"`
+	FilePath       string     `gorm:"type:text" json:"-"`
+	FileSize       int64      `gorm:"type:bigint;not null;default:0" json:"fileSize"`
+	ErrorMessage   string     `gorm:"type:text" json:"errorMessage"`
+	StartedAt      *time.Time `gorm:"type:datetime" json:"startedAt"`
+	CompletedAt    *time.Time `gorm:"type:datetime" json:"completedAt"`
+	ExpiresAt      *time.Time `gorm:"type:datetime;index" json:"expiresAt"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	UpdatedAt      time.Time  `json:"updatedAt"`
 }
 
 func (LogExportTask) TableName() string {
@@ -328,21 +333,35 @@ func (CollectorInstance) TableName() string {
 
 // AccessPolicy stores log field and action access-control rules.
 type AccessPolicy struct {
+	ID                 uint                `gorm:"primarykey" json:"id"`
+	Name               string              `gorm:"type:varchar(120);not null;default:''" json:"name"`
+	Description        string              `gorm:"type:varchar(500)" json:"description"`
+	SubjectType        string              `gorm:"type:varchar(20);not null;index" json:"subjectType"`
+	SubjectID          uint                `gorm:"not null;index" json:"subjectId"`
+	DataSourceID       uint                `gorm:"not null;index" json:"datasourceId"`
+	LibraryItemPattern string              `gorm:"type:varchar(255)" json:"libraryItemPattern"`
+	ScopeMode          string              `gorm:"type:varchar(32);not null;default:'all';index" json:"scopeMode"`
+	AllowedActions     string              `gorm:"type:varchar(255)" json:"allowedActions"`
+	DeniedFields       string              `gorm:"type:text" json:"deniedFields"`
+	MaskFields         string              `gorm:"type:text" json:"maskFields"`
+	Enabled            bool                `gorm:"type:tinyint(1);not null;default:1;index" json:"enabled"`
+	CreatedBy          uint                `gorm:"index;default:0" json:"createdBy"`
+	UpdatedBy          uint                `gorm:"index;default:0" json:"updatedBy"`
+	CreatedAt          time.Time           `json:"createdAt"`
+	UpdatedAt          time.Time           `json:"updatedAt"`
+	Scopes             []AccessPolicyScope `gorm:"foreignKey:AccessPolicyID;constraint:OnDelete:CASCADE" json:"-"`
+}
+
+// AccessPolicyScope binds an access policy to a collection policy.
+type AccessPolicyScope struct {
 	ID                 uint      `gorm:"primarykey" json:"id"`
-	Name               string    `gorm:"type:varchar(120);not null;default:''" json:"name"`
-	Description        string    `gorm:"type:varchar(500)" json:"description"`
-	SubjectType        string    `gorm:"type:varchar(20);not null;index" json:"subjectType"`
-	SubjectID          uint      `gorm:"not null;index" json:"subjectId"`
-	DataSourceID       uint      `gorm:"not null;index" json:"datasourceId"`
-	LibraryItemPattern string    `gorm:"type:varchar(255)" json:"libraryItemPattern"`
-	AllowedActions     string    `gorm:"type:varchar(255)" json:"allowedActions"`
-	DeniedFields       string    `gorm:"type:text" json:"deniedFields"`
-	MaskFields         string    `gorm:"type:text" json:"maskFields"`
-	Enabled            bool      `gorm:"type:tinyint(1);not null;default:1;index" json:"enabled"`
-	CreatedBy          uint      `gorm:"index;default:0" json:"createdBy"`
-	UpdatedBy          uint      `gorm:"index;default:0" json:"updatedBy"`
+	AccessPolicyID     uint      `gorm:"not null;index;uniqueIndex:idx_log_access_policy_scope,priority:1" json:"accessPolicyId"`
+	CollectionPolicyID uint      `gorm:"not null;index;uniqueIndex:idx_log_access_policy_scope,priority:2" json:"collectionPolicyId"`
 	CreatedAt          time.Time `json:"createdAt"`
-	UpdatedAt          time.Time `json:"updatedAt"`
+}
+
+func (AccessPolicyScope) TableName() string {
+	return "log_access_policy_scopes"
 }
 
 // RetentionPolicy stores reusable differential retention profiles.

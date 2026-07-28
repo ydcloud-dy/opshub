@@ -6,10 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-<<<<<<< HEAD
-=======
 	"time"
->>>>>>> feat: update log
 
 	"github.com/gin-gonic/gin"
 	"github.com/ydcloud-dy/opshub/internal/loggingest"
@@ -40,8 +37,6 @@ func TestResolveIngestTestTokenDoesNotDefaultForRemoteGateway(t *testing.T) {
 	}
 }
 
-<<<<<<< HEAD
-=======
 func TestBuildIngestReadinessReportsHealthyKafkaPipeline(t *testing.T) {
 	t.Setenv("OPSHUB_LOG_AGENT_INGEST_TOKEN", "random-ingest-token")
 	t.Setenv("OPSHUB_LOGCENTER_ENCRYPTION_KEY", "random-encryption-key")
@@ -52,7 +47,7 @@ func TestBuildIngestReadinessReportsHealthyKafkaPipeline(t *testing.T) {
 		component,
 		component,
 		ingestQueueResult{Enabled: true, Status: "healthy", Reachable: true},
-		ingestStorageResult{ID: 1, Status: "healthy", Reachable: true, InitializedAt: &initializedAt},
+		ingestStorageResult{ID: 1, Status: "healthy", Reachable: true, InitializedAt: &initializedAt, RetentionStatus: "healthy"},
 		"https://opshub.example.com",
 	)
 	summary := summarizeIngestReadiness(checks)
@@ -71,7 +66,7 @@ func TestBuildIngestReadinessExplainsProductionWarnings(t *testing.T) {
 		component,
 		component,
 		ingestQueueResult{Status: "bypassed", Reachable: true},
-		ingestStorageResult{ID: 1, Status: "healthy", Reachable: true, InitializedAt: &initializedAt},
+		ingestStorageResult{ID: 1, Status: "healthy", Reachable: true, InitializedAt: &initializedAt, RetentionStatus: "healthy"},
 		"http://localhost:19880",
 	)
 	summary := summarizeIngestReadiness(checks)
@@ -80,6 +75,25 @@ func TestBuildIngestReadinessExplainsProductionWarnings(t *testing.T) {
 	}
 	if check := readinessCheckByID(checks, "public-gateway"); check.Status != "failed" {
 		t.Fatalf("public gateway check = %+v", check)
+	}
+}
+
+func TestRetentionReadinessReportsCriticalBacklog(t *testing.T) {
+	check := retentionReadiness(ingestStorageResult{
+		ID: 1, Reachable: true, RetentionStatus: "critical", ExpiredParts: 3,
+		TTLLagSeconds: 25200, TTLMergeActive: true, TTLMergeProgress: 0.5,
+	})
+	if check.Status != "failed" || !strings.Contains(check.Description, "7.0 小时") || !strings.Contains(check.Description, "50%") {
+		t.Fatalf("unexpected retention readiness: %+v", check)
+	}
+}
+
+func TestFormatRetentionLag(t *testing.T) {
+	if got := formatRetentionLag(61); got != "2 分钟" {
+		t.Fatalf("formatRetentionLag(61) = %q", got)
+	}
+	if got := formatRetentionLag(5400); got != "1.5 小时" {
+		t.Fatalf("formatRetentionLag(5400) = %q", got)
 	}
 }
 
@@ -92,7 +106,6 @@ func readinessCheckByID(checks []ingestReadinessCheck, id string) ingestReadines
 	return ingestReadinessCheck{}
 }
 
->>>>>>> feat: update log
 func TestAgentGatewayURLUsesReachableFallbackForLoopbackHost(t *testing.T) {
 	if gatewayURL := agentGatewayURLForHost("http", "localhost:9876", "http://192.168.31.190:9880"); gatewayURL != "http://192.168.31.190:9880" {
 		t.Fatalf("gateway URL = %q", gatewayURL)
@@ -144,6 +157,11 @@ func TestIngestSendsBatchAndReturnsGatewayAck(t *testing.T) {
 	t.Setenv("OPSHUB_LOG_INGEST_TEST_TOKEN", "test-token")
 
 	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("user_id", uint(1))
+		c.Set("username", "admin")
+		c.Next()
+	})
 	handler := &Handler{}
 	router.POST("/test", handler.TestIngest)
 	recorder := httptest.NewRecorder()

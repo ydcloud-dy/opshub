@@ -1,7 +1,7 @@
 <template>
-  <div class="credentials-page-container">
+  <div class="credentials-page-container" :class="{ 'is-embedded': embedded }">
     <!-- 页面标题和操作按钮 -->
-    <div class="page-header">
+    <div v-if="!embedded" class="page-header">
       <div class="page-title-group">
         <div class="page-title-icon">
           <el-icon><Lock /></el-icon>
@@ -48,6 +48,7 @@
       </div>
 
       <div class="filter-actions">
+        <el-button v-if="embedded" type="primary" :icon="Plus" @click="handleAdd">新建凭证</el-button>
         <el-button class="reset-btn" @click="handleReset">
           <el-icon style="margin-right: 4px;"><RefreshLeft /></el-icon>
           重置
@@ -210,7 +211,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
-import { ElMessage, ElMessageBox, FormInstance, FormRules } from 'element-plus'
+import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import {
   Plus,
   Edit,
@@ -228,6 +229,8 @@ import {
   updateCredential,
   deleteCredential
 } from '@/api/host'
+
+withDefaults(defineProps<{ embedded?: boolean }>(), { embedded: false })
 
 // 加载状态
 const loading = ref(false)
@@ -859,6 +862,21 @@ onMounted(() => {
 :deep(.credential-dialog .el-dialog__header) {
   background: #fbfcfe;
   border-bottom-color: #edf1f7;
+}
+
+.credentials-page-container.is-embedded {
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.credentials-page-container.is-embedded .filter-bar {
+  margin-top: 0;
+}
+
+.credentials-page-container.is-embedded .table-wrapper {
+  margin-bottom: 0;
+  border-radius: 8px;
 }
 
 @media (max-width: 900px) {

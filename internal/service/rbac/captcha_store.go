@@ -49,7 +49,7 @@ func (s *RedisCaptchaStore) Set(id string, value string) error {
 	ctx := context.Background()
 	key := s.keyPrefix + id
 	err := s.client.Set(ctx, key, value, s.expiration).Err()
-	appLogger.Info("Redis验证码存储", zap.String("key", key), zap.String("value", value), zap.Error(err))
+	appLogger.Debug("Redis验证码存储", zap.String("key", key), zap.Error(err))
 	return err
 }
 
@@ -58,7 +58,7 @@ func (s *RedisCaptchaStore) Get(id string, clear bool) string {
 	ctx := context.Background()
 	key := s.keyPrefix + id
 	val, err := s.client.Get(ctx, key).Result()
-	appLogger.Info("Redis验证码获取", zap.String("key", key), zap.String("value", val), zap.Bool("clear", clear), zap.Error(err))
+	appLogger.Debug("Redis验证码获取", zap.String("key", key), zap.Bool("clear", clear), zap.Error(err))
 	if err != nil {
 		return ""
 	}

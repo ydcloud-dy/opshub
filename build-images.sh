@@ -7,8 +7,29 @@ set -e
 # 配置
 SWR_REGION="swr.cn-east-3.myhuaweicloud.com"
 SWR_ORG="${1:-opshub}"  # 默认组织名，请修改为你的组织名
-VERSION="${2:-latest}"
+VERSION="${2:-${OPSHUB_IMAGE_TAG:-}}"
 DOCKER_PLATFORM="${DOCKER_PLATFORM:-linux/amd64}"
+
+if [[ -z "${VERSION}" || "${VERSION}" == "latest" || "${VERSION}" == "dev" ]]; then
+    echo "错误: 发布构建必须显式提供不可变版本，例如 ./build-images.sh dyclouds v0.0.10" >&2
+    exit 1
+fi
+
+if [[ "${ALLOW_DIRTY_BUILD:-0}" != "1" ]]; then
+    if ! git diff --quiet || ! git diff --cached --quiet || [[ -n "$(git ls-files --others --exclude-standard | head -n 1)" ]]; then
+        echo "错误: 发布构建要求干净工作区，请先提交代码；临时验证可显式设置 ALLOW_DIRTY_BUILD=1" >&2
+        exit 1
+    fi
+fi
+
+SOURCE_REVISION="$(git rev-parse HEAD)"
+BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+BUILD_LABELS=(
+    --label "org.opencontainers.image.version=${VERSION}"
+    --label "org.opencontainers.image.revision=${SOURCE_REVISION}"
+    --label "org.opencontainers.image.created=${BUILD_DATE}"
+    --label "org.opencontainers.image.source=https://github.com/ydcloud-dy/opshub"
+)
 
 HOST_ARCH="${DOCKER_BUILD_ARCH:-$(docker info --format '{{.Architecture}}' 2>/dev/null || uname -m)}"
 case "${HOST_ARCH}" in
@@ -42,17 +63,18 @@ echo "================================================"
 # 构建后端镜像
 echo ""
 echo "🔨 构建后端镜像..."
-docker build --platform "${DOCKER_PLATFORM}" -t "${BACKEND_IMAGE}" -f Dockerfile .
+docker build --platform "${DOCKER_PLATFORM}" "${BUILD_LABELS[@]}" -t "${BACKEND_IMAGE}" -f Dockerfile .
 
 # 构建前端镜像
 echo ""
 echo "🔨 构建前端镜像..."
-docker build --platform "${DOCKER_PLATFORM}" -t "${FRONTEND_IMAGE}" -f Dockerfile.frontend .
+docker build --platform "${DOCKER_PLATFORM}" "${BUILD_LABELS[@]}" -t "${FRONTEND_IMAGE}" -f Dockerfile.frontend .
 
 # 构建日志数据面镜像
 echo ""
 echo "🔨 构建 Log Gateway 镜像..."
 docker build --platform "${DOCKER_PLATFORM}" \
+    "${BUILD_LABELS[@]}" \
     --build-arg BUILDPLATFORM="${DOCKER_BUILD_PLATFORM}" \
     --build-arg TARGETPLATFORM="${DOCKER_PLATFORM}" \
     --build-arg TARGETOS="${TARGET_OS}" \
@@ -62,6 +84,7 @@ docker build --platform "${DOCKER_PLATFORM}" \
 echo ""
 echo "🔨 构建 Log Writer 镜像..."
 docker build --platform "${DOCKER_PLATFORM}" \
+    "${BUILD_LABELS[@]}" \
     --build-arg BUILDPLATFORM="${DOCKER_BUILD_PLATFORM}" \
     --build-arg TARGETPLATFORM="${DOCKER_PLATFORM}" \
     --build-arg TARGETOS="${TARGET_OS}" \
@@ -71,6 +94,7 @@ docker build --platform "${DOCKER_PLATFORM}" \
 echo ""
 echo "构建 Log Agent 镜像..."
 docker build --platform "${DOCKER_PLATFORM}" \
+    "${BUILD_LABELS[@]}" \
     --build-arg BUILDPLATFORM="${DOCKER_BUILD_PLATFORM}" \
     --build-arg TARGETPLATFORM="${DOCKER_PLATFORM}" \
     --build-arg TARGETOS="${TARGET_OS}" \

@@ -1,3 +1,9 @@
+{{- if and (gt (int .Values.backend.replicaCount) 1) (not .Values.logCenter.export.persistence.enabled) }}
+{{- fail "backend.replicaCount 大于 1 时必须启用 logCenter.export.persistence，共享日志导出文件" }}
+{{- end }}
+{{- if and (gt (int .Values.backend.replicaCount) 1) (not (has "ReadWriteMany" .Values.logCenter.export.persistence.accessModes)) }}
+{{- fail "backend.replicaCount 大于 1 时 logCenter.export.persistence.accessModes 必须包含 ReadWriteMany" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -7,6 +13,12 @@ metadata:
     {{- include "opshub.backend.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.backend.replicaCount }}
+  revisionHistoryLimit: {{ .Values.backend.revisionHistoryLimit | default 10 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       {{- include "opshub.backend.selectorLabels" . | nindent 6 }}
@@ -109,8 +121,15 @@ spec:
                 secretKeyRef:
                   name: {{ include "opshub.fullname" . }}-secrets
                   key: logcenter-encryption-key
+            - name: OPSHUB_LOGCENTER_DECRYPTION_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "opshub.fullname" . }}-secrets
+                  key: logcenter-decryption-keys
             - name: OPSHUB_LOGCENTER_CLICKHOUSE_ENDPOINT
               value: {{ include "opshub.clickhouse.endpoint" . | quote }}
+            - name: OPSHUB_LOGCENTER_CLICKHOUSE_CLUSTER
+              value: {{ include "opshub.clickhouse.clusterName" . | quote }}
             - name: OPSHUB_LOGCENTER_CLICKHOUSE_DATABASE
               value: {{ include "opshub.clickhouse.database" . | quote }}
             - name: OPSHUB_LOGCENTER_CLICKHOUSE_USERNAME
@@ -148,6 +167,10 @@ spec:
               value: {{ .Values.logCenter.tail.pollMilliseconds | quote }}
             - name: OPSHUB_LOG_TAIL_MAX_MINUTES
               value: {{ .Values.logCenter.tail.maxMinutes | quote }}
+            - name: OPSHUB_LOG_TAIL_REAUTH_SECONDS
+              value: {{ .Values.logCenter.tail.reauthorizeSeconds | quote }}
+            - name: OPSHUB_LOG_TTL_MERGE_TIMEOUT_SECONDS
+              value: {{ .Values.logCenter.retention.ttlMergeTimeoutSeconds | quote }}
             - name: OPSHUB_LOG_EXPORT_DIR
               value: "/app/data/log-exports"
             - name: OPSHUB_LOG_EXPORT_MAX_ROWS
@@ -156,6 +179,10 @@ spec:
               value: {{ .Values.logCenter.export.workers | quote }}
             - name: OPSHUB_LOG_EXPORT_QUEUE_CAPACITY
               value: {{ .Values.logCenter.export.queueCapacity | quote }}
+            - name: OPSHUB_LOG_EXPORT_MAX_ATTEMPTS
+              value: {{ .Values.logCenter.export.maxAttempts | quote }}
+            - name: OPSHUB_LOG_EXPORT_LEASE_SECONDS
+              value: {{ .Values.logCenter.export.leaseSeconds | quote }}
             - name: OPSHUB_LOG_EXPORT_RETENTION_HOURS
               value: {{ .Values.logCenter.export.retentionHours | quote }}
             - name: OPSHUB_LOG_EXPORT_TIMEOUT_MINUTES
@@ -212,6 +239,21 @@ spec:
           persistentVolumeClaim:
             claimName: {{ include "opshub.fullname" . }}-terminal-recordings
       {{- end }}
+{{- if and .Values.backend.podDisruptionBudget.enabled (gt (int .Values.backend.replicaCount) 1) }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "opshub.fullname" . }}-backend
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "opshub.backend.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.backend.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "opshub.backend.selectorLabels" . | nindent 6 }}
+{{- end }}
 ---
 apiVersion: v1
 kind: Service

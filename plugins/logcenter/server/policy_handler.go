@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -57,28 +58,26 @@ type policyPayload struct {
 }
 
 type policyView struct {
-	ID              uint                  `json:"id"`
-	Status          string                `json:"status"`
-	Version         uint64                `json:"version"`
-	CreatedBy       uint                  `json:"createdBy"`
-	UpdatedBy       uint                  `json:"updatedBy"`
-	CreatedAt       time.Time             `json:"createdAt"`
-	UpdatedAt       time.Time             `json:"updatedAt"`
-	Payload         policyPayload         `json:"payload"`
-	TargetCount     int                   `json:"targetCount"`
-<<<<<<< HEAD
-	InstanceTotal   int64                 `json:"instanceTotal"`
-	InstanceApplied int64                 `json:"instanceApplied"`
-=======
-	TargetExpected  int                   `json:"targetExpected"`
-	InstanceTotal   int64                 `json:"instanceTotal"`
-	InstanceOnline  int64                 `json:"instanceOnline"`
-	InstanceApplied int64                 `json:"instanceApplied"`
-	InstancePending int64                 `json:"instancePending"`
->>>>>>> feat: update log
-	ErrorInstances  int64                 `json:"errorInstances"`
-	TargetHosts     []policyTargetHost    `json:"targetHosts"`
-	TargetClusters  []policyTargetCluster `json:"targetClusters"`
+	ID                uint                                `json:"id"`
+	Status            string                              `json:"status"`
+	Version           uint64                              `json:"version"`
+	HasDraft          bool                                `json:"hasUnpublishedChanges"`
+	CreatedBy         uint                                `json:"createdBy"`
+	UpdatedBy         uint                                `json:"updatedBy"`
+	CreatedAt         time.Time                           `json:"createdAt"`
+	UpdatedAt         time.Time                           `json:"updatedAt"`
+	Payload           policyPayload                       `json:"payload"`
+	DraftPayload      *policyPayload                      `json:"draftPayload,omitempty"`
+	TargetCount       int                                 `json:"targetCount"`
+	TargetExpected    int                                 `json:"targetExpected"`
+	InstanceTotal     int64                               `json:"instanceTotal"`
+	InstanceOnline    int64                               `json:"instanceOnline"`
+	InstanceApplied   int64                               `json:"instanceApplied"`
+	InstancePending   int64                               `json:"instancePending"`
+	ErrorInstances    int64                               `json:"errorInstances"`
+	TargetHosts       []policyTargetHost                  `json:"targetHosts"`
+	TargetClusters    []policyTargetCluster               `json:"targetClusters"`
+	CollectorShutdown []kubernetesCollectorShutdownResult `json:"collectorShutdown,omitempty"`
 }
 
 type policyTargetHost struct {
@@ -112,13 +111,25 @@ type policyRevisionView struct {
 	PolicyName string `json:"policyName"`
 }
 
+const (
+	collectionPolicyStatusDraft     = "draft"
+	collectionPolicyStatusPublished = "published"
+	collectionPolicyStatusDisabled  = "disabled"
+	collectionPolicyStatusArchived  = "archived"
+)
+
 func (h *Handler) ListCollectionPolicies(c *gin.Context) {
+	if !h.requirePolicyAdmin(c) {
+		return
+	}
 	query := h.db.WithContext(c.Request.Context()).Model(&logmodel.CollectionPolicy{}).Order("updated_at DESC")
 	if keyword := strings.TrimSpace(c.Query("keyword")); keyword != "" {
 		query = query.Where("name LIKE ? OR description LIKE ?", "%"+keyword+"%", "%"+keyword+"%")
 	}
 	if status := strings.TrimSpace(c.Query("status")); status != "" {
 		query = query.Where("status = ?", status)
+	} else {
+		query = query.Where("status <> ?", collectionPolicyStatusArchived)
 	}
 	var policies []logmodel.CollectionPolicy
 	if err := query.Find(&policies).Error; err != nil {
@@ -138,6 +149,9 @@ func (h *Handler) ListCollectionPolicies(c *gin.Context) {
 }
 
 func (h *Handler) GetCollectionPolicy(c *gin.Context) {
+	if !h.requirePolicyAdmin(c) {
+		return
+	}
 	policy, ok := h.findCollectionPolicy(c)
 	if !ok {
 		return
@@ -160,6 +174,10 @@ func (h *Handler) CreateCollectionPolicy(c *gin.Context) {
 		return
 	}
 	payload.normalize()
+	if err := applyRetentionPolicySnapshot(h.db.WithContext(c.Request.Context()), &payload); err != nil {
+		response.ErrorCode(c, http.StatusBadRequest, err.Error())
+		return
+	}
 	if err := validatePolicyPayload(payload); err != nil {
 		response.ErrorCode(c, http.StatusBadRequest, err.Error())
 		return
@@ -196,18 +214,45 @@ func (h *Handler) UpdateCollectionPolicy(c *gin.Context) {
 		return
 	}
 	payload.normalize()
+	if err := applyRetentionPolicySnapshot(h.db.WithContext(c.Request.Context()), &payload); err != nil {
+		response.ErrorCode(c, http.StatusBadRequest, err.Error())
+		return
+	}
 	if err := validatePolicyPayload(payload); err != nil {
 		response.ErrorCode(c, http.StatusBadRequest, err.Error())
 		return
 	}
+	if policy.Status == collectionPolicyStatusArchived {
+		response.ErrorCode(c, http.StatusConflict, "已归档策略不可编辑，请先恢复策略")
+		return
+	}
+	userID := rbacsvc.GetUserID(c)
+	if policy.Status == collectionPolicyStatusPublished && policy.Version > 0 {
+		if err := h.db.WithContext(c.Request.Context()).Transaction(func(tx *gorm.DB) error {
+			if err := savePendingPolicyDraft(tx, policy.ID, payload, userID); err != nil {
+				return err
+			}
+			return tx.Model(&policy).Updates(map[string]interface{}{"updated_by": userID}).Error
+		}); err != nil {
+			response.ErrorCode(c, http.StatusInternalServerError, "保存待发布策略失败: "+err.Error())
+			return
+		}
+		_ = h.db.WithContext(c.Request.Context()).First(&policy, policy.ID).Error
+		view, _ := h.buildPolicyView(c, policy)
+		response.Success(c, view)
+		return
+	}
 	payload.applyToModel(&policy)
-	policy.Status = "draft"
-	policy.UpdatedBy = rbacsvc.GetUserID(c)
+	policy.Status = collectionPolicyStatusDraft
+	policy.UpdatedBy = userID
 	if err := h.db.WithContext(c.Request.Context()).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Save(&policy).Error; err != nil {
 			return err
 		}
-		return replacePolicyTargets(tx, policy.ID, payload.Targets)
+		if err := replacePolicyTargets(tx, policy.ID, payload.Targets); err != nil {
+			return err
+		}
+		return tx.Where("policy_id = ? AND version = ?", policy.ID, 0).Delete(&logmodel.PolicyRevision{}).Error
 	}); err != nil {
 		response.ErrorCode(c, http.StatusInternalServerError, "更新采集策略失败: "+err.Error())
 		return
@@ -220,30 +265,124 @@ func (h *Handler) DeleteCollectionPolicy(c *gin.Context) {
 	if !h.requirePolicyAdmin(c) {
 		return
 	}
-	policy, ok := h.findCollectionPolicy(c)
-	if !ok {
+	policyID := parseUint(c.Param("id"))
+	if policyID == 0 {
+		response.ErrorCode(c, http.StatusBadRequest, "策略 ID 无效")
 		return
 	}
-	if policy.Version > 0 || policy.Status != "draft" {
-		response.ErrorCode(c, http.StatusConflict, "只有从未发布的草稿策略可以删除")
-		return
-	}
-	var assignmentCount int64
-	h.db.Model(&logmodel.CollectorAssignment{}).Where("policy_id = ?", policy.ID).Count(&assignmentCount)
-	if assignmentCount > 0 {
-		response.ErrorCode(c, http.StatusConflict, "策略仍有关联实例，无法删除")
-		return
-	}
-	if err := h.db.WithContext(c.Request.Context()).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("policy_id = ?", policy.ID).Delete(&logmodel.PolicyTarget{}).Error; err != nil {
+	var action string
+	var shutdownClusters []k8smodel.Cluster
+	err := h.db.WithContext(c.Request.Context()).Transaction(func(tx *gorm.DB) error {
+		var policy logmodel.CollectionPolicy
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&policy, policyID).Error; err != nil {
 			return err
 		}
-		return tx.Delete(&policy).Error
-	}); err != nil {
-		response.ErrorCode(c, http.StatusInternalServerError, "删除采集策略失败: "+err.Error())
+		policyAction, decisionErr := collectionPolicyDeleteAction(policy)
+		if decisionErr != nil {
+			return decisionErr
+		}
+		switch policyAction {
+		case "deleted":
+			if err := deleteCollectionPolicyData(tx, policy.ID); err != nil {
+				return err
+			}
+			if err := tx.Delete(&policy).Error; err != nil {
+				return err
+			}
+			action = "deleted"
+		case "archived":
+			var activeAssignments int64
+			if err := tx.Model(&logmodel.CollectorAssignment{}).
+				Where("policy_id = ? AND desired_state = ?", policy.ID, "active").Count(&activeAssignments).Error; err != nil {
+				return err
+			}
+			if activeAssignments > 0 {
+				return &policyLifecycleConflict{message: "策略仍有活动采集实例，请先完成停用下发后再归档"}
+			}
+			assignmentUpdates := map[string]interface{}{"desired_state": "disabled", "apply_status": "pending", "last_error": ""}
+			if policy.SourceMode == "kubernetes" {
+				now := time.Now()
+				assignmentUpdates["apply_status"] = "disabled"
+				assignmentUpdates["applied_at"] = &now
+				clusters, err := resolvePolicyClusters(tx, policy.ID)
+				if err != nil {
+					return err
+				}
+				shutdownClusters = clusters
+			}
+			if err := tx.Model(&logmodel.CollectorAssignment{}).Where("policy_id = ?", policy.ID).Updates(assignmentUpdates).Error; err != nil {
+				return err
+			}
+			policy.Status = collectionPolicyStatusArchived
+			policy.UpdatedBy = rbacsvc.GetUserID(c)
+			if err := tx.Save(&policy).Error; err != nil {
+				return err
+			}
+			action = "archived"
+		}
+		return nil
+	})
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			response.ErrorCode(c, http.StatusNotFound, "采集策略不存在")
+			return
+		}
+		if conflict, ok := err.(*policyLifecycleConflict); ok {
+			response.ErrorCode(c, http.StatusConflict, conflict.Error())
+			return
+		}
+		response.ErrorCode(c, http.StatusInternalServerError, "删除或归档采集策略失败: "+err.Error())
 		return
 	}
-	response.Success(c, gin.H{"id": policy.ID})
+	result := gin.H{"id": policyID, "action": action}
+	if action == "archived" && len(shutdownClusters) > 0 {
+		result["collectorShutdown"] = shutdownUnusedKubernetesCollectors(
+			c.Request.Context(), uint(policyID), shutdownClusters,
+			h.countOtherPublishedKubernetesPolicies, h.uninstallKubernetesCollector,
+		)
+	}
+	response.Success(c, result)
+}
+
+func (h *Handler) RestoreCollectionPolicy(c *gin.Context) {
+	if !h.requirePolicyAdmin(c) {
+		return
+	}
+	policyID := parseUint(c.Param("id"))
+	if policyID == 0 {
+		response.ErrorCode(c, http.StatusBadRequest, "策略 ID 无效")
+		return
+	}
+	var policy logmodel.CollectionPolicy
+	err := h.db.WithContext(c.Request.Context()).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&policy, policyID).Error; err != nil {
+			return err
+		}
+		if policy.Status != collectionPolicyStatusArchived {
+			return &policyLifecycleConflict{message: "只有已归档策略可以恢复"}
+		}
+		policy.Status = collectionPolicyStatusDraft
+		policy.UpdatedBy = rbacsvc.GetUserID(c)
+		return tx.Save(&policy).Error
+	})
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			response.ErrorCode(c, http.StatusNotFound, "采集策略不存在")
+			return
+		}
+		if conflict, ok := err.(*policyLifecycleConflict); ok {
+			response.ErrorCode(c, http.StatusConflict, conflict.Error())
+			return
+		}
+		response.ErrorCode(c, http.StatusInternalServerError, "恢复采集策略失败: "+err.Error())
+		return
+	}
+	view, viewErr := h.buildPolicyView(c, policy)
+	if viewErr != nil {
+		response.ErrorCode(c, http.StatusInternalServerError, "读取恢复后的策略失败: "+viewErr.Error())
+		return
+	}
+	response.Success(c, view)
 }
 
 func (h *Handler) PublishCollectionPolicy(c *gin.Context) {
@@ -261,6 +400,12 @@ func (h *Handler) PublishCollectionPolicy(c *gin.Context) {
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&policy, uint(policyID)).Error; err != nil {
 			return err
 		}
+		if policy.Status == collectionPolicyStatusArchived {
+			return &policyLifecycleConflict{message: "已归档策略不能直接发布，请先恢复策略"}
+		}
+		if err := applyPendingPolicyDraft(tx, &policy); err != nil {
+			return err
+		}
 		result, err := publishPolicy(tx, policy, rbacsvc.GetUserID(c), strings.TrimSpace(req.ChangeSummary))
 		published = result
 		return err
@@ -269,6 +414,10 @@ func (h *Handler) PublishCollectionPolicy(c *gin.Context) {
 		status := http.StatusInternalServerError
 		if err == gorm.ErrRecordNotFound {
 			status = http.StatusNotFound
+		} else if conflict, ok := err.(*policyLifecycleConflict); ok {
+			status = http.StatusConflict
+			response.ErrorCode(c, status, "发布采集策略失败: "+conflict.Error())
+			return
 		}
 		response.ErrorCode(c, status, "发布采集策略失败: "+err.Error())
 		return
@@ -285,6 +434,27 @@ func (h *Handler) DisableCollectionPolicy(c *gin.Context) {
 	if !ok {
 		return
 	}
+	if policy.Status == collectionPolicyStatusArchived {
+		response.ErrorCode(c, http.StatusConflict, "已归档策略不能停用")
+		return
+	}
+	var req struct {
+		UninstallCollectors *bool `json:"uninstallCollectors"`
+	}
+	_ = c.ShouldBindJSON(&req)
+	var targetClusters []k8smodel.Cluster
+	uninstallCollectors := policy.SourceMode == "kubernetes"
+	if req.UninstallCollectors != nil {
+		uninstallCollectors = *req.UninstallCollectors
+	}
+	if uninstallCollectors && policy.SourceMode == "kubernetes" {
+		var err error
+		targetClusters, err = resolvePolicyClusters(h.db.WithContext(c.Request.Context()), policy.ID)
+		if err != nil {
+			response.ErrorCode(c, http.StatusInternalServerError, "读取策略目标集群失败: "+err.Error())
+			return
+		}
+	}
 	policy.Status = "disabled"
 	policy.UpdatedBy = rbacsvc.GetUserID(c)
 	err := h.db.WithContext(c.Request.Context()).Transaction(func(tx *gorm.DB) error {
@@ -300,6 +470,12 @@ func (h *Handler) DisableCollectionPolicy(c *gin.Context) {
 		return
 	}
 	view, _ := h.buildPolicyView(c, policy)
+	if uninstallCollectors && len(targetClusters) > 0 {
+		view.CollectorShutdown = shutdownUnusedKubernetesCollectors(
+			c.Request.Context(), policy.ID, targetClusters,
+			h.countOtherPublishedKubernetesPolicies, h.uninstallKubernetesCollector,
+		)
+	}
 	response.Success(c, view)
 }
 
@@ -309,6 +485,10 @@ func (h *Handler) RollbackCollectionPolicy(c *gin.Context) {
 	}
 	policy, ok := h.findCollectionPolicy(c)
 	if !ok {
+		return
+	}
+	if policy.Status == collectionPolicyStatusArchived {
+		response.ErrorCode(c, http.StatusConflict, "已归档策略不能直接回滚，请先恢复策略")
 		return
 	}
 	version, _ := strconv.ParseUint(c.Param("version"), 10, 64)
@@ -333,6 +513,9 @@ func (h *Handler) RollbackCollectionPolicy(c *gin.Context) {
 		if err := replacePolicyTargets(tx, policy.ID, payload.Targets); err != nil {
 			return err
 		}
+		if err := tx.Where("policy_id = ? AND version = ?", policy.ID, 0).Delete(&logmodel.PolicyRevision{}).Error; err != nil {
+			return err
+		}
 		result, err := publishPolicy(tx, policy, rbacsvc.GetUserID(c), fmt.Sprintf("回滚到 v%d", version))
 		published = result
 		return err
@@ -346,9 +529,12 @@ func (h *Handler) RollbackCollectionPolicy(c *gin.Context) {
 }
 
 func (h *Handler) ListPolicyRevisions(c *gin.Context) {
+	if !h.requirePolicyAdmin(c) {
+		return
+	}
 	policyID, _ := strconv.ParseUint(c.Param("id"), 10, 64)
 	var revisions []logmodel.PolicyRevision
-	if err := h.db.WithContext(c.Request.Context()).Where("policy_id = ?", policyID).Order("version DESC").Find(&revisions).Error; err != nil {
+	if err := h.db.WithContext(c.Request.Context()).Where("policy_id = ? AND version > ?", policyID, 0).Order("version DESC").Find(&revisions).Error; err != nil {
 		response.ErrorCode(c, http.StatusInternalServerError, "读取发布记录失败: "+err.Error())
 		return
 	}
@@ -359,12 +545,21 @@ func (h *Handler) ListPolicyRevisions(c *gin.Context) {
 }
 
 func (h *Handler) ListAllPolicyRevisions(c *gin.Context) {
+	if !h.requirePolicyAdmin(c) {
+		return
+	}
+	page, pageSize := parsePage(c)
 	var revisions []logmodel.PolicyRevision
-	query := h.db.WithContext(c.Request.Context()).Order("created_at DESC")
+	query := h.db.WithContext(c.Request.Context()).Model(&logmodel.PolicyRevision{}).Where("version > ?", 0)
 	if policyID := parseUint(c.Query("policyId")); policyID > 0 {
 		query = query.Where("policy_id = ?", policyID)
 	}
-	if err := query.Limit(500).Find(&revisions).Error; err != nil {
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		response.ErrorCode(c, http.StatusInternalServerError, "统计发布记录失败: "+err.Error())
+		return
+	}
+	if err := query.Order("created_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&revisions).Error; err != nil {
 		response.ErrorCode(c, http.StatusInternalServerError, "读取发布记录失败: "+err.Error())
 		return
 	}
@@ -388,7 +583,7 @@ func (h *Handler) ListAllPolicyRevisions(c *gin.Context) {
 		revision.Content = ""
 		result = append(result, policyRevisionView{PolicyRevision: revision, PolicyName: policyNames[revision.PolicyID]})
 	}
-	response.Success(c, result)
+	response.Success(c, gin.H{"total": total, "page": page, "pageSize": pageSize, "data": result})
 }
 
 func (h *Handler) PreviewPolicyTargets(c *gin.Context) {
@@ -396,8 +591,13 @@ func (h *Handler) PreviewPolicyTargets(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if policy.SourceMode == "kubernetes" {
-		clusters, err := resolvePolicyClusters(h.db.WithContext(c.Request.Context()), policy.ID)
+	payload, _, err := loadPolicyViewPayload(h.db.WithContext(c.Request.Context()), policy)
+	if err != nil {
+		response.ErrorCode(c, http.StatusInternalServerError, "读取策略目标失败: "+err.Error())
+		return
+	}
+	if payload.SourceMode == "kubernetes" {
+		clusters, err := resolvePolicyClustersFromInputs(h.db.WithContext(c.Request.Context()), payload.Targets)
 		if err != nil {
 			response.ErrorCode(c, http.StatusInternalServerError, "预览目标集群失败: "+err.Error())
 			return
@@ -405,7 +605,7 @@ func (h *Handler) PreviewPolicyTargets(c *gin.Context) {
 		response.Success(c, clustersToTargetView(clusters))
 		return
 	}
-	hosts, err := resolvePolicyHosts(h.db.WithContext(c.Request.Context()), policy.ID)
+	hosts, err := resolvePolicyHostsFromInputs(h.db.WithContext(c.Request.Context()), payload.Targets)
 	if err != nil {
 		response.ErrorCode(c, http.StatusInternalServerError, "预览目标主机失败: "+err.Error())
 		return
@@ -455,24 +655,164 @@ func (h *Handler) ListPolicyTargetOptions(c *gin.Context) {
 	})
 }
 
+type collectorInstanceView struct {
+	Status                    string                         `json:"status"`
+	RuntimeStatus             string                         `json:"runtimeStatus"`
+	LifecycleStatus           string                         `json:"lifecycleStatus"`
+	CollectorCredentialStatus string                         `json:"collectorCredentialStatus,omitempty"`
+	ActivePolicyCount         int64                          `json:"activePolicyCount"`
+	Instance                  logmodel.CollectorInstance     `json:"instance"`
+	Assignments               []logmodel.CollectorAssignment `json:"assignments"`
+}
+
 func (h *Handler) ListCollectorInstances(c *gin.Context) {
+	if !h.requirePolicyAdmin(c) {
+		return
+	}
+	ctx := c.Request.Context()
 	var instances []logmodel.CollectorInstance
-	if err := h.db.WithContext(c.Request.Context()).Order("updated_at DESC").Find(&instances).Error; err != nil {
+	if err := h.db.WithContext(ctx).Order("updated_at DESC").Find(&instances).Error; err != nil {
 		response.ErrorCode(c, http.StatusInternalServerError, "读取采集实例失败: "+err.Error())
 		return
 	}
+	credentialStatuses, err := h.clusterCollectorCredentialStatuses(ctx)
+	if err != nil {
+		response.ErrorCode(c, http.StatusInternalServerError, "读取集群采集凭据失败: "+err.Error())
+		return
+	}
+	activePolicyCounts, err := h.activeKubernetesPolicyCounts(ctx)
+	if err != nil {
+		response.ErrorCode(c, http.StatusInternalServerError, "统计 Kubernetes 策略失败: "+err.Error())
+		return
+	}
 	now := time.Now()
-	result := make([]gin.H, 0, len(instances))
+	result := make([]collectorInstanceView, 0, len(instances))
 	for _, instance := range instances {
-		status := instance.Status
-		if instance.LastHeartbeatAt == nil || now.Sub(*instance.LastHeartbeatAt) > 90*time.Second {
-			status = "offline"
-		}
+		runtimeStatus := collectorRuntimeStatus(instance, now)
+		instance.Status = runtimeStatus
+		credentialStatus := credentialStatuses[instance.ClusterID]
+		activePolicyCount := activePolicyCounts[instance.ClusterID]
+		lifecycleStatus := collectorLifecycleStatus(instance, runtimeStatus, credentialStatus, activePolicyCount)
 		var assignments []logmodel.CollectorAssignment
-		h.db.Where("instance_id = ?", instance.InstanceID).Order("policy_id ASC").Find(&assignments)
-		result = append(result, gin.H{"instance": instance, "status": status, "assignments": assignments})
+		if err := h.db.WithContext(ctx).Where("instance_id = ?", instance.InstanceID).Order("policy_id ASC").Find(&assignments).Error; err != nil {
+			response.ErrorCode(c, http.StatusInternalServerError, "读取采集实例下发状态失败: "+err.Error())
+			return
+		}
+		result = append(result, collectorInstanceView{
+			Status: runtimeStatus, RuntimeStatus: runtimeStatus, LifecycleStatus: lifecycleStatus,
+			CollectorCredentialStatus: credentialStatus, ActivePolicyCount: activePolicyCount,
+			Instance: instance, Assignments: assignments,
+		})
 	}
 	response.Success(c, result)
+}
+
+func (h *Handler) clusterCollectorCredentialStatuses(ctx context.Context) (map[uint]string, error) {
+	var credentials []logmodel.ClusterCollectorCredential
+	if err := h.db.WithContext(ctx).Select("cluster_id", "status").Find(&credentials).Error; err != nil {
+		return nil, err
+	}
+	result := make(map[uint]string, len(credentials))
+	for _, credential := range credentials {
+		result[credential.ClusterID] = strings.ToLower(strings.TrimSpace(credential.Status))
+	}
+	return result, nil
+}
+
+func (h *Handler) activeKubernetesPolicyCounts(ctx context.Context) (map[uint]int64, error) {
+	type clusterPolicyCount struct {
+		ClusterID uint
+		Count     int64
+	}
+	var rows []clusterPolicyCount
+	err := h.db.WithContext(ctx).Table("log_policy_targets AS targets").
+		Select("targets.target_id AS cluster_id, COUNT(DISTINCT policies.id) AS count").
+		Joins("JOIN log_collection_policies AS policies ON policies.id = targets.policy_id").
+		Where("targets.target_type = ? AND policies.source_mode = ? AND policies.status = ?", "cluster", "kubernetes", collectionPolicyStatusPublished).
+		Group("targets.target_id").Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[uint]int64, len(rows))
+	for _, row := range rows {
+		result[row.ClusterID] = row.Count
+	}
+	return result, nil
+}
+
+func collectorRuntimeStatus(instance logmodel.CollectorInstance, now time.Time) string {
+	status := strings.ToLower(strings.TrimSpace(instance.Status))
+	if status == "" {
+		status = "offline"
+	}
+	if instance.LastHeartbeatAt == nil || now.Sub(*instance.LastHeartbeatAt) > 90*time.Second {
+		return "offline"
+	}
+	if status == "offline" {
+		return "online"
+	}
+	return status
+}
+
+func collectorLifecycleStatus(instance logmodel.CollectorInstance, runtimeStatus, credentialStatus string, activePolicyCount int64) string {
+	if instance.Mode != "kubernetes-node" {
+		return "active"
+	}
+	credentialStatus = strings.ToLower(strings.TrimSpace(credentialStatus))
+	if credentialStatus == "revoked" {
+		return "retired"
+	}
+	if activePolicyCount == 0 {
+		if credentialStatus == "active" {
+			return "idle"
+		}
+		return "retired"
+	}
+	return "active"
+}
+
+func (h *Handler) DeleteCollectorInstance(c *gin.Context) {
+	if !h.requirePolicyAdmin(c) {
+		return
+	}
+	instanceID := c.Param("id")
+	if strings.TrimSpace(instanceID) == "" {
+		response.ErrorCode(c, http.StatusBadRequest, "采集实例 ID 不能为空")
+		return
+	}
+	var instance logmodel.CollectorInstance
+	if err := h.db.WithContext(c.Request.Context()).Where("instance_id = ?", instanceID).First(&instance).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			response.ErrorCode(c, http.StatusNotFound, "采集实例不存在")
+			return
+		}
+		response.ErrorCode(c, http.StatusInternalServerError, "读取采集实例失败: "+err.Error())
+		return
+	}
+	if collectorRuntimeStatus(instance, time.Now()) == "online" {
+		response.ErrorCode(c, http.StatusConflict, "采集实例仍在线，不能清理")
+		return
+	}
+	var activeAssignments int64
+	if err := h.db.WithContext(c.Request.Context()).Model(&logmodel.CollectorAssignment{}).
+		Where("instance_id = ? AND desired_state = ?", instance.InstanceID, "active").Count(&activeAssignments).Error; err != nil {
+		response.ErrorCode(c, http.StatusInternalServerError, "检查采集实例策略失败: "+err.Error())
+		return
+	}
+	if activeAssignments > 0 {
+		response.ErrorCode(c, http.StatusConflict, "采集实例仍有关联的活动策略，请先停用或调整策略")
+		return
+	}
+	if err := h.db.WithContext(c.Request.Context()).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("instance_id = ?", instance.InstanceID).Delete(&logmodel.CollectorAssignment{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&instance).Error
+	}); err != nil {
+		response.ErrorCode(c, http.StatusInternalServerError, "清理采集实例失败: "+err.Error())
+		return
+	}
+	response.Success(c, gin.H{"instanceId": instance.InstanceID})
 }
 
 func (h *Handler) RestartCollectorInstance(c *gin.Context) {
@@ -499,9 +839,14 @@ func publishPolicy(tx *gorm.DB, policy logmodel.CollectionPolicy, userID uint, s
 	if err != nil {
 		return policy, err
 	}
+	if err := applyRetentionPolicySnapshot(tx, &payload); err != nil {
+		return policy, err
+	}
+	payload.normalize()
 	if err := validatePolicyPayload(payload); err != nil {
 		return policy, err
 	}
+	payload.applyToModel(&policy)
 	instanceIDs := make(map[string]struct{})
 	if payload.SourceMode == "kubernetes" {
 		clusters, err := resolvePolicyClusters(tx, policy.ID)
@@ -583,48 +928,39 @@ func publishPolicy(tx *gorm.DB, policy logmodel.CollectionPolicy, userID uint, s
 }
 
 func (h *Handler) buildPolicyView(c *gin.Context, policy logmodel.CollectionPolicy) (policyView, error) {
-	payload, err := loadPolicyPayload(h.db.WithContext(c.Request.Context()), policy)
+	db := h.db.WithContext(c.Request.Context())
+	payload, err := loadPolicyPayload(db, policy)
 	if err != nil {
 		return policyView{}, err
 	}
-<<<<<<< HEAD
-	var targetCount int
-=======
+	draftPayload, hasDraft, err := loadPendingPolicyDraft(db, policy.ID)
+	if err != nil {
+		return policyView{}, err
+	}
+	var draftView *policyPayload
+	if hasDraft {
+		draftView = &draftPayload
+	}
 	var targetCount, targetExpected int
->>>>>>> feat: update log
 	var targetHosts []policyTargetHost
 	var targetClusters []policyTargetCluster
-	if policy.SourceMode == "kubernetes" {
-		clusters, err := resolvePolicyClusters(h.db.WithContext(c.Request.Context()), policy.ID)
+	if payload.SourceMode == "kubernetes" {
+		clusters, err := resolvePolicyClustersFromInputs(h.db.WithContext(c.Request.Context()), payload.Targets)
 		if err != nil {
 			return policyView{}, err
 		}
 		targetClusters = clustersToTargetView(clusters)
 		targetCount = len(targetClusters)
-<<<<<<< HEAD
-=======
 		for _, cluster := range targetClusters {
 			targetExpected += cluster.NodeCount
 		}
->>>>>>> feat: update log
 	} else {
-		hosts, err := resolvePolicyHosts(h.db.WithContext(c.Request.Context()), policy.ID)
+		hosts, err := resolvePolicyHostsFromInputs(h.db.WithContext(c.Request.Context()), payload.Targets)
 		if err != nil {
 			return policyView{}, err
 		}
 		targetHosts = hostsToTargetView(hosts)
 		targetCount = len(targetHosts)
-<<<<<<< HEAD
-	}
-	var total, applied, failed int64
-	h.db.Model(&logmodel.CollectorAssignment{}).Where("policy_id = ?", policy.ID).Count(&total)
-	h.db.Model(&logmodel.CollectorAssignment{}).Where("policy_id = ? AND apply_status = ?", policy.ID, "applied").Count(&applied)
-	h.db.Model(&logmodel.CollectorAssignment{}).Where("policy_id = ? AND apply_status = ?", policy.ID, "failed").Count(&failed)
-	return policyView{
-		ID: policy.ID, Status: policy.Status, Version: policy.Version, CreatedBy: policy.CreatedBy, UpdatedBy: policy.UpdatedBy,
-		CreatedAt: policy.CreatedAt, UpdatedAt: policy.UpdatedAt, Payload: payload,
-		TargetCount: targetCount, InstanceTotal: total, InstanceApplied: applied, ErrorInstances: failed,
-=======
 		targetExpected = len(targetHosts)
 	}
 	var total, online, applied, failed int64
@@ -641,11 +977,10 @@ func (h *Handler) buildPolicyView(c *gin.Context, policy logmodel.CollectionPoli
 		pending = 0
 	}
 	return policyView{
-		ID: policy.ID, Status: policy.Status, Version: policy.Version, CreatedBy: policy.CreatedBy, UpdatedBy: policy.UpdatedBy,
-		CreatedAt: policy.CreatedAt, UpdatedAt: policy.UpdatedAt, Payload: payload,
+		ID: policy.ID, Status: policy.Status, Version: policy.Version, HasDraft: hasDraft, CreatedBy: policy.CreatedBy, UpdatedBy: policy.UpdatedBy,
+		CreatedAt: policy.CreatedAt, UpdatedAt: policy.UpdatedAt, Payload: payload, DraftPayload: draftView,
 		TargetCount: targetCount, TargetExpected: targetExpected,
 		InstanceTotal: total, InstanceOnline: online, InstanceApplied: applied, InstancePending: pending, ErrorInstances: failed,
->>>>>>> feat: update log
 		TargetHosts: targetHosts, TargetClusters: targetClusters,
 	}, nil
 }
@@ -659,26 +994,74 @@ func (h *Handler) findCollectionPolicy(c *gin.Context) (logmodel.CollectionPolic
 	return policy, true
 }
 
+type policyLifecycleConflict struct {
+	message string
+}
+
+func (e *policyLifecycleConflict) Error() string { return e.message }
+
+func collectionPolicyDeleteAction(policy logmodel.CollectionPolicy) (string, error) {
+	switch {
+	case policy.Status == collectionPolicyStatusDraft && policy.Version == 0:
+		return "deleted", nil
+	case policy.Status == collectionPolicyStatusDisabled:
+		return "archived", nil
+	case policy.Status == collectionPolicyStatusPublished:
+		return "", &policyLifecycleConflict{message: "已发布策略不能直接删除，请先停用策略"}
+	case policy.Status == collectionPolicyStatusArchived:
+		return "", &policyLifecycleConflict{message: "策略已经归档"}
+	default:
+		return "", &policyLifecycleConflict{message: "当前策略状态不允许删除"}
+	}
+}
+
+func deleteCollectionPolicyData(tx *gorm.DB, policyID uint) error {
+	for _, item := range []interface{}{&logmodel.PolicyTarget{}, &logmodel.PolicyRevision{}, &logmodel.CollectorAssignment{}} {
+		if err := tx.Where("policy_id = ?", policyID).Delete(item).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (h *Handler) requirePolicyAdmin(c *gin.Context) bool {
+	return h.requireLogAdmin(c, "只有管理员可以管理日志采集策略")
+}
+
+func (h *Handler) requireAccessPolicyAdmin(c *gin.Context) bool {
+	return h.requireLogAdmin(c, "只有管理员可以管理日志访问策略")
+}
+
+func (h *Handler) requireRetentionPolicyAdmin(c *gin.Context) bool {
+	return h.requireLogAdmin(c, "只有管理员可以管理日志保留策略")
+}
+
+func (h *Handler) requireLogAdmin(c *gin.Context, message string) bool {
 	_, isAdmin, err := h.userAccessibleHostIDs(c)
 	if err != nil {
 		response.ErrorCode(c, http.StatusInternalServerError, "读取管理员权限失败: "+err.Error())
 		return false
 	}
 	if !isAdmin {
-		response.ErrorCode(c, http.StatusForbidden, "只有管理员可以管理日志采集策略")
+		response.ErrorCode(c, http.StatusForbidden, message)
 		return false
 	}
 	return true
 }
 
+func (h *Handler) logAdminStatus(c *gin.Context) (bool, bool) {
+	_, isAdmin, err := h.userAccessibleHostIDs(c)
+	if err != nil {
+		response.ErrorCode(c, http.StatusInternalServerError, "读取管理员权限失败: "+err.Error())
+		return false, false
+	}
+	return isAdmin, true
+}
+
 func (payload *policyPayload) normalize() {
 	payload.Name = strings.TrimSpace(payload.Name)
-<<<<<<< HEAD
-=======
 	payload.Environment = strings.TrimSpace(payload.Environment)
 	payload.Service = strings.TrimSpace(payload.Service)
->>>>>>> feat: update log
 	payload.SourceMode = firstNonEmpty(strings.TrimSpace(payload.SourceMode), "host")
 	payload.ReadFrom = firstNonEmpty(strings.TrimSpace(payload.ReadFrom), "latest")
 	payload.Encoding = firstNonEmpty(strings.TrimSpace(payload.Encoding), "utf-8")
@@ -715,19 +1098,48 @@ func (payload *policyPayload) normalize() {
 	}
 }
 
+func applyRetentionPolicyValues(payload *policyPayload, policy logmodel.RetentionPolicy) error {
+	if policy.DefaultDays <= 0 || policy.DefaultDays > 3650 {
+		return fmt.Errorf("保留策略 %s 的默认保留天数无效", policy.Name)
+	}
+	levelDays := make(map[string]int)
+	if strings.TrimSpace(policy.LevelDays) != "" {
+		if err := json.Unmarshal([]byte(policy.LevelDays), &levelDays); err != nil {
+			return fmt.Errorf("解析保留策略 %s 失败: %w", policy.Name, err)
+		}
+	}
+	payload.Retention = logagent.RetentionConfig{DefaultDays: policy.DefaultDays, LevelDays: levelDays}
+	payload.RetentionDays = policy.DefaultDays
+	return nil
+}
+
+func applyRetentionPolicySnapshot(tx *gorm.DB, payload *policyPayload) error {
+	if payload.RetentionPolicyID == 0 {
+		return nil
+	}
+	var policy logmodel.RetentionPolicy
+	if err := tx.First(&policy, payload.RetentionPolicyID).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return fmt.Errorf("绑定的保留策略不存在，请重新选择")
+		}
+		return fmt.Errorf("读取保留策略失败: %w", err)
+	}
+	if !policy.Enabled {
+		return fmt.Errorf("保留策略 %s 已停用，请启用或更换策略", policy.Name)
+	}
+	return applyRetentionPolicyValues(payload, policy)
+}
+
 func validatePolicyPayload(payload policyPayload) error {
 	if payload.Name == "" {
 		return fmt.Errorf("策略名称不能为空")
 	}
-<<<<<<< HEAD
-=======
 	if payload.Environment == "" {
 		return fmt.Errorf("运行环境不能为空")
 	}
 	if payload.Service == "" {
 		return fmt.Errorf("服务名称不能为空")
 	}
->>>>>>> feat: update log
 	if payload.SourceMode != "host" && payload.SourceMode != "kubernetes" {
 		return fmt.Errorf("不支持的采集模式 %s", payload.SourceMode)
 	}
@@ -850,6 +1262,81 @@ func loadPolicyPayload(db *gorm.DB, policy logmodel.CollectionPolicy) (policyPay
 	return payload, nil
 }
 
+func loadPolicyViewPayload(db *gorm.DB, policy logmodel.CollectionPolicy) (policyPayload, bool, error) {
+	draft, found, err := loadPendingPolicyDraft(db, policy.ID)
+	if err != nil {
+		return policyPayload{}, false, err
+	}
+	if found {
+		return draft, true, nil
+	}
+	payload, loadErr := loadPolicyPayload(db, policy)
+	return payload, false, loadErr
+}
+
+func loadPendingPolicyDraft(db *gorm.DB, policyID uint) (policyPayload, bool, error) {
+	var draft logmodel.PolicyRevision
+	result := db.Where("policy_id = ? AND version = ?", policyID, 0).Limit(1).Find(&draft)
+	if result.Error != nil {
+		return policyPayload{}, false, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return policyPayload{}, false, nil
+	}
+	var payload policyPayload
+	if unmarshalErr := json.Unmarshal([]byte(draft.Content), &payload); unmarshalErr != nil {
+		return policyPayload{}, false, fmt.Errorf("解析待发布策略失败: %w", unmarshalErr)
+	}
+	payload.normalize()
+	return payload, true, nil
+}
+
+func savePendingPolicyDraft(tx *gorm.DB, policyID uint, payload policyPayload, userID uint) error {
+	content, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	checksumRaw := sha256.Sum256(content)
+	draft := logmodel.PolicyRevision{
+		PolicyID: policyID, Version: 0, Content: string(content), Checksum: hex.EncodeToString(checksumRaw[:]),
+		ChangeSummary: "待发布草稿", CreatedBy: userID,
+	}
+	return tx.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "policy_id"}, {Name: "version"}},
+		DoUpdates: clause.Assignments(map[string]interface{}{
+			"content": draft.Content, "checksum": draft.Checksum, "change_summary": draft.ChangeSummary,
+			"created_by": userID, "created_at": time.Now(),
+		}),
+	}).Create(&draft).Error
+}
+
+func applyPendingPolicyDraft(tx *gorm.DB, policy *logmodel.CollectionPolicy) error {
+	var draft logmodel.PolicyRevision
+	err := tx.Where("policy_id = ? AND version = ?", policy.ID, 0).First(&draft).Error
+	if err == gorm.ErrRecordNotFound {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var payload policyPayload
+	if err := json.Unmarshal([]byte(draft.Content), &payload); err != nil {
+		return fmt.Errorf("解析待发布策略失败: %w", err)
+	}
+	payload.normalize()
+	if err := validatePolicyPayload(payload); err != nil {
+		return err
+	}
+	payload.applyToModel(policy)
+	if err := tx.Save(policy).Error; err != nil {
+		return err
+	}
+	if err := replacePolicyTargets(tx, policy.ID, payload.Targets); err != nil {
+		return err
+	}
+	return tx.Delete(&draft).Error
+}
+
 func replacePolicyTargets(tx *gorm.DB, policyID uint, targets []policyTargetInput) error {
 	if err := tx.Where("policy_id = ?", policyID).Delete(&logmodel.PolicyTarget{}).Error; err != nil {
 		return err
@@ -880,6 +1367,14 @@ func resolvePolicyHosts(db *gorm.DB, policyID uint) ([]assetbiz.Host, error) {
 	if err := db.Where("policy_id = ?", policyID).Find(&targets).Error; err != nil {
 		return nil, err
 	}
+	inputs := make([]policyTargetInput, 0, len(targets))
+	for _, target := range targets {
+		inputs = append(inputs, policyTargetInput{TargetType: target.TargetType, TargetID: target.TargetID})
+	}
+	return resolvePolicyHostsFromInputs(db, inputs)
+}
+
+func resolvePolicyHostsFromInputs(db *gorm.DB, targets []policyTargetInput) ([]assetbiz.Host, error) {
 	hostIDs := make(map[uint]struct{})
 	groupIDs := make([]uint, 0)
 	for _, target := range targets {
@@ -926,10 +1421,29 @@ func hostsToTargetView(hosts []assetbiz.Host) []policyTargetHost {
 }
 
 func resolvePolicyClusters(db *gorm.DB, policyID uint) ([]k8smodel.Cluster, error) {
-	var clusterIDs []uint
-	if err := db.Model(&logmodel.PolicyTarget{}).Where("policy_id = ? AND target_type = ?", policyID, "cluster").Distinct("target_id").Pluck("target_id", &clusterIDs).Error; err != nil {
+	var targets []logmodel.PolicyTarget
+	if err := db.Where("policy_id = ? AND target_type = ?", policyID, "cluster").Find(&targets).Error; err != nil {
 		return nil, err
 	}
+	inputs := make([]policyTargetInput, 0, len(targets))
+	for _, target := range targets {
+		inputs = append(inputs, policyTargetInput{TargetType: target.TargetType, TargetID: target.TargetID})
+	}
+	return resolvePolicyClustersFromInputs(db, inputs)
+}
+
+func resolvePolicyClustersFromInputs(db *gorm.DB, targets []policyTargetInput) ([]k8smodel.Cluster, error) {
+	clusterSet := make(map[uint]struct{})
+	for _, target := range targets {
+		if target.TargetType == "cluster" && target.TargetID > 0 {
+			clusterSet[target.TargetID] = struct{}{}
+		}
+	}
+	clusterIDs := make([]uint, 0, len(clusterSet))
+	for clusterID := range clusterSet {
+		clusterIDs = append(clusterIDs, clusterID)
+	}
+	sort.Slice(clusterIDs, func(left, right int) bool { return clusterIDs[left] < clusterIDs[right] })
 	if len(clusterIDs) == 0 {
 		return []k8smodel.Cluster{}, nil
 	}

@@ -88,6 +88,71 @@ func TestSenderKeepsSegmentUntilGatewayAck(t *testing.T) {
 	}
 }
 
+func TestSenderDropsExpiredEventsAndUnblocksWAL(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		requests.Add(1)
+		_ = json.NewEncoder(writer).Encode(loggingest.IngestAck{AcceptedRecords: 1})
+	}))
+	defer server.Close()
+
+	directory := t.TempDir()
+	metrics := &Metrics{}
+	wal, err := OpenWAL(directory, 1024*1024, 1, metrics)
+	if err != nil {
+		t.Fatal(err)
+	}
+	event := testEvent("expired")
+	event.Timestamp = time.Now().Add(-48 * time.Hour)
+	event.RetentionDays = 1
+	if err := wal.Append(event); err != nil {
+		t.Fatal(err)
+	}
+	sender := NewSender(server.URL, "token", AgentIdentity{AgentID: "agent-1", AssetType: "host", AssetID: 1, HostID: 1}, metrics)
+	if err := sender.ProcessReady(context.Background(), wal); err != nil {
+		t.Fatal(err)
+	}
+	segments, _ := wal.ReadySegments()
+	if len(segments) != 0 {
+		t.Fatalf("expired segment remains: %v", segments)
+	}
+	if requests.Load() != 0 {
+		t.Fatalf("expired event was sent: %d requests", requests.Load())
+	}
+	if metrics.Snapshot().DroppedRecords != 1 {
+		t.Fatalf("dropped records = %d", metrics.Snapshot().DroppedRecords)
+	}
+}
+
+func TestSenderSkipsPermanentGatewayBatchErrors(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(writer).Encode(loggingest.IngestAck{ErrorCode: "INVALID_BATCH", ErrorMessage: "bad record"})
+	}))
+	defer server.Close()
+
+	directory := t.TempDir()
+	metrics := &Metrics{}
+	wal, err := OpenWAL(directory, 1024*1024, 1, metrics)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wal.Append(testEvent("invalid at gateway")); err != nil {
+		t.Fatal(err)
+	}
+	sender := NewSender(server.URL, "token", AgentIdentity{AgentID: "agent-1", AssetType: "host", AssetID: 1, HostID: 1}, metrics)
+	if err := sender.ProcessReady(context.Background(), wal); err != nil {
+		t.Fatal(err)
+	}
+	segments, _ := wal.ReadySegments()
+	if len(segments) != 0 {
+		t.Fatalf("permanent-error segment remains: %v", segments)
+	}
+	if metrics.Snapshot().DroppedRecords != 1 {
+		t.Fatalf("dropped records = %d", metrics.Snapshot().DroppedRecords)
+	}
+}
+
 func TestWALRejectsWritesAtCapacity(t *testing.T) {
 	directory := t.TempDir()
 	wal, err := OpenWAL(directory, 32, 10, &Metrics{})

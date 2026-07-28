@@ -252,6 +252,8 @@ cd web && npm install && npm run dev
 
 **👉 [查看完整部署文档](docs/deployment.md)**
 
+**👉 [查看生产发布与恢复手册](docs/production-release.md)**
+
 ### 快速开始（Docker Compose）
 
 ```bash

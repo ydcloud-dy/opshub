@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -163,6 +164,9 @@ func (manager *managedLogCollector) apply(parent context.Context, next logagent.
 	previousVersion := manager.configVersion
 	previousReloadGeneration := manager.reloadGeneration
 	manager.mutex.RUnlock()
+	if managedLogConfigUnchanged(previous, next, previousVersion, configVersion, previousReloadGeneration, reloadGeneration) {
+		return nil
+	}
 	manager.stop()
 
 	var candidate *logagent.Agent
@@ -178,6 +182,10 @@ func (manager *managedLogCollector) apply(parent context.Context, next logagent.
 	}
 	manager.launch(parent, candidate, next, configVersion, reloadGeneration)
 	return nil
+}
+
+func managedLogConfigUnchanged(current, next logagent.Config, currentVersion, nextVersion, currentReload, nextReload uint64) bool {
+	return currentVersion == nextVersion && currentReload == nextReload && reflect.DeepEqual(current, next)
 }
 
 func (manager *managedLogCollector) restore(parent context.Context, previous logagent.Config, configVersion, reloadGeneration uint64) {

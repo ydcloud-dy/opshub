@@ -86,15 +86,14 @@ func Error(c *gin.Context, err error) {
 	})
 }
 
-// ErrorCode 错误响应(带状态码和消息) - 简化版本
+// ErrorCode 错误响应(带状态码和消息)
 func ErrorCode(c *gin.Context, httpStatus int, message string) {
-	// 对于业务错误，使用5000作为错误码，HTTP状态码为200
 	businessCode := 5000
 	if httpStatus >= 400 && httpStatus < 600 {
 		businessCode = httpStatus
 	}
 
-	c.JSON(http.StatusOK, Response{
+	c.JSON(httpStatus, Response{
 		Code:      businessCode,
 		Message:   message,
 		Timestamp: time.Now().Unix(),
@@ -124,8 +123,8 @@ func ErrorWithData(c *gin.Context, err error, data any) {
 // Pagination 分页响应
 func Pagination(c *gin.Context, total int64, page, pageSize int, data any) {
 	c.JSON(http.StatusOK, Response{
-		Code:      int(appError.Success),
-		Message:   "success",
+		Code:    int(appError.Success),
+		Message: "success",
 		Data: PaginationResponse{
 			Total:    total,
 			Page:     page,

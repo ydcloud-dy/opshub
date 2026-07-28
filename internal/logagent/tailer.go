@@ -291,7 +291,11 @@ func (tailer *Tailer) persist(ctx context.Context, tracked *trackedFile, runtime
 	parsed, err := tracked.source.parser.Parse(line, parseTime)
 	if err != nil {
 		tailer.metrics.parseErrors.Add(1)
-		parsed = ParsedRecord{Timestamp: parseTime, Body: line, Level: detectLevel(line), Attributes: map[string]string{"log.parser_error": err.Error()}}
+		traceID, spanID := extractTraceContext(line)
+		parsed = ParsedRecord{
+			Timestamp: parseTime, Body: line, Level: detectLevel(line), Attributes: map[string]string{"log.parser_error": err.Error()},
+			TraceID: traceID, SpanID: spanID,
+		}
 	}
 	if parsed.Attributes == nil {
 		parsed.Attributes = make(map[string]string)
@@ -308,7 +312,7 @@ func (tailer *Tailer) persist(ctx context.Context, tracked *trackedFile, runtime
 		PolicyVersion: tracked.source.config.PolicyVersion, FilePath: tracked.path,
 		Environment: tracked.source.config.Environment, Service: tracked.source.config.Service,
 		Stream: firstNonEmptyLogValue(runtimeRecord.Stream, tracked.source.config.Stream), Timestamp: parsed.Timestamp, ObservedAt: observedAt,
-		Body: parsed.Body, Level: parsed.Level, Attributes: parsed.Attributes,
+		Body: parsed.Body, Level: parsed.Level, TraceID: parsed.TraceID, SpanID: parsed.SpanID, Attributes: parsed.Attributes,
 		RetentionDays: tracked.source.config.Retention.DaysForLevel(parsed.Level),
 	}
 	if tracked.source.config.Kubernetes != nil {

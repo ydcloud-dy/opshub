@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/ydcloud-dy/opshub/internal/biz/rbac"
@@ -30,8 +31,9 @@ import (
 )
 
 const (
-	UserIdKey   = "user_id"
-	UsernameKey = "username"
+	UserIdKey         = "user_id"
+	UsernameKey       = "username"
+	TokenExpiresAtKey = "token_expires_at"
 )
 
 // GetUserID 从上下文获取用户ID
@@ -52,6 +54,15 @@ func GetUsername(c *gin.Context) string {
 		}
 	}
 	return ""
+}
+
+func GetTokenExpiresAt(c *gin.Context) time.Time {
+	if expiresAt, exists := c.Get(TokenExpiresAtKey); exists {
+		if value, ok := expiresAt.(time.Time); ok {
+			return value
+		}
+	}
+	return time.Time{}
 }
 
 // AuthMiddleware JWT认证中间件
@@ -113,6 +124,9 @@ func (m *AuthMiddleware) AuthRequired() gin.HandlerFunc {
 
 		c.Set(UserIdKey, claims.UserID)
 		c.Set(UsernameKey, claims.Username)
+		if claims.ExpiresAt != nil {
+			c.Set(TokenExpiresAtKey, claims.ExpiresAt.Time)
+		}
 		c.Set("userID", claims.UserID) // 兼容 OAuth2 使用的 key
 		c.Next()
 	}

@@ -78,7 +78,7 @@
       </el-table>
     </section>
       </el-tab-pane>
-      <el-tab-pane label="保留策略" name="retention" lazy><RetentionPolicyPanel :storages="items" /></el-tab-pane>
+      <el-tab-pane label="保留策略" name="retention" lazy><RetentionPolicyPanel /></el-tab-pane>
       <el-tab-pane label="容量预测" name="capacity" lazy><CapacityPanel :storages="items" /></el-tab-pane>
       <el-tab-pane label="访问控制" name="access" lazy><AccessPolicyPanel :storages="items" /></el-tab-pane>
     </el-tabs>
@@ -111,7 +111,8 @@
             <el-input v-model="form.password" type="password" show-password :placeholder="form.passwordConfigured ? '留空保持原密码' : '请输入密码'" />
           </el-form-item>
           <el-form-item label="请求超时">
-            <el-input-number v-model="form.timeout" :min="5" :max="300" controls-position="right" class="full" />
+            <el-input-number v-model="form.timeout" :min="5" :max="1800" controls-position="right" class="full" />
+            <div class="form-tip">日志大范围查询建议 300 秒以上；导出任务可继续后台执行。</div>
           </el-form-item>
           <el-form-item label="启用存储">
             <el-switch v-model="form.enabled" />
@@ -161,7 +162,7 @@ const healthyCount = computed(() => items.value.filter(item => item.enabled && i
 
 const defaultForm = (): Partial<LogStorageCluster> => ({
   name: 'OpsHub 内置日志存储', storageType: 'clickhouse', endpoints: '', databaseName: 'opshub_logs',
-  username: 'opshub', password: '', timeout: 60, queueMode: 'direct', defaultRetentionDays: 30,
+  username: 'opshub', password: '', timeout: 300, queueMode: 'direct', defaultRetentionDays: 30,
   skipTlsVerify: false, enabled: true,
 })
 

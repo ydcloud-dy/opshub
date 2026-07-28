@@ -5,7 +5,7 @@ OpsHub 的官方 Helm Chart，用于在 Kubernetes 上部署 OpsHub 运维管理
 ## 前置条件
 
 - Kubernetes 1.24+
-- Helm 3.0+
+- Helm 3.12+
 - PV provisioner（如需持久化存储）
 - Ingress Controller（如需外部访问）
 
@@ -63,7 +63,9 @@ kubectl delete namespace opshub
 
 | 参数 | 描述 | 默认值 |
 |------|------|--------|
-| `backend.replicaCount` | 副本数 | `2` |
+| `backend.replicaCount` | 副本数；大于 1 时日志导出必须配置 RWX 共享卷 | `1` |
+| `backend.podDisruptionBudget.enabled` | 是否保护后端滚动维护期间的可用副本 | `true` |
+| `backend.podDisruptionBudget.minAvailable` | 后端最少可用副本 | `1` |
 | `backend.image.repository` | 镜像仓库 | `ydcloud/opshub-backend` |
 | `backend.image.tag` | 镜像标签 | `latest` |
 | `backend.resources.requests.memory` | 内存请求 | `256Mi` |
@@ -76,6 +78,8 @@ kubectl delete namespace opshub
 | 参数 | 描述 | 默认值 |
 |------|------|--------|
 | `frontend.replicaCount` | 副本数 | `2` |
+| `frontend.podDisruptionBudget.enabled` | 是否保护前端滚动维护期间的可用副本 | `true` |
+| `frontend.podDisruptionBudget.minAvailable` | 前端最少可用副本 | `1` |
 | `frontend.image.repository` | 镜像仓库 | `ydcloud/opshub-frontend` |
 | `frontend.image.tag` | 镜像标签 | `latest` |
 | `frontend.resources.requests.memory` | 内存请求 | `64Mi` |
@@ -94,6 +98,9 @@ Log Gateway 与 Log Writer 使用独立镜像和 Deployment，不复用后端 AP
 | `logCenter.ingest.writer.image.repository` | Writer 镜像仓库 | `docker.1ms.run/dyclouds/opshub-log-writer` |
 | `logCenter.ingest.writer.image.tag` | Writer 镜像标签 | `v0.0.8` |
 | `logCenter.ingest.queue.mode` | 数据面模式：`direct` 或 `kafka` | `direct` |
+| `logCenter.export.maxAttempts` | 导出任务最大执行次数 | `3` |
+| `logCenter.export.leaseSeconds` | 导出 worker 租约秒数 | `300` |
+| `logCenter.export.persistence.enabled` | 是否持久化导出文件；后端多副本时必须开启 | `false` |
 
 ### MySQL 配置
 
@@ -207,27 +214,117 @@ server:
 
 ### 生产环境配置
 
-```yaml
-backend:
-  replicaCount: 3
-  resources:
-    requests:
-      memory: "512Mi"
-      cpu: "200m"
-    limits:
-      memory: "1Gi"
-      cpu: "1000m"
+日志链路提供独立的高可用覆盖配置 `values-logcenter-ha.yaml`，其拓扑为：
 
-frontend:
-  replicaCount: 3
+- Log Gateway：3 个 Deployment 副本。
+- Redpanda：3 个 StatefulSet Broker，Topic 副本因子为 3。
+- Log Writer：3 个 Deployment 副本，通过同一 Consumer Group 消费。
+- ClickHouse：1 个分片、2 个数据副本，使用 ReplicatedMergeTree。
+- ClickHouse Keeper：3 个 StatefulSet 节点。
 
-mysql:
-  persistence:
-    size: 100Gi
+Gateway 和 Writer 不保存本地业务状态，分别通过 Kubernetes Service 和 Kafka Consumer Group 实现负载均衡与故障接管，因此使用 Deployment。Redpanda、ClickHouse、Keeper 需要稳定网络身份和独立数据盘，因此使用 StatefulSet；任意副本都不能共享同一个 RWO PVC。
 
-server:
-  jwtSecret: "your-very-long-random-secret-key"
+集群至少需要 3 个可调度节点和支持动态供应的 StorageClass。安装前先渲染并检查资源：
+
+```bash
+helm lint ./charts/opshub -f ./charts/opshub/values-logcenter-ha.yaml
+helm template opshub ./charts/opshub \
+  -n opshub \
+  -f ./charts/opshub/values-logcenter-ha.yaml > /tmp/opshub-ha.yaml
 ```
+
+安装时必须覆盖默认密码和 Token：
+
+```bash
+helm upgrade --install opshub ./charts/opshub \
+  -n opshub \
+  --create-namespace \
+  -f ./charts/opshub/values-logcenter-ha.yaml \
+  --set-string server.jwtSecret='<JWT_SECRET>' \
+  --set-string clickhouse.auth.password='<CLICKHOUSE_PASSWORD>' \
+  --set-string logCenter.encryptionKey='<LOGCENTER_ENCRYPTION_KEY>' \
+  --set-string logCenter.ingest.ingestToken='<INGEST_TOKEN>' \
+  --set-string logCenter.ingest.writerToken='<WRITER_TOKEN>'
+```
+
+高可用模式使用硬反亲和，ClickHouse 副本、Keeper 和 Redpanda Broker 会尽量形成节点级故障域。节点数量不足时 Pod 会保持 Pending，而不会把同一组件的多个副本调度到同一节点制造“假高可用”。
+
+#### 从单节点 ClickHouse 迁移
+
+`clickhouse.highAvailability.enabled=true` 会创建一套新的 `clickhouse-ha` StatefulSet 和独立 PVC，不会复用旧数据。已有环境禁止直接从旧 Chart 一步切换到 HA；必须先让 Helm 记录旧 PVC 的保留策略，再迁移数据。
+
+第一步，仍以单节点模式升级一次新 Chart，让 Helm 先记录旧 PVC 的保护注解：
+
+```bash
+helm upgrade opshub ./charts/opshub \
+  -n opshub \
+  -f <当前生产 values.yaml> \
+  --set clickhouse.highAvailability.enabled=false
+
+kubectl get pvc opshub-clickhouse-pvc -n opshub \
+  -o jsonpath='{.metadata.annotations.helm\.sh/resource-policy}{"\n"}'
+```
+
+命令必须输出 `keep`。若没有输出，停止迁移，不能启用 HA。
+
+第二步进入维护窗口，备份旧实例并创建 HA 存储，但暂不恢复业务流量：
+
+```bash
+# 先停止日志写入和 API，确认副本均降为 0 后再备份。
+kubectl scale deployment/opshub-log-gateway deployment/opshub-log-writer deployment/opshub-backend \
+  -n opshub --replicas=0
+kubectl wait --for=delete pod \
+  -l 'app.kubernetes.io/instance=opshub,app.kubernetes.io/component in (log-gateway,log-writer,backend)' \
+  -n opshub --timeout=300s
+
+# 使用 clickhouse-backup 或等价方案完成备份，并验证备份文件可读。
+
+# 创建 ClickHouse HA、Keeper、Redpanda，并临时启动 1 个 Writer 完成复制表初始化。
+# Gateway 为 0，不会接收新日志；Backend 为 0，查询 API 仍保持维护状态。
+helm upgrade opshub ./charts/opshub \
+  -n opshub \
+  -f <当前生产 values.yaml> \
+  -f ./charts/opshub/values-logcenter-ha.yaml \
+  --set backend.replicaCount=0 \
+  --set logCenter.ingest.highAvailability.enabled=false \
+  --set logCenter.ingest.gateway.replicaCount=0 \
+  --set logCenter.ingest.writer.replicaCount=1
+
+kubectl rollout status statefulset/opshub-clickhouse-keeper -n opshub --timeout=10m
+kubectl rollout status statefulset/opshub-clickhouse-ha -n opshub --timeout=10m
+kubectl rollout status statefulset/opshub-redpanda -n opshub --timeout=10m
+kubectl rollout status deployment/opshub-log-writer -n opshub --timeout=10m
+
+# Writer Ready 表示 Replicated*MergeTree 表已在集群中创建；恢复数据前再次停止 Writer。
+kubectl scale deployment/opshub-log-writer -n opshub --replicas=0
+kubectl wait --for=delete pod \
+  -l 'app.kubernetes.io/instance=opshub,app.kubernetes.io/component=log-writer' \
+  -n opshub --timeout=300s
+```
+
+此时使用 `clickhouse-backup`、ClickHouse `BACKUP/RESTORE` 或经过验证的迁移工具，把旧实例的数据恢复到 `opshub-clickhouse-ha` StatefulSet。必须执行“仅数据恢复”，不能用旧备份里的单机 `MergeTree` 建表 DDL 覆盖已经创建的 `ReplicatedMergeTree`/`ReplicatedSummingMergeTree` 表。客户端 Service 始终使用稳定名称 `opshub-clickhouse`，恢复后必须核对表引擎、总行数、最早/最新日志时间、各日志级别数量以及最近 24 小时聚合量。
+
+第三步才恢复完整服务：
+
+```bash
+helm upgrade opshub ./charts/opshub \
+  -n opshub \
+  -f <当前生产 values.yaml> \
+  -f ./charts/opshub/values-logcenter-ha.yaml
+
+kubectl rollout status deployment/opshub-backend -n opshub --timeout=10m
+kubectl rollout status statefulset/opshub-redpanda -n opshub --timeout=10m
+kubectl rollout status deployment/opshub-log-writer -n opshub --timeout=10m
+kubectl rollout status deployment/opshub-log-gateway -n opshub --timeout=10m
+```
+
+恢复采集后检查 Gateway 拒绝量、Kafka 消费积压、Writer 写入失败数、ClickHouse 副本延迟。观察至少一个完整保留周期后，再人工处理旧 StatefulSet 和 PVC。第二步失败时，先保持采集停止，再使用 `helm rollback` 回到第一步的版本；旧 PVC 仍在，可以重新拉起单节点 ClickHouse。
+
+客户端始终访问 `opshub-clickhouse:8123`，因此数据库中已有的内置日志库地址不需要修改。HA Service 使用独立的 `opshub.io/clickhouse-mode=ha` 选择器，不会在迁移窗口把流量误发给旧单节点 Pod。旧 PVC 带有 `helm.sh/resource-policy=keep`，即使 HA 升级不再渲染单节点资源，Helm 也不会自动删除该 PVC。
+
+当前内置 HA 模式面向单分片双副本。需要多分片、跨可用区或者滚动升级编排时，建议设置 `clickhouse.enabled=false`，接入由 ClickHouse Operator 或云服务管理的外部集群。
+
+`values-logcenter-ha.yaml` 保障日志数据面的高可用，不会把内置单节点 MySQL 和 Redis 自动改造成集群。需要整个平台达到生产级高可用时，应设置 `mysql.enabled=false`、`redis.enabled=false`，并接入已有的 MySQL 高可用集群和 Redis Sentinel/Cluster 或云数据库服务。
 
 ## 升级
 

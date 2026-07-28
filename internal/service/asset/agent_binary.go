@@ -17,7 +17,7 @@ import (
 
 const (
 	agentBinaryDir     = "data/agent-binaries"
-	agentBinaryVersion = "0.3.0"
+	agentBinaryVersion = "0.3.1"
 )
 
 var agentBinaryBuildMu sync.Mutex

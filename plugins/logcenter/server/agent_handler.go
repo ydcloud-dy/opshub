@@ -68,6 +68,32 @@ type agentDesiredAssignment struct {
 	DesiredState  string `json:"desiredState"`
 }
 
+const agentConfigETagSchema = "20260722-1"
+
+type agentConfigETagPayload struct {
+	Schema            string                   `json:"schema"`
+	ConfigVersion     uint64                   `json:"configVersion"`
+	ReloadGeneration  uint64                   `json:"reloadGeneration"`
+	PollInterval      int                      `json:"pollInterval"`
+	Enabled           bool                     `json:"enabled"`
+	GatewayURL        string                   `json:"gatewayUrl"`
+	GatewayTokenHash  string                   `json:"gatewayTokenHash"`
+	DesiredAssignment []agentDesiredAssignment `json:"assignments"`
+}
+
+func buildAgentConfigETag(result agentLogConfigResponse) string {
+	tokenHash := sha256.Sum256([]byte(result.LogCollection.GatewayToken))
+	payload := agentConfigETagPayload{
+		Schema: agentConfigETagSchema, ConfigVersion: result.ConfigVersion,
+		ReloadGeneration: result.ReloadGeneration, PollInterval: result.PollInterval,
+		Enabled: result.LogCollection.Enabled, GatewayURL: result.LogCollection.GatewayURL,
+		GatewayTokenHash: hex.EncodeToString(tokenHash[:]), DesiredAssignment: result.Assignments,
+	}
+	raw, _ := json.Marshal(payload)
+	sum := sha256.Sum256(raw)
+	return `"` + hex.EncodeToString(sum[:]) + `"`
+}
+
 func RegisterPublicRoutes(router *gin.RouterGroup, db *gorm.DB) {
 	handler := &agentControlHandler{db: db}
 	agents := router.Group("/agents")
@@ -99,9 +125,7 @@ func (h *agentControlHandler) GetLogConfig(c *gin.Context) {
 		return
 	}
 
-	raw, _ := json.Marshal(result)
-	sum := sha256.Sum256(raw)
-	etag := `"` + hex.EncodeToString(sum[:]) + `"`
+	etag := buildAgentConfigETag(result)
 	c.Header("ETag", etag)
 	c.Header("Cache-Control", "no-cache")
 	if c.GetHeader("If-None-Match") == etag {
@@ -140,7 +164,7 @@ func (h *agentControlHandler) ReportLogConfigStatus(c *gin.Context) {
 			if assignment.PolicyVersion > 0 {
 				values["policy_version"] = assignment.PolicyVersion
 			}
-			if assignmentStatus == "applied" {
+			if assignmentStatus == "applied" || assignmentStatus == "disabled" {
 				values["applied_at"] = &now
 			} else {
 				values["applied_at"] = nil
@@ -153,7 +177,7 @@ func (h *agentControlHandler) ReportLogConfigStatus(c *gin.Context) {
 		}
 		if len(payload.Assignments) == 0 && status != "" {
 			values := map[string]any{"apply_status": status, "last_error": strings.TrimSpace(payload.Error)}
-			if status == "applied" {
+			if status == "applied" || status == "disabled" {
 				values["applied_at"] = &now
 			}
 			return tx.Model(&logmodel.CollectorAssignment{}).Where("instance_id = ? AND desired_state = ?", host.AgentID, "active").Updates(values).Error
@@ -285,6 +309,7 @@ func syncAgentAssignments(tx *gorm.DB, host assetbiz.Host) (logmodel.CollectorIn
 	if len(activeIDs) > 0 {
 		disableQuery = disableQuery.Where("policy_id NOT IN ?", activeIDs)
 	}
+	disableQuery = disableQuery.Where("desired_state <> ?", "disabled")
 	if err := disableQuery.Updates(map[string]any{"desired_state": "disabled", "apply_status": "pending", "applied_at": nil}).Error; err != nil {
 		return instance, err
 	}

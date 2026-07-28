@@ -3,22 +3,22 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: opshub-api:dev
+    image: ${OPSHUB_API_IMAGE:-opshub-api}:${OPSHUB_IMAGE_TAG:-dev}
   frontend:
     build:
       context: .
       dockerfile: Dockerfile.frontend
-    image: opshub-web:dev
+    image: ${OPSHUB_WEB_IMAGE:-opshub-web}:${OPSHUB_IMAGE_TAG:-dev}
   log-writer:
     build:
       context: .
       dockerfile: Dockerfile.log-writer
-    image: opshub-log-writer:dev
+    image: ${OPSHUB_LOG_WRITER_LOCAL_IMAGE:-opshub-log-writer}:${OPSHUB_IMAGE_TAG:-dev}
   log-gateway:
     build:
       context: .
       dockerfile: Dockerfile.log-gateway
-    image: opshub-log-gateway:dev
+    image: ${OPSHUB_LOG_GATEWAY_LOCAL_IMAGE:-opshub-log-gateway}:${OPSHUB_IMAGE_TAG:-dev}
   db-init:
     profiles:
       - init

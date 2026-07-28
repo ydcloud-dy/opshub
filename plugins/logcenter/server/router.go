@@ -25,6 +25,7 @@ func RegisterRoutes(router *gin.RouterGroup, db *gorm.DB) {
 
 		internal := group.Group("/internal")
 		{
+			internal.GET("/access-capabilities", handler.GetInternalAccessCapabilities)
 			internal.POST("/query", handler.QueryInternalLogs)
 			internal.POST("/query/histogram", handler.QueryInternalHistogram)
 			internal.POST("/query/context", handler.QueryInternalContext)
@@ -54,6 +55,7 @@ func RegisterRoutes(router *gin.RouterGroup, db *gorm.DB) {
 			policies.GET("/:id", handler.GetCollectionPolicy)
 			policies.PUT("/:id", handler.UpdateCollectionPolicy)
 			policies.DELETE("/:id", handler.DeleteCollectionPolicy)
+			policies.POST("/:id/restore", handler.RestoreCollectionPolicy)
 			policies.POST("/:id/preview-targets", handler.PreviewPolicyTargets)
 			policies.POST("/:id/publish", handler.PublishCollectionPolicy)
 			policies.POST("/:id/disable", handler.DisableCollectionPolicy)
@@ -64,6 +66,7 @@ func RegisterRoutes(router *gin.RouterGroup, db *gorm.DB) {
 		collectors := group.Group("/collectors")
 		{
 			collectors.GET("/instances", handler.ListCollectorInstances)
+			collectors.DELETE("/instances/:id", handler.DeleteCollectorInstance)
 			collectors.POST("/instances/:id/restart", handler.RestartCollectorInstance)
 		}
 

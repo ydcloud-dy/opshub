@@ -189,6 +189,9 @@ func (manager *kubernetesCollectorManager) apply(parent context.Context, next lo
 	previousVersion := manager.configVersion
 	previousReload := manager.reloadGeneration
 	manager.mutex.RUnlock()
+	if managedLogConfigUnchanged(previous, next, previousVersion, configVersion, previousReload, reloadGeneration) {
+		return nil
+	}
 	manager.stop()
 	candidate, err := manager.newAgent(next)
 	if err != nil {
